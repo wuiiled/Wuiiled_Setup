@@ -1,6 +1,6 @@
 # 机场订阅，名称不能重复
 proxy-providers:
-  Airport_01:NCloud
+  Airport_02:QIYI
     type: http
     interval: 1800
     health-check:
@@ -132,7 +132,7 @@ proxy-groups:
   - {name: 🤖 ChatGPT,!!merge <<: *pr}
   - {name: 👨🏿‍💻 GitHub,!!merge <<: *pr}
   - {name: 🐬 OneDrive,!!merge <<: *pr}
-  - {name: 🪟 Microsoft,!!merge <<: *pr}
+  - {name: Ⓜ️ Microsoft,!!merge <<: *pr}
   - {name: 🎵 TikTok,!!merge <<: *pr}
   - {name: 📲 Telegram,!!merge <<: *pr}
   - {name: 🎥 NETFLIX,!!merge <<: *pr}
@@ -142,6 +142,7 @@ proxy-groups:
   - {name: 🌎 国外媒体,!!merge <<: *pr}
   - {name: ✈️ Speedtest,!!merge <<: *pr}
   - {name: 🕊️ Twitter,!!merge <<: *pr}
+  - {name: 🎻 Spotify,!!merge <<: *pr}
   - {name: 🍎 Apple, type: select, proxies: [🎯 全球直连, 🚀 节点选择]}
   - {name: 🎯 全球直连, type: select, proxies: [🎯 全球直连, 🚀 节点选择]}
   - {name: 🐟 漏网之鱼,!!merge <<: *pr}
@@ -177,7 +178,7 @@ rules:
   - RULE-SET,Speedtest_Domain,✈️ Speedtest
   - RULE-SET,Apple_OCD_Domain.mrs,🍎 Apple
   - RULE-SET,Apple_OCD_IP,🍎 Apple
-  - RULE-SET,Microsoft_Domain,🪟 Microsoft
+  - RULE-SET,Microsoft_Domain,Ⓜ️ Microsoft
   - RULE-SET,YouTube_Domain,📹 YouTube
   - RULE-SET,YouTube_IP,📹 YouTube
   - RULE-SET,Google_Domain,🍀 Google
