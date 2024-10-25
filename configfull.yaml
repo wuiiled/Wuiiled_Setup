@@ -1,6 +1,6 @@
 # 机场订阅，名称不能重复
 proxy-providers:
-  Airport_02:QIYI
+  NCloud:
     type: http
     interval: 1800
     health-check:
@@ -11,7 +11,7 @@ proxy-providers:
     url: ""
       
 # 用于下载订阅时指定UA
-#global-ua: meta
+# global-ua: meta
     
 # 全局配置
 # port: 7890
@@ -144,12 +144,11 @@ proxy-groups:
   - {name: 🕊️ Twitter,!!merge <<: *pr}
   - {name: 🎻 Spotify,!!merge <<: *pr}
   - {name: 🍎 Apple, type: select, proxies: [🎯 全球直连, 🚀 节点选择]}
-  - {name: 🎯 全球直连, type: select, proxies: [🎯 全球直连, 🚀 节点选择]}
   - {name: 🐟 漏网之鱼,!!merge <<: *pr}
   - {name: 🔯 香港故转, type: fallback, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(港|HK|(?i)Hong))^((?!(台|日|韩|新|深|美)).)*$"}
   - {name: 🇭🇰 香港自动, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(港|HK|(?i)Hong))^((?!(台|日|韩|新|深|美)).)*$"}
-  - {name: 🇸🇬 新加坡自动, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(新|SG|(?i)Singapore))^((?!(港|台|韩|新|美)).)*$" }
-  - {name: 🇹🇼 台湾自动, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(台|TW|(?i)Taiwan))^((?!(港|台|韩|新|美)).)*$" }
+  - {name: 🇸🇬 新加坡自动, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(新|SG|(?i)Singapore))^((?!(港|台|韩|日|美)).)*$" }
+  - {name: 🇹🇼 台湾自动, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(台|TW|(?i)Taiwan))^((?!(港|日|韩|新|美)).)*$" }
   - {name: 🇺🇸 美国自动, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(美|US|(?i)States|America))^((?!(港|台|日|韩|新)).)*$"}
   - {name: ♻️ 自动选择, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "^((?!(直连)).)*$"}
   - {name: 🌐 全部节点, type: select, include-all: true}
@@ -176,9 +175,10 @@ rules:
   - RULE-SET,Copilot_Domain,🤖 ChatGPT
   - RULE-SET,Copilot_IP,🤖 ChatGPT
   - RULE-SET,Speedtest_Domain,✈️ Speedtest
-  - RULE-SET,Apple_OCD_Domain.mrs,🍎 Apple
-  - RULE-SET,Apple_OCD_IP,🍎 Apple
+  - RULE-SET,Apple_Domain,🍎 Apple
+  - RULE-SET,Apple_IP,🍎 Apple
   - RULE-SET,Microsoft_Domain,Ⓜ️ Microsoft
+  - RULE-SET,GitHub_Domain,Ⓜ️ Microsoft
   - RULE-SET,YouTube_Domain,📹 YouTube
   - RULE-SET,YouTube_IP,📹 YouTube
   - RULE-SET,Google_Domain,🍀 Google
@@ -204,8 +204,8 @@ rules:
   - RULE-SET,GlobalMedia_IP,🎮 游戏平台
   - RULE-SET,Proxy_Domain,🚀 节点选择
   - RULE-SET,Proxy_IP,🚀 节点选择
-  - RULE-SET,China_OCD_Domain,🎯 全球直连
-  - RULE-SET,China_OCD_IP,🎯 全球直连
+  - RULE-SET,China_Domain,🎯 全球直连
+  - RULE-SET,China_IP,🎯 全球直连
   - RULE-SET,ChinaCompany_IP,🎯 全球直连
   - RULE-SET,ChinaIPs_IP,🎯 全球直连
   - RULE-SET,Download_Domain,🎯 全球直连
@@ -254,13 +254,13 @@ rule-providers:
   Netflix_IP: {!!merge <<: *ip, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Netflix/Netflix_OCD_IP.mrs"}
   Disney_Domain: {!!merge <<: *domain, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Disney/Disney_OCD_Domain.mrs"}
   Spotify_Domain: {!!merge <<: *domain, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Spotify/Spotify_OCD_Domain.mrs"}
-  Spotify_IP.mrs: {!!merge <<: *ip, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Spotify/Spotify_OCD_IP.mrs"}
+  Spotify_IP: {!!merge <<: *ip, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Spotify/Spotify_OCD_IP.mrs"}
   Bahamut_Domain: {!!merge <<: *domain, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Bahamut/Bahamut_OCD_Domain.mrs"}
   GlobalMedia_Domain: {!!merge <<: *domain, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/GlobalMedia/GlobalMedia_OCD_Domain.mrs"}
   GlobalMedia_IP: {!!merge <<: *ip, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/GlobalMedia/GlobalMedia_OCD_IP.mrs"}
   Epic_Domain: {!!merge <<: *domain, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Epic/Epic_OCD_Domain.mrs"}
-  EA_Domain.mrs: {!!merge <<: *domain, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/EA/EA_OCD_Domain.mrs"}
-  Blizzard_Domain.mrs: {!!merge <<: *domain, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Blizzard/Blizzard_OCD_Domain.mrs"}
+  EA_Domain: {!!merge <<: *domain, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/EA/EA_OCD_Domain.mrs"}
+  Blizzard_Domain: {!!merge <<: *domain, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Blizzard/Blizzard_OCD_Domain.mrs"}
   Blizzard_IP: {!!merge <<: *ip, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Blizzard/Blizzard_OCD_IP.mrs"}
   UBI_Domain: {!!merge <<: *domain, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/UBI/UBI_OCD_Domain.mrs"}
   Sony_Domain: {!!merge <<: *domain, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Sony/Sony_OCD_Domain.mrs"}
