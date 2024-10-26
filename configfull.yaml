@@ -268,7 +268,7 @@ rule-providers:
   Nintendo_IP: {!!merge <<: *ip, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Nintendo/Nintendo_OCD_IP.mrs"}
   Steam_Domain: {!!merge <<: *domain, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Steam/Steam_OCD_Domain.mrs"}
   Proxy_Domain: {!!merge <<: *domain, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Proxy/Proxy_OCD_Domain.mrs"}
-  Proxy_IP: {!!merge <<: *ip, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Proxyo/Proxy_OCD_IP.mrs"}
+  Proxy_IP: {!!merge <<: *ip, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/Proxy/Proxy_OCD_IP.mrs"}
   China_Domain: {!!merge <<: *domain, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/China/China_OCD_Domain.mrs"}
   China_IP: {!!merge <<: *ip, url: "https://raw.githubusercontent.com/peiyingyao/Rule-for-OCD/master/rule/Clash/China/China_OCD_IP.mrs"}
   ChinaCompany_IP: {!!merge <<: *class, url: "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaCompanyIp.list"}
