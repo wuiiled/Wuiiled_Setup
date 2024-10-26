@@ -150,7 +150,7 @@ proxy-groups:
   - {name: 🇸🇬 新加坡自动, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(新|SG|(?i)Singapore))^((?!(港|台|韩|日|美)).)*$" }
   - {name: 🇹🇼 台湾自动, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(台|TW|(?i)Taiwan))^((?!(港|日|韩|新|美)).)*$" }
   - {name: 🇺🇸 美国自动, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(美|US|(?i)States|America))^((?!(港|台|日|韩|新)).)*$"}
-  - {name: ♻️ 自动选择, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "^((?!(直连)).)*$"}
+  - {name: ♻️ 自动选择, type: url-test, include-all: true, tolerance: 20, interval: 300}
   - {name: 🌐 全部节点, type: select, include-all: true}
 rules:
   - RULE-SET,Lan_Domain,🎯 全球直连
@@ -201,7 +201,6 @@ rules:
   - RULE-SET,Nintendo_Domain,🎮 游戏平台
   - RULE-SET,Nintendo_IP,🎮 游戏平台
   - RULE-SET,Steam_Domain,🎮 游戏平台
-  - RULE-SET,GlobalMedia_IP,🎮 游戏平台
   - RULE-SET,Proxy_Domain,🚀 节点选择
   - RULE-SET,Proxy_IP,🚀 节点选择
   - RULE-SET,China_Domain,🎯 全球直连
