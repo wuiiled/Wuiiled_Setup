@@ -42,7 +42,7 @@
   {
     "type": "socks",
     "tag": "socks-in",
-    "listen": "10.0.0.3",
+    "listen": "10.0.0.1",
     "listen_port": 1080,
     "sniff": true
   }
