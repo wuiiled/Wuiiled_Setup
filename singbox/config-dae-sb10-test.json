@@ -42,7 +42,7 @@
   {
     "type": "socks",
     "tag": "socks-in",
-    "listen": "10.0.0.1",
+    "listen": "0.0.0.0",
     "listen_port": 1080,
     "sniff": true
   }
@@ -82,7 +82,6 @@
    "default_mark": 666,
    "rules": 
    [
-     {"type": "logical", "mode": "or", "rules": [{ "port": 2053 }, { "protocol": "dns" }], "outbound": "dns-out" },
      {"clash_mode": "direct", "outbound": "🎯 全球直连"},
      {"clash_mode": "global", "outbound": "GLOBAL"},
      {"domain": ["clash.razord.top", "yacd.metacubex.one", "yacd.haishan.me", "d.metacubex.one"], "outbound": "🎯 全球直连"},
