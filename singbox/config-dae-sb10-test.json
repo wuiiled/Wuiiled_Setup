@@ -84,8 +84,8 @@
    "default_mark": 666,
    "rules": 
    [
-     {"type": "logical", "mode": "or", "rules": [{ "protocol": "dns" }], "outbound": "dns-out" },
-     {"type": "logical", "mode": "or", "rules": [{ "protocol": "quic" }], "outbound": "block" },
+     {"protocol": "dns", "outbound": "dns-out"},
+     {"protocol": "quic", "outbound": "block"},
      {"clash_mode": "direct", "outbound": "🎯 全球直连"},
      {"clash_mode": "global", "outbound": "GLOBAL"},
      {"domain": ["clash.razord.top", "yacd.metacubex.one", "yacd.haishan.me", "d.metacubex.one"], "outbound": "🎯 全球直连"},
