@@ -23,16 +23,14 @@
 
  "dns": {
     "servers": [
-      {"tag": "dns_direct", "address": "10.0.0.2", "detour": "🎯 全球直连"},
-      {"tag": "dns_proxy", "address": "10.0.0.2", "detour": "🚀 节点选择"}
+      {"tag": "dns_direct", "address": "10.0.0.2:553", "detour": "🎯 全球直连"},
     ],
     "rules": [
       {"outbound": "any", "server": "dns_direct", "disable_cache": true},
       {"clash_mode": "Direct", "server": "dns_direct"},
-      {"clash_mode": "Global", "server": "dns_proxy"}
+      {"clash_mode": "Global", "server": "dns_direct"}
     ],
-    "final": "dns_proxy",
-    "strategy": "ipv4_only"
+    "final": "dns_direct"
   },
 
 "inbounds": [
@@ -74,10 +72,10 @@
  {
    "auto_detect_interface": true,
    "final": "🐠 漏网之鱼",
-   "default_mark": 666,
    "rules": 
    [
      {"action": "sniff"},
+     {"protocol": "dns", "action": "hijack-dns"},
      {"protocol": "quic", "action": "reject"},
      {"clash_mode": "direct", "outbound": "🎯 全球直连"},
      {"clash_mode": "global", "outbound": "GLOBAL"},
