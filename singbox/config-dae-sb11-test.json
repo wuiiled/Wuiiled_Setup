@@ -23,7 +23,7 @@
 
  "dns": {
     "servers": [
-      {"tag": "dns_direct", "address": "https://cool.ihtw.moe:6643/ihtw", "detour": "🎯 全球直连"}
+      {"tag": "dns_direct", "address": "https://cool.ihtw.moe:6643/ihtw", "address_resolver": "223.5.5.5", "detour": "🎯 全球直连"}
     ],
     "rules": [
       {"outbound": "any", "server": "dns_direct", "disable_cache": true},
