@@ -23,7 +23,7 @@
 
  "dns": {
     "servers": [
-      {"tag": "dns_direct", "address": "10.0.0.2:553", "detour": "🎯 全球直连"}
+      {"tag": "dns_direct", "address": "h3://8.8.8.8/dns-query", "detour": "🚀 节点选择"}
     ],
     "rules": [
       {"outbound": "any", "server": "dns_direct", "disable_cache": true},
