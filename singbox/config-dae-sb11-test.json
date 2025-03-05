@@ -23,10 +23,11 @@
 
  "dns": {
     "servers": [
-      {"tag": "dns_direct", "address": "h3://8.8.8.8/dns-query", "detour": "🚀 节点选择"}
+      {"tag": "dns_direct", "address": "h3://8.8.8.8/dns-query", "detour": "🚀 节点选择"},
+      {"tag": "defaultDns", "address": "223.5.5.5", "detour": "🎯 全球直连"}
     ],
     "rules": [
-      {"outbound": "any", "server": "dns_direct", "disable_cache": true},
+      {"outbound": "any", "server": "defaultDns", "disable_cache": true},
       {"clash_mode": "Direct", "server": "dns_direct"},
       {"clash_mode": "Global", "server": "dns_direct"}
     ],
