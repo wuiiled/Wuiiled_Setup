@@ -23,15 +23,13 @@
 
  "dns": {
     "servers": [
-      {"tag": "dns_direct", "address": "https://cool.ihtw.moe:6643/ihtw", "address_resolver": "defaultDns", "detour": "🎯 全球直连"},
-      {"tag": "defaultDns", "address": "223.5.5.5", "detour": "🎯 全球直连"}
+      {"tag": "dns_direct", "address": "10.0.0.4:5304", "detour": "🎯 全球直连"}
     ],
     "rules": [
       {"outbound": "any", "server": "dns_direct", "disable_cache": true},
       {"clash_mode": "Direct", "server": "dns_direct"},
       {"clash_mode": "Global", "server": "dns_direct"}
     ],
-    "strategy": "ipv4_only",
     "final": "dns_direct"
   },
 
