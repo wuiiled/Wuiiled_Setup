@@ -23,7 +23,7 @@
 
  "dns": {
     "servers": [
-      {"tag": "dns_direct", "address": "10.0.0.4:5304", "detour": "🎯 全球直连"}
+      {"tag": "dns_direct", "address": "10.0.0.4", "detour": "🎯 全球直连"}
     ],
     "rules": [
       {"outbound": "any", "server": "dns_direct", "disable_cache": true},
@@ -39,12 +39,6 @@
     "tag": "socks-in",
     "listen": "0.0.0.0",
     "listen_port": 1080
-  },
-  {
-    "type": "tproxy",
-    "tag": "tproxy-in",
-    "listen": "0.0.0.0",
-    "listen_port": 1083
   }
 ],
 
