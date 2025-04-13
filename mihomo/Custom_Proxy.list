@@ -40,6 +40,7 @@ IP-CIDR,155.248.232.226/32,no-resolve
 IP-CIDR,174.138.29.175/32,no-resolve
 IP-CIDR,45.11.104.186/32,no-resolve
 IP-CIDR,76.76.2.22/32,no-resolve
+IP-CIDR,103.70.12.129/32,no-resolve
 # GooglePlay 相关
 DOMAIN-SUFFIX,services.googleapis.cn
 DOMAIN-SUFFIX,clientservices.googleapis.com
