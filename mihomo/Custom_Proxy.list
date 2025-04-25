@@ -1,47 +1,6 @@
 # 自用
 DOMAIN-SUFFIX,vercel.app
 DOMAIN-SUFFIX,cooluc.com
-# DNS
-DOMAIN-SUFFIX,dns.cloudflare.com
-DOMAIN-SUFFIX,dns.google
-DOMAIN-SUFFIX,quad9.net
-DOMAIN-SUFFIX,adguard-dns.com
-DOMAIN-SUFFIX,doh.opendns.com
-DOMAIN-SUFFIX,doh.sandbox.opendns.com
-DOMAIN-SUFFIX,doh.dns.sb
-DOMAIN-SUFFIX,hk-hkg.doh.sb
-DOMAIN-SUFFIX,dns.twnic.tw
-DOMAIN-SUFFIX,nextdns.io
-DOMAIN-SUFFIX,dns.controld.com
-DOMAIN-SUFFIX,rx.techomespace.com
-DOMAIN-SUFFIX,doh.tiar.app
-DOMAIN-SUFFIX,dns.jupitrdns.com
-IP-CIDR,1.1.1.1/32,no-resolve
-IP-CIDR,1.0.0.1/32,no-resolve
-IP-CIDR,8.8.8.8/32,no-resolve
-IP-CIDR,8.8.4.4/32,no-resolve
-IP-CIDR,9.9.9.11/32,no-resolve
-IP-CIDR,149.112.112.11/32,no-resolve
-IP-CIDR,94.140.14.140/32,no-resolve
-IP-CIDR,94.140.14.141/32,no-resolve
-IP-CIDR,208.67.222.222/32,no-resolve
-IP-CIDR,208.67.220.220/32,no-resolve
-IP-CIDR,208.67.222.2/32,no-resolve
-IP-CIDR,208.67.220.2/32,no-resolve
-IP-CIDR,146.112.41.4/32,no-resolve
-IP-CIDR,185.222.222.222/32,no-resolve
-IP-CIDR,45.11.45.11/32,no-resolve
-IP-CIDR,101.101.101.101/32,no-resolve
-IP-CIDR,9.9.9.9/32,no-resolve
-IP-CIDR,149.112.112.112/32,no-resolve
-IP-CIDR,94.140.14.14/32,no-resolve
-IP-CIDR,94.140.15.15/32,no-resolve
-IP-CIDR,94.140.14.49/32,no-resolve
-IP-CIDR,155.248.232.226/32,no-resolve
-IP-CIDR,174.138.29.175/32,no-resolve
-IP-CIDR,45.11.104.186/32,no-resolve
-IP-CIDR,76.76.2.22/32,no-resolve
-IP-CIDR,103.70.12.129/32,no-resolve
 # GooglePlay 相关
 DOMAIN-SUFFIX,services.googleapis.cn
 DOMAIN-SUFFIX,clientservices.googleapis.com
