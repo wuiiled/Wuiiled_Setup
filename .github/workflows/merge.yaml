@@ -12,6 +12,9 @@ jobs:
       TZ: 'Asia/Shanghai'
 
     steps:
+    - name: Make script executable
+      run: chmod +x scripts/convert.sh
+    
     - name: Checkout repository
       uses: actions/checkout@v4
 
