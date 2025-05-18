@@ -4,6 +4,7 @@
 generate_ads_merged() {
   # 下载并合并规则
   curl -skL https://a.dove.isdumb.one/pihole.txt >>rules.txt
+  curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Reject.list >>rules.txt
   #curl -skL https://adrules.top/adrules_domainset.txt >>rules.txt
   curl -skL https://small.oisd.nl/domainswild2 >>rules.txt
   #curl -skL https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/reject-list.txt >>rules.txt
