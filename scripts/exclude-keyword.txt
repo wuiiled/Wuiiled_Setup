@@ -1,4 +1,3 @@
 sacdnssedge.com
-mcs.zijieapi.com
-dc.sigmob.cn
-sigmob.cn
+zijieapi.com
+pglstatp-toutiao.com
