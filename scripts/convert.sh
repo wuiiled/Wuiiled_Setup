@@ -5,9 +5,9 @@ generate_ads_merged() {
   # 下载并合并规则
   curl -skL https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt >>rules.txt
   curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Reject.list >>rules.txt
-  #curl -skL https://adrules.top/adrules_domainset.txt >>rules.txt
-  #curl -skL https://small.oisd.nl/domainswild2 >>rules.txt
-  #curl -skL https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/reject-list.txt >>rules.txt
+  curl -skL https://adrules.top/adrules_domainset.txt >>rules.txt
+  curl -skL https://big.oisd.nl/domainswild2 >>rules.txt
+  curl -skL https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/reject-list.txt >>rules.txt
   curl -skL https://github.com/TG-Twilight/AWAvenue-Ads-Rule/raw/main/Filters/AWAvenue-Ads-Rule-Surge-RULE-SET.list | sed 's/^DOMAIN,//g' >>rules.txt
   curl -skL https://github.com/limbopro/Adblock4limbo/raw/main/rule/Surge/Adblock4limbo_surge.list | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,//g' | sed 's/,reject$//g' >>rules.txt
   # adobe验证规则
