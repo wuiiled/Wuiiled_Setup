@@ -1,3 +1,4 @@
 sacdnssedge.com
 zijieapi.com
-sigmob.cn
+#sigmob.cn
+pglstatp-toutiao.com
