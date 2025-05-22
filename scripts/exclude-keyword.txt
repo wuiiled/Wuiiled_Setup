@@ -2,3 +2,6 @@ sacdnssedge.com
 zijieapi.com
 #sigmob.cn
 pglstatp-toutiao.com
+pangolin-sdk-toutiao
+sigmob.cn
+gdt.qq.com
