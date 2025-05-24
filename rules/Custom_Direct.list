@@ -1,5 +1,5 @@
 # 自用
-IP-ASN,45102
+#IP-ASN,45102
 DOMAIN-SUFFIX,gitmirror.com
 DOMAIN-SUFFIX,sharepoint.cn
 DOMAIN-SUFFIX,steamserver.net
@@ -7,6 +7,8 @@ DOMAIN-SUFFIX,bonjourr.fr
 DOMAIN-SUFFIX,dongdianqiu.com
 PROCESS-NAME,tailscaled
 DST-PORT,3478
+DST-PORT,19302
+DST-PORT,22101
 # ImmortalWrt 相关
 DOMAIN-SUFFIX,immortalwrt.org
 DOMAIN-SUFFIX,kyarucloud.moe
