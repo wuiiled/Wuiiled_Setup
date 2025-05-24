@@ -6,7 +6,7 @@ DOMAIN-SUFFIX,steamserver.net
 DOMAIN-SUFFIX,bonjourr.fr
 DOMAIN-SUFFIX,dongdianqiu.com
 PROCESS-NAME,tailscaled
-DST-PORT,123/3478/19302/22101
+DST-PORT,123/3478/19302/22101/22102
 # ImmortalWrt 相关
 DOMAIN-SUFFIX,immortalwrt.org
 DOMAIN-SUFFIX,kyarucloud.moe
