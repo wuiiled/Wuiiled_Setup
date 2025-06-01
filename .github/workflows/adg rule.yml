@@ -12,21 +12,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-        with:
-          repository: wuiiled/Wuiiled_Setup
-          ref: mihomo
 
       - name: Modify ADs_merged.txt
         run: |
-          # Define the input and output file paths
-          INPUT_FILE="rules/ADs_merged.txt"
-          OUTPUT_FILE="rules/ADs_merged_adg.txt"
-
-          # Modify the file: replace DOMAIN-SUFFIX with || and add ^ at the end of each line
-          sed 's/DOMAIN-SUFFIX/||/g; s/$/^/' "$INPUT_FILE" > "$OUTPUT_FILE"
-
-          # Optionally, you can overwrite the original file
-          mv "$OUTPUT_FILE" "$INPUT_FILE"
+          curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/mihomo/rules/ADs_merged.txt | sed 's/DOMAIN-SUFFIX/||/g; s/$/^/' >ADs_merged_adg.txt
 
       - name: Commit and push changes
         run: |
