@@ -29,8 +29,9 @@ jobs:
               git checkout -b adg
           fi
           git rm -rf rules/*
-          git add rules/*.txt
-          git commit -m "Auto Update $CURRENT_TIME"
+          mv ADs_merged_adg.txt rules/ADs_merged_adg.txt
+          git add rules/ADs_merged_adg.txt
+          git commit -m "Auto Update ADG Rules $CURRENT_TIME"
           git push -f origin adg
 
       - name: Delete workflow runs
