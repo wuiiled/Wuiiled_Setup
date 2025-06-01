@@ -15,7 +15,7 @@ jobs:
 
       - name: Modify ADs_merged.txt
         run: |
-          curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/mihomo/rules/ADs_merged.txt | sed 's/DOMAIN-SUFFIX/||/g; s/$/^/' >ADs_merged_adg.txt
+          curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/mihomo/rules/ADs_merged.txt | sed 's/DOMAIN-SUFFIX,/||/g; s/$/^/' >ADs_merged_adg.txt
 
       - name: Commit and push changes
         run: |
