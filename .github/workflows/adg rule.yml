@@ -19,20 +19,15 @@ jobs:
 
       - name: Commit and push changes
         run: |
+          mv ADs_merged_adg.txt rules/
           CURRENT_TIME=$(date +"%Y-%m-%d %H:%M")
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git fetch origin
-          if git show-ref --verify --quiet refs/heads/adg; then
-              git checkout adg
-          else
-              git checkout -b adg
-          fi
-          git rm -rf rules/*
-          mv ADs_merged_adg.txt rules/ADs_merged_adg.txt
-          git add rules/ADs_merged_adg.txt
-          git commit -m "Auto Update ADG Rules $CURRENT_TIME"
-          git push -f origin adg
+          git checkout --orphan adg
+          git rm -rf .
+          git add rules/*
+          git commit -m "Auto Update $CURRENT_TIME"
+          git push -f origin mihomo
 
       - name: Delete workflow runs
         uses: Mattraks/delete-workflow-runs@main
