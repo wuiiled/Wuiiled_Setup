@@ -33,9 +33,13 @@ jobs:
           CURRENT_TIME=$(date +"%Y-%m-%d %H:%M")
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git checkout adg
+          git fetch origin
+          if git show-ref --verify --quiet refs/heads/adg; then
+              git checkout adg
+          else
+              git checkout -b adg
+          fi
           git rm -rf rules/*
-          mv rules/*.txt rules/
           git add rules/*.txt
           git commit -m "Auto Update $CURRENT_TIME"
           git push -f origin adg
