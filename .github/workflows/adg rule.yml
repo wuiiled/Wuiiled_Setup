@@ -1,0 +1,49 @@
+name: convert to adg rule
+
+on:
+  schedule:
+    - cron: '0 1 * * *' 
+  workflow_dispatch:
+
+jobs:
+  modify-file:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          repository: wuiiled/Wuiiled_Setup
+          ref: mihomo
+
+      - name: Modify ADs_merged.txt
+        run: |
+          # Define the input and output file paths
+          INPUT_FILE="rules/ADs_merged.txt"
+          OUTPUT_FILE="rules/ADs_merged_adg.txt"
+
+          # Modify the file: replace DOMAIN-SUFFIX with || and add ^ at the end of each line
+          sed 's/DOMAIN-SUFFIX/||/g; s/$/^/' "$INPUT_FILE" > "$OUTPUT_FILE"
+
+          # Optionally, you can overwrite the original file
+          mv "$OUTPUT_FILE" "$INPUT_FILE"
+
+      - name: Commit and push changes
+        run: |
+          mv {*.mrs,ADs_merged.txt,AIs_merged.txt} rules/
+          CURRENT_TIME=$(date +"%Y-%m-%d %H:%M")
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan mihomo
+          git rm -rf .
+          git add rules/*
+          git commit -m "Auto Update $CURRENT_TIME"
+          git push -f origin mihomo
+
+      - name: Delete workflow runs
+        uses: Mattraks/delete-workflow-runs@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 2
