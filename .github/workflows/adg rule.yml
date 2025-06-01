@@ -27,7 +27,7 @@ jobs:
           git rm -rf .
           git add rules/*
           git commit -m "Auto Update $CURRENT_TIME"
-          git push -f origin mihomo
+          git push -f origin adg
 
       - name: Delete workflow runs
         uses: Mattraks/delete-workflow-runs@main
