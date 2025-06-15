@@ -17,7 +17,8 @@ generate_ads_merged() {
   cat rules.txt | sed '/^#/d' >combined_raw.txt
 
   # 标准化域名
-  sed -E 's/^[\+\*\.]+//g' combined_raw.txt | grep -v '^$' >normalized.txt
+  #sed -E 's/^[\+\*\.]+//g' combined_raw.txt | grep -v '^$' >normalized.txt
+  sed -E 's/^[\+\*\.]+//g' combined_raw.txt | grep -v '^$' | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:]]*$//' > normalized.txt
 
   # 排序并去重
   sort normalized.txt | uniq >unique_domains.txt
