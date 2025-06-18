@@ -1,5 +1,5 @@
 sacdnssedge.com
-zijieapi.com
+#zijieapi.com
 #sigmob.cn
 pglstatp-toutiao.com
 pangolin-sdk-toutiao
