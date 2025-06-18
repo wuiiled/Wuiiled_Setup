@@ -1,5 +1,6 @@
 # 自用
 #IP-ASN,45102
+#DOMAIN-SUFFIX,autopatchhk.yuanshen.com
 DOMAIN-SUFFIX,gitmirror.com
 DOMAIN-SUFFIX,sharepoint.cn
 DOMAIN-SUFFIX,steamserver.net
