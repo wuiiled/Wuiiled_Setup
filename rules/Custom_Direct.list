@@ -12,6 +12,7 @@ DST-PORT,123/3478/19302/22101/22102
 DOMAIN-SUFFIX,immortalwrt.org
 DOMAIN-SUFFIX,kyarucloud.moe
 # GitHub 反代 CDN
+DOMAIN-SUFFIX,ghfast.top
 DOMAIN-SUFFIX,imee.me
 DOMAIN-SUFFIX,ihtw.moe
 DOMAIN-SUFFIX,gh-proxy.com
