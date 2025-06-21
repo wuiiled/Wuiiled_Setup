@@ -24,26 +24,14 @@ generate_ads_merged() {
 
   # 排序并去重
   sort normalized.txt | uniq >unique_domains.txt
-  while IFS= read -r domain; do
-      # 假设当前域名不是冗余项
-      is_redundant=0
-  
-      # 检查当前域名是否是其他域名的冗余项
-      while IFS= read -r potential_redundant; do
-          if [ "$domain" != "$potential_redundant" ] && [[ "$domain" == *".$potential_redundant" ]]; then
-              is_redundant=1
-              break  # 找到冗余项后跳出内层循环
-          fi
-      done < unique_domains.txt
-  
-      # 如果不是冗余项，则写入输出文件
-      if [ "$is_redundant" -eq 0 ]; then
-          echo "$domain" >> without_redundant_domains.txt
-      fi
-  done < unique_domains.txt
+  chmod +x findRedundantDomain.py
+  ./findRedundantDomain.py ./unique_domains.txt ./unique_domains_unsort.txt
+  [ ! -f "unique_domains_unsort.txt" ] && touch unique_domains_unsort.txt
+  sort ./unique_domains_unsort.txt > ./unique_domains_sort.txt
+  diff ./unique_domains_sort.txt ./unique_domains.txt | awk '/^>/{print $2}' > ./unique_domains_without_redundant.txt
   
   # 关键词文件过滤
-  grep -v -f "scripts/exclude-keyword.txt" without_redundant_domains.txt >filtered_domains.txt
+  grep -v -f "scripts/exclude-keyword.txt" unique_domains_without_redundant.txt | grep -v '^DOMAIN-KEYWORD' | grep -v '^DOMAIN' >filtered_domains.txt
 
   # 处理域名：添加 +. 前缀（DOMAIN-KEYWORD 除外）
   awk '{
