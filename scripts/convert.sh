@@ -18,18 +18,13 @@ generate_ads_merged() {
   cat rules.txt | sed '/^#/d' >combined_raw.txt
 
   # 标准化域名
-  #sed -E 's/^[\+\*\.]+//g' combined_raw.txt | grep -v '^$' >normalized.txt
   sed -E 's/^[\+\*\.]+//g' combined_raw.txt | grep -v '^$' | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:]]*$//' > normalized.txt
 
   # 排序并去重
   sort normalized.txt | uniq >unique_domains.txt
-  ../scripts/findRedundantDomain.py ./unique_domains.txt ./unique_domains_unsort.txt
-  [ ! -f "unique_domains_unsort.txt" ] && touch unique_domains_unsort.txt
-  sort ./unique_domains_unsort.txt > ./unique_domains_sort.txtAdd commentMore actions
-  diff ./unique_domains_sort.txt ./unique_domains.txt | awk '/^>/{print $2}' > ./unique_domains_without_redundant.txt
   
   # 关键词文件过滤
-  grep -v -f "scripts/exclude-keyword.txt" unique_domains_without_redundant.txt | grep -v '^DOMAIN-KEYWORD' | grep -v '^DOMAIN' >filtered_domains.txt
+  grep -v -f "scripts/exclude-keyword.txt" unique_domains.txt | grep -v '^DOMAIN-KEYWORD' | grep -v '^DOMAIN' >filtered_domains.txt
 
   # 处理域名：添加 +. 前缀（DOMAIN-KEYWORD 除外）
   awk '{
