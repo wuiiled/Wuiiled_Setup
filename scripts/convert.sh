@@ -24,8 +24,8 @@ generate_ads_merged() {
 
   # 排序并去重
   sort normalized.txt | uniq >unique_domains.txt
-  chmod +x /script/findRedundantDomain.py
-  ./script/findRedundantDomain.py ./unique_domains.txt ./unique_domains_unsort.txt
+  chmod +x findRedundantDomain.py
+  ./findRedundantDomain.py ./unique_domains.txt ./unique_domains_unsort.txt
   [ ! -f "unique_domains_unsort.txt" ] && touch unique_domains_unsort.txt
   sort ./unique_domains_unsort.txt > ./unique_domains_sort.txtAdd commentMore actions
   diff ./unique_domains_sort.txt ./unique_domains.txt | awk '/^>/{print $2}' > ./unique_domains_without_redundant.txt
