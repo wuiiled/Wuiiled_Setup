@@ -1,24 +1,4 @@
 #!/bin/bash
-# 检查必要的文件和目录
-check_files() {
-    local required_dirs=("./scripts")
-    local required_files=("./scripts/findRedundantDomain.py")
-    
-    for dir in "${required_dirs[@]}"; do
-        if [[ ! -d "$dir" ]]; then
-            log_error "目录不存在: $dir"
-            exit 1
-        fi
-    done
-    
-    for file in "${required_files[@]}"; do
-        if [[ ! -f "$file" ]]; then
-            log_error "文件不存在: $file"
-            exit 1
-        fi
-    done
-}
-
 # 函数：生成 ADs_merged.txt
 generate_ads_merged() {
   # 下载并合并规则
@@ -43,8 +23,7 @@ generate_ads_merged() {
 
   # 排序并去重
   sort normalized.txt | uniq >unique_domains.txt
-  chmod +x /scripts/findRedundantDomain.py
-  ./scripts/findRedundantDomain.py ./unique_domains.txt ./unique_domains_unsort.txt
+  ../scripts/findRedundantDomain.py ./unique_domains.txt ./unique_domains_unsort.txt
   [ ! -f "unique_domains_unsort.txt" ] && touch unique_domains_unsort.txt
   sort ./unique_domains_unsort.txt > ./unique_domains_sort.txtAdd commentMore actions
   diff ./unique_domains_sort.txt ./unique_domains.txt | awk '/^>/{print $2}' > ./unique_domains_without_redundant.txt
