@@ -15,9 +15,9 @@ jobs:
 
       - name: Modify ADs_merged.txt
         run: |
-          curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/mihomo/rules/ADs_merged.txt | sed 's/DOMAIN-SUFFIX,/||/g; s/$/^/' >ADs_merged_adg.txt
-          curl -skL https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/category-httpdns-cn.list | sed 's/+./||/g; s/$/^/' >Httpdns_adg.txt
-          curl -skL https://raw.githubusercontent.com/wuiiled/PCDN-mihomo-list/refs/heads/main/pcdn.list | sed '/DOMAIN-REGEX,/d; /^#/d; s/DOMAIN-SUFFIX,/||/g; s/DOMAIN,/||/g; s/$/^/' > PCDN_adg.txt
+          curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/mihomo/rules/ADs_merged.txt | sed '/^$/d; s/DOMAIN-SUFFIX,/||/g; s/$/^/' >ADs_merged_adg.txt
+          curl -skL https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/category-httpdns-cn.list | sed '/^$/d; s/+./||/g; s/$/^/' >Httpdns_adg.txt
+          curl -skL https://raw.githubusercontent.com/wuiiled/PCDN-mihomo-list/refs/heads/main/pcdn.list | sed '/DOMAIN-REGEX,/d; /^#/d; /^$/d; s/DOMAIN-SUFFIX,/||/g; s/DOMAIN,/||/g; s/$/^/' > PCDN_adg.txt
 
 
       - name: Commit and push changes
