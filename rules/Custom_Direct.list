@@ -7,10 +7,15 @@ DOMAIN-SUFFIX,steamserver.net
 DOMAIN-SUFFIX,bonjourr.fr
 DOMAIN-SUFFIX,dongdianqiu.com
 PROCESS-NAME,tailscaled
+DOMAIN-SUFFIX,tailscale.com
+DOMAIN-SUFFIX,tailscale.io
+DOMAIN-SUFFIX,ts.net
 DST-PORT,123/3478/19302/22101/22102
+
 # ImmortalWrt 相关
 DOMAIN-SUFFIX,immortalwrt.org
 DOMAIN-SUFFIX,kyarucloud.moe
+
 # GitHub 反代 CDN
 DOMAIN-SUFFIX,ghfast.top
 DOMAIN-SUFFIX,imee.me
@@ -32,6 +37,7 @@ DOMAIN-SUFFIX,github.store
 DOMAIN-SUFFIX,hub.gitmirror.com
 DOMAIN-SUFFIX,jsdelivr.net
 DOMAIN-SUFFIX,kgithub.com
+
 # Docker 反代 CDN
 DOMAIN-SUFFIX,docker.1panel.live
 DOMAIN-SUFFIX,docker.kejilion.pro
@@ -43,10 +49,13 @@ DOMAIN-SUFFIX,hub.crdz.gq
 DOMAIN-SUFFIX,hub.rat.dev
 DOMAIN-SUFFIX,hub.xdark.top
 DOMAIN-SUFFIX,registry.dockermirror.com
+
 # Hugging Face 镜像
-hf-mirror.com
+DOMAIN-SUFFIX,hf-mirror.com
+
 # 猫眼浏览器
 DOMAIN-SUFFIX,catsxp.com
+
 # DDNS
 DOMAIN-KEYWORD,synology
 DOMAIN-KEYWORD,quickconnect
@@ -59,18 +68,23 @@ DOMAIN-SUFFIX,ipapi.co
 DOMAIN-SUFFIX,ip6.seeip.org
 DOMAIN-SUFFIX,kit327.com
 DOMAIN-SUFFIX,members.3322.org
+
 # Windows 网络连接探测
 DOMAIN-SUFFIX,msftconnecttest.com
 DOMAIN-SUFFIX,msftncsi.com
 
 # Akamai CDN
 DOMAIN-SUFFIX,akamaihd.net
+
 # FinalShell
 IP-CIDR,5.5.5.5/32,no-resolve
+
 # UniGetUI
 DOMAIN-SUFFIX,powershellgallery.com
+
 # NTP Pool Project
 DOMAIN-SUFFIX,pool.ntp.org
+
 # Dell
 DOMAIN-SUFFIX,dell.com
 
