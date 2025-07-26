@@ -1,0 +1,12 @@
+# 自用
+IP-ASN,45102,no-resolve
+
+# FinalShell
+IP-CIDR,5.5.5.5/32,no-resolve
+
+# MeFun
+IP-CIDR,218.78.7.16/32,no-resolve
+IP-CIDR,98.126.27.164/32,no-resolve
+
+# 红警重聚 Reunion 2023
+IP-CIDR,108.174.48.100/32,no-resolve
