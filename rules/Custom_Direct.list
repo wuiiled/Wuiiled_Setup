@@ -1,5 +1,5 @@
 # 自用
-IP-ASN,45102
+IP-ASN,45102,no-resolve
 #DOMAIN-SUFFIX,autopatchhk.yuanshen.com
 DOMAIN-SUFFIX,gitmirror.com
 DOMAIN-SUFFIX,sharepoint.cn
