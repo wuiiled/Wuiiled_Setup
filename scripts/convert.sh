@@ -97,14 +97,58 @@ generate_ais_merged() {
   mv "$temp_file" AIs_merged.txt
 }
 
+# 函数：生成 Fake_IP_Fliter_merged.txt
+generate_Fake_IP_Fliter_merged() {
+  # 下载并合并规则
+  curl -skL https://raw.githubusercontent.com/vernesong/OpenClash/refs/heads/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list >>Fake_IP_Fliter.txt
+  curl -skL https://raw.githubusercontent.com/DustinWin/ruleset_geodata/refs/heads/mihomo-ruleset/fakeip-filter.list >>Fake_IP_Fliter.txt
+  curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/scripts/fake-ip-addon.txt >>Fake_IP_Fliter.txt
+
+  # 移除注释和空行
+  cat rules.txt | sed '/^[#!]/d' >Fake_IP_Fliter_combined_raw.txt
+
+  # 标准化域名
+  sed -E 's/^[\+\*\.]+//g' Fake_IP_Fliter_combined_raw.txt | grep -v '^$' | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:]]*$//' > Fake_IP_Fliter_normalized.txt
+
+  # 排序并去重
+  sort Fake_IP_Fliter_normalized.txt | uniq >Fake_IP_Fliter_unique_domains.txt
+  
+  # 关键词文件过滤
+  grep -v -f "scripts/exclude-keyword.txt" Fake_IP_Fliter_unique_domains.txt | grep -v '^DOMAIN-KEYWORD' | grep -v '^DOMAIN' >Fake_IP_Fliter_domains.txt
+
+  # 处理域名：添加 +. 前缀（DOMAIN-KEYWORD 除外）
+  awk '{
+      if ($0 ~ /^DOMAIN-KEYWORD/) {
+          print $0
+      } else {
+          print "+." $0
+      }
+  }' Fake_IP_Fliter_domains.txt >Fake_IP_Fliter_merged.txt
+
+  mihomo convert-ruleset domain text Fake_IP_Fliter_merged.txt Fake_IP_Fliter_merged.mrs
+
+  # Surge compatible
+  sed -i 's/+./DOMAIN-SUFFIX,/g' Fake_IP_Fliter_merged.txt
+
+  # 添加计数和时间戳
+  count=$(wc -l <Fake_IP_Fliter_merged.txt)
+  current_date=$(date +"%Y-%m-%d %H:%M:%S")
+  temp_file=$(mktemp)
+  echo "# Count: $count, Updated: $current_date" >"$temp_file"
+  cat Fake_IP_Fliter_merged.txt >>"$temp_file"
+  mv "$temp_file" Fake_IP_Fliter_merged.txt
+}
+
 # 主函数
 main() {
   if [ "$1" == "ads" ]; then
     generate_ads_merged
   elif [ "$1" == "ais" ]; then
     generate_ais_merged
+  elif [ "$1" == "fakeip" ]; then
+    generate_Fake_IP_Fliter_merged
   else
-    echo "Usage: $0 [ads|ais]"
+    echo "Usage: $0 [ads|ais|fakeip]"
     exit 1
   fi
 }
