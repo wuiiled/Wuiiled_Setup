@@ -100,9 +100,9 @@ generate_ais_merged() {
 # 函数：生成 Fake_IP_Fliter_merged.txt
 generate_Fake_IP_Fliter_merged() {
   # 下载并合并规则
-  curl -skL https://raw.githubusercontent.com/vernesong/OpenClash/refs/heads/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list >>Fake_IP_Fliter.txt
-  curl -skL https://raw.githubusercontent.com/DustinWin/ruleset_geodata/refs/heads/mihomo-ruleset/fakeip-filter.list >>Fake_IP_Fliter.txt
-  curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/scripts/fake-ip-addon.txt >>Fake_IP_Fliter.txt
+  curl -skL https://raw.githubusercontent.com/vernesong/OpenClash/refs/heads/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list | echo "" >>Fake_IP_Fliter.txt
+  curl -skL https://raw.githubusercontent.com/DustinWin/ruleset_geodata/refs/heads/mihomo-ruleset/fakeip-filter.list | echo "" >>Fake_IP_Fliter.txt
+  curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/scripts/fake-ip-addon.txt | echo "" >>Fake_IP_Fliter.txt
 
   # 移除注释和空行
   cat Fake_IP_Fliter.txt | sed '/^[#!]/d' >Fake_IP_Fliter_combined_raw.txt
@@ -111,10 +111,7 @@ generate_Fake_IP_Fliter_merged() {
   sed -E 's/^[\+\*\.]+//g' Fake_IP_Fliter_combined_raw.txt | grep -v '^$' | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:]]*$//' > Fake_IP_Fliter_normalized.txt
 
   # 排序并去重
-  sort Fake_IP_Fliter_normalized.txt | uniq >Fake_IP_Fliter_unique_domains.txt
-  
-  # 关键词文件过滤
-  grep -v -f "scripts/exclude-keyword.txt" Fake_IP_Fliter_unique_domains.txt | grep -v '^DOMAIN-KEYWORD' | grep -v '^DOMAIN' >Fake_IP_Fliter_domains.txt
+  sort Fake_IP_Fliter_normalized.txt | uniq >Fake_IP_Fliter_domains.txt
 
   # 处理域名：添加 +. 前缀（DOMAIN-KEYWORD 除外）
   awk '{
