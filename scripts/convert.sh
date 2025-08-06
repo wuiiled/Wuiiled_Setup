@@ -105,7 +105,7 @@ generate_Fake_IP_Fliter_merged() {
   curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/scripts/fake-ip-addon.txt >>Fake_IP_Fliter.txt
 
   # 移除注释和空行
-  cat rules.txt | sed '/^[#!]/d' >Fake_IP_Fliter_combined_raw.txt
+  cat Fake_IP_Fliter.txt | sed '/^[#!]/d' >Fake_IP_Fliter_combined_raw.txt
 
   # 标准化域名
   sed -E 's/^[\+\*\.]+//g' Fake_IP_Fliter_combined_raw.txt | grep -v '^$' | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:]]*$//' > Fake_IP_Fliter_normalized.txt
