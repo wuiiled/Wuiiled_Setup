@@ -108,12 +108,12 @@ generate_Fake_IP_Fliter_merged() {
   # 下载并合并规则
   curl -skL https://infinityrules.pages.dev/ruleset/domain/fakeip_domain.mrs -o fakeip_domain.mrs
   mihomo convert-ruleset domain mrs fakeip_domain.mrs fakeip_domain.text >Fake_IP_Fliter.txt
-  echo "" >>Fake_IP_Fliter.txt
-  curl -skL https://raw.githubusercontent.com/vernesong/OpenClash/refs/heads/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list >>Fake_IP_Fliter.txt
-  echo "" >>Fake_IP_Fliter.txt
-  curl -skL https://raw.githubusercontent.com/DustinWin/ruleset_geodata/refs/heads/mihomo-ruleset/fakeip-filter.list >>Fake_IP_Fliter.txt
-  echo "" >>Fake_IP_Fliter.txt
-  curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/scripts/fake-ip-addon.txt >>Fake_IP_Fliter.txt
+  #echo "" >>Fake_IP_Fliter.txt
+  #curl -skL https://raw.githubusercontent.com/vernesong/OpenClash/refs/heads/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list >>Fake_IP_Fliter.txt
+  #echo "" >>Fake_IP_Fliter.txt
+  #curl -skL https://raw.githubusercontent.com/DustinWin/ruleset_geodata/refs/heads/mihomo-ruleset/fakeip-filter.list >>Fake_IP_Fliter.txt
+  #echo "" >>Fake_IP_Fliter.txt
+  #curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/scripts/fake-ip-addon.txt >>Fake_IP_Fliter.txt
 
   # 移除注释和空行
   cat Fake_IP_Fliter.txt | sed '/^[#!]/d' >Fake_IP_Fliter_combined_raw.txt
