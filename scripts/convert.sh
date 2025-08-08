@@ -16,7 +16,7 @@ generate_ads_merged() {
   echo "" >>rules.txt
   curl -skL https://github.com/TG-Twilight/AWAvenue-Ads-Rule/raw/main/Filters/AWAvenue-Ads-Rule-Surge-RULE-SET.list | sed 's/^DOMAIN,//g' >>rules.txt
   echo "" >>rules.txt
-  curl -skL https://github.com/limbopro/Adblock4limbo/raw/main/rule/Surge/Adblock4limbo_surge.list | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,//g' | sed 's/,reject$//g' >>rules.txt
+  #curl -skL https://github.com/limbopro/Adblock4limbo/raw/main/rule/Surge/Adblock4limbo_surge.list | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,//g' | sed 's/,reject$//g' >>rules.txt
   #curl -skL https://ruleset.skk.moe/Clash/domainset/reject.txt | sed 's/+\.//g' >>rules.txt
   # adobe验证规则
   echo "" >>rules.txt
@@ -60,8 +60,8 @@ generate_ads_merged() {
 # 函数：生成 AIs_merged.txt
 generate_ais_merged() {
   # 下载并合并规则
-  curl -skL https://github.com/ForestL18/rules-dat/raw/mihomo/geo/domain/ai-domain.list >>ai.txt
-  echo "" >>ai.txt
+  #curl -skL https://github.com/ForestL18/rules-dat/raw/mihomo/geo/domain/ai-domain.list >>ai.txt
+  #echo "" >>ai.txt
   curl -skL https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/category-ai-!cn.list >>ai.txt
   echo "" >>ai.txt
   curl -skL https://ruleset.skk.moe/List/non_ip/ai.conf | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,//g' | sed '/^#/d' >>ai.txt
