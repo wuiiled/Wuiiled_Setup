@@ -1,7 +1,7 @@
 # 自用
 DOMAIN-SUFFIX,vercel.app
 DOMAIN-SUFFIX,cooluc.com
-DOMAIN-SUFFIX,xns.one
+DOMAIN,dash.xns.one
 # GooglePlay 相关
 DOMAIN-SUFFIX,services.googleapis.cn
 DOMAIN-SUFFIX,clientservices.googleapis.com
