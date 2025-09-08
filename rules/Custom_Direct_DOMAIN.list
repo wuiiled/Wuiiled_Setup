@@ -4,7 +4,7 @@ DOMAIN-SUFFIX,gitmirror.com
 DOMAIN-SUFFIX,sharepoint.cn
 DOMAIN-SUFFIX,steamserver.net
 DOMAIN-SUFFIX,bonjourr.fr
-DOMAIN-SUFFIX,dongdianqiu.com
+#DOMAIN-SUFFIX,dongdianqiu.com
 PROCESS-NAME,tailscaled
 DOMAIN-SUFFIX,tailscale.com
 DOMAIN-SUFFIX,tailscale.io
