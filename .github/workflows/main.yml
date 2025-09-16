@@ -1,0 +1,38 @@
+name: Convert to mosdns-x rule
+
+on:
+  schedule:
+    - cron: '0 1 * * *' 
+  workflow_dispatch:
+
+jobs:
+  modify-file:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Modify ADs_merged.txt
+        run: |
+          curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/mihomo/rules/ADs_merged.txt | sed '/^$/d; s/DOMAIN-SUFFIX,//g' >ad_domain_list.txt
+
+      - name: Commit and push changes
+        run: |
+          mv {ad_domain_list.txt} rules/
+          CURRENT_TIME=$(date +"%Y-%m-%d %H:%M")
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan mosdns-x
+          git rm -rf .
+          git add rules/*
+          git commit -m "Auto Update $CURRENT_TIME"
+          git push -f origin mosdns-x
+
+      - name: Delete workflow runs
+        uses: Mattraks/delete-workflow-runs@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 2
