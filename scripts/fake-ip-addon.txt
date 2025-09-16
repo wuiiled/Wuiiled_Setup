@@ -1,3 +1,4 @@
-ghfast.top
++.ghfast.top
 trollfools.slpmods.net
-bilivideo.com
++.bilivideo.com
++.ts.net
