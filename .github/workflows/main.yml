@@ -19,7 +19,7 @@ jobs:
 
       - name: Commit and push changes
         run: |
-          mv {ad_domain_list.txt} rules/
+          mv ad_domain_list.txt rules/
           CURRENT_TIME=$(date +"%Y-%m-%d %H:%M")
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
