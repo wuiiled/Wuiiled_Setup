@@ -18,9 +18,12 @@ generate_ads_merged() {
   echo "" >>rules.txt
   #curl -skL https://github.com/limbopro/Adblock4limbo/raw/main/rule/Surge/Adblock4limbo_surge.list | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,//g' | sed 's/,reject$//g' >>rules.txt
   curl -skL https://ruleset.skk.moe/Clash/domainset/reject.txt | sed 's/+\.//g' >>rules.txt
-  # adobe验证规则
   echo "" >>rules.txt
+  curl -skL https://ruleset.skk.moe/Clash/domainset/reject_extra.txt | sed 's/+\.//g' >>rules.txt
+  echo "" >>rules.txt
+  # adobe验证规则
   curl -skL https://a.dove.isdumb.one/pihole.txt >>rules.txt
+  echo "" >>rules.txt
 
   # 移除注释和空行
   cat rules.txt | sed '/^[#!]/d' >combined_raw.txt
