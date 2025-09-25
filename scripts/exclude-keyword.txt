@@ -4,5 +4,5 @@ sacdnssedge.com
 #pangolin-sdk-toutiao
 #sigmob.cn
 #gdt.qq.com
-flash.xiaohongshu.com
-xiaohongshu.com
+#flash.xiaohongshu.com
+#xiaohongshu.com
