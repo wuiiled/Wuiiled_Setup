@@ -28,61 +28,66 @@ generate_ads_merged() {
   # adobe验证规则
   curl -skL https://a.dove.isdumb.one/pihole.txt >>rules.txt
   echo "" >>rules.txt
-  # --- 新增：提取以 @@ 开头的域名并生成 exclude.txt ---
+
+  # --- BEGIN: 提取以 @@ 开头的域名并生成 exclude.txt ---
   # 从 rules.txt 中抽出以 @@ 开头的行，简化为二级域名写入 exclude.txt
-  # 处理逻辑：
-  #  - 去掉开头的 @@ 和可选的协议、通配符和路径
-  #  - 提取主机部分
-  #  - 降为小写
-  #  - 只保留二级域名（例如 sub.example.co.uk -> example.co.uk；使用 awk+rev 简单处理：取最后两段）
-  grep -E '^[[:space:]]*@@' rules.txt | sed 's/^[[:space:]]*@@//g' \
-    | sed -E 's#^[[:alpha:]]+://##g' \                             # 去掉协议
-    | sed -E 's#/.*$##g' \                                       # 去掉路径及参数
-    | sed -E 's/[:].*$//g' \                                     # 去掉端口
-    | sed -E 's/^[\*\.\s]+//g' \                                 # 去掉前导通配符或点
-    | tr '[:upper:]' '[:lower:]' \
-    | awk -F'.' '{
-        n=NF;
-        if(n<=2){ print $0; next }
-        # 对常见二级后缀（如 co.uk, com.cn 等）尽可能保留三段，否则保留最后两段
-        last2=$( $(NF) );
-      }' >/dev/null 2>&1
+  # 步骤：去掉 @@、协议、路径、端口、前导通配符，降小写，提取公共后缀敏感的二级/三级域名并去重
 
-  # 因为使用纯 awk 识别公共后缀较复杂，这里用一个更稳健的实现：
-  grep -E '^[[:space:]]*@@' rules.txt | sed 's/^[[:space:]]*@@//g' \
-    | sed -E 's#^[[:alpha:]]+://##g' \
-    | sed -E 's#/.*$##g' \
-    | sed -E 's/[:].*$//g' \
-    | sed -E 's/^[\*\.\s]+//g' \
+  # 提取原始 @@ 条目并做初步清洗
+  grep -E '^[[:space:]]*@@' rules.txt \
+    | sed 's/^[[:space:]]*@@//' \
+    | sed -E 's#^[[:alpha:]]+://##' \
+    | sed -E 's#/.*$##' \
+    | sed -E 's/[:].*$//' \
+    | sed -E 's/^[\*\.\s]+//' \
     | tr '[:upper:]' '[:lower:]' \
-    | awk -F'.' '{
-        # 若域名段少于等于2，直接输出
-        if(NF<=2){ print $0; next }
-        # 常见需要保留三段的 public suffix 列表（可扩展）
-        sfx="co.uk|com.cn|net.cn|org.cn|gov.cn|ac.uk|gov.uk|co.jp|or.jp"
-        host=$0
-        # 检查是否匹配这些后缀
-        for(i in split(sfx, a, "|")){
-            suf=a[i]
-            # 构造正则匹配结尾的后缀
-            if(host ~ ("\\."suf"$")){
-                # 输出倒数三段
-                n=NF
-                print $(n-2)"."$(n-1)"."$n
-                nextline=1
-                next
-            }
+    > .tmp_exclude_raw.txt
+
+  # 如果没有任何 @@ 条目，确保生成空的 exclude.txt
+  if [ ! -s .tmp_exclude_raw.txt ]; then
+    : > exclude.txt
+  else
+    # 使用 awk 处理公共后缀的简单列表，尽量保留像 example.co.uk 这样的三段域名
+    awk -F'.' '
+      BEGIN {
+        # 常见需要保留三段的公共后缀（可按需扩展）
+        sfx_count = split("co.uk com.cn net.cn org.cn gov.cn ac.uk gov.uk co.jp or.jp", sfx_arr, " ")
+      }
+      {
+        host = $0
+        n = NF
+        if (n <= 2) {
+          print host
+          next
         }
-        if(nextline){ next }
-        # 否则输出最后两段
-        n=NF
-        print $(n-1)"."$n
-    }' \
-    | sort -u >exclude.txt
+        kept = "" 
+        # 检查是否匹配任一指定后缀（例如 co.uk）
+        matched = 0
+        for (i = 1; i <= sfx_count; i++) {
+          suf = sfx_arr[i]
+          # 构造后缀匹配：以 .suf 结尾
+          suf_regex = "\\." suf "$"
+          if (host ~ suf_regex) {
+            if (n >= 3) {
+              kept = $(n-2) "." $(n-1) "." $n
+            } else {
+              kept = host
+            }
+            matched = 1
+            break
+          }
+        }
+        if (!matched) {
+          kept = $(n-1) "." $n
+        }
+        print kept
+      }
+    ' .tmp_exclude_raw.txt | sort -u > exclude.txt
+  fi
 
-  # 如果没有提取到任何 @@ 条目，确保 exclude.txt 存在（空文件）
-  [ -f exclude.txt ] || : >exclude.txt
-  # --- 新增结束 ---
+  # 清理临时文件
+  rm -f .tmp_exclude_raw.txt
+  # --- END: 提取以 @@ 开头的域名并生成 exclude.txt ---
   
   # 移除注释和空行
   cat rules.txt | sed '/^[#!]/d' >combined_raw.txt
