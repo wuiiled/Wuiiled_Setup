@@ -12,6 +12,8 @@ generate_ads_merged() {
   #curl -skL https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/reject-list.txt >>rules.txt
   #curl -sSL https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=1&mimetype=plaintext | perl -ne '/^127\.0\.0\.1\s([-_0-9a-zA-Z]+(\.[-_0-9a-zA-Z]+){1,64})$/ && print "$1\n"' >> rules.txt
   #curl -sSL https://someonewhocares.org/hosts/hosts | perl -ne '/^127\.0\.0\.1\s([-_0-9a-zA-Z]+(\.[-_0-9a-zA-Z]+){1,64})/ && print "$1\n"' | sed '1d' >> rules.txt
+  curl -skL https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt | sed 's/[|^]//g' >> rules.txt
+  echo "" >>rules.txt
   curl -skL https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt | sed 's/^||//g' | sed 's/\^$//g' >> rules.txt
   echo "" >>rules.txt
   curl -skL https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt | perl -ne '/^0\.0\.0\.0\s([-_0-9a-zA-Z]+(\.[-_0-9a-zA-Z]+){1,64})/ && print "$1\n"' | sed '1d' >> rules.txt
@@ -26,7 +28,62 @@ generate_ads_merged() {
   # adobe验证规则
   curl -skL https://a.dove.isdumb.one/pihole.txt >>rules.txt
   echo "" >>rules.txt
+  # --- 新增：提取以 @@ 开头的域名并生成 exclude.txt ---
+  # 从 rules.txt 中抽出以 @@ 开头的行，简化为二级域名写入 exclude.txt
+  # 处理逻辑：
+  #  - 去掉开头的 @@ 和可选的协议、通配符和路径
+  #  - 提取主机部分
+  #  - 降为小写
+  #  - 只保留二级域名（例如 sub.example.co.uk -> example.co.uk；使用 awk+rev 简单处理：取最后两段）
+  grep -E '^[[:space:]]*@@' rules.txt | sed 's/^[[:space:]]*@@//g' \
+    | sed -E 's#^[[:alpha:]]+://##g' \                             # 去掉协议
+    | sed -E 's#/.*$##g' \                                       # 去掉路径及参数
+    | sed -E 's/[:].*$//g' \                                     # 去掉端口
+    | sed -E 's/^[\*\.\s]+//g' \                                 # 去掉前导通配符或点
+    | tr '[:upper:]' '[:lower:]' \
+    | awk -F'.' '{
+        n=NF;
+        if(n<=2){ print $0; next }
+        # 对常见二级后缀（如 co.uk, com.cn 等）尽可能保留三段，否则保留最后两段
+        last2=$( $(NF) );
+      }' >/dev/null 2>&1
 
+  # 因为使用纯 awk 识别公共后缀较复杂，这里用一个更稳健的实现：
+  grep -E '^[[:space:]]*@@' rules.txt | sed 's/^[[:space:]]*@@//g' \
+    | sed -E 's#^[[:alpha:]]+://##g' \
+    | sed -E 's#/.*$##g' \
+    | sed -E 's/[:].*$//g' \
+    | sed -E 's/^[\*\.\s]+//g' \
+    | tr '[:upper:]' '[:lower:]' \
+    | awk -F'.' '{
+        # 若域名段少于等于2，直接输出
+        if(NF<=2){ print $0; next }
+        # 常见需要保留三段的 public suffix 列表（可扩展）
+        sfx="co.uk|com.cn|net.cn|org.cn|gov.cn|ac.uk|gov.uk|co.jp|or.jp"
+        host=$0
+        # 检查是否匹配这些后缀
+        for(i in split(sfx, a, "|")){
+            suf=a[i]
+            # 构造正则匹配结尾的后缀
+            if(host ~ ("\\."suf"$")){
+                # 输出倒数三段
+                n=NF
+                print $(n-2)"."$(n-1)"."$n
+                nextline=1
+                next
+            }
+        }
+        if(nextline){ next }
+        # 否则输出最后两段
+        n=NF
+        print $(n-1)"."$n
+    }' \
+    | sort -u >exclude.txt
+
+  # 如果没有提取到任何 @@ 条目，确保 exclude.txt 存在（空文件）
+  [ -f exclude.txt ] || : >exclude.txt
+  # --- 新增结束 ---
+  
   # 移除注释和空行
   cat rules.txt | sed '/^[#!]/d' >combined_raw.txt
 
@@ -37,7 +94,12 @@ generate_ads_merged() {
   sort normalized.txt | uniq >unique_domains.txt
   
   # 关键词文件过滤
-  grep -v -f "scripts/exclude-keyword.txt" unique_domains.txt | grep -v '^DOMAIN-KEYWORD' | grep -v '^DOMAIN' >filtered_domains.txt
+  #grep -v -f "scripts/exclude-keyword.txt" unique_domains.txt | grep -v '^DOMAIN-KEYWORD' | grep -v '^DOMAIN' >filtered_domains.txt
+
+  # 在原有基础上，额外排除 exclude.txt 中的域名
+  grep -v -f "scripts/exclude-keyword.txt" unique_domains.txt \
+    | grep -v -f exclude.txt \
+    | grep -v '^DOMAIN-KEYWORD' | grep -v '^DOMAIN' >filtered_domains.txt
 
   # 处理域名：添加 +. 前缀（DOMAIN-KEYWORD 除外）
   awk '{
