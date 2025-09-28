@@ -89,8 +89,8 @@ generate_ads_merged() {
   rm -f .tmp_exclude_raw.txt
   # --- END: 提取以 @@ 开头的域名并生成 exclude.txt ---
   
-  # 移除注释和空行
-  sed -E 's/^[[:space:]]*//; /^[A-Za-z0-9]/!d' rules.txt > combined_raw.txt
+  # 移除注释+空行+无法识别规则
+  sed -E '/\*/d; s/^[[:space:]]*//; /^[A-Za-z0-9]/!d' rules.txt > combined_raw.txt
 
   # 标准化域名
   sed -E 's/^[\+\*\.]+//g' combined_raw.txt | grep -v '^$' | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:]]*$//' > normalized.txt
