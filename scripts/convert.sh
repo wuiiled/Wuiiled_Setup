@@ -9,7 +9,8 @@ generate_ads_merged() {
   #curl -skL https://small.oisd.nl/domainswild2 >>rules.txt
   #echo "" >>rules.txt
   #curl -skL https://adrules.top/adrules_domainset.txt | sed 's/+\.//g' >>rules.txt
-  #curl -skL https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/reject-list.txt >>rules.txt
+  curl -skL https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/reject-list.txt >>rules.txt
+  echo "" >>rules.txt
   #curl -sSL https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=1&mimetype=plaintext | perl -ne '/^127\.0\.0\.1\s([-_0-9a-zA-Z]+(\.[-_0-9a-zA-Z]+){1,64})$/ && print "$1\n"' >> rules.txt
   #curl -sSL https://someonewhocares.org/hosts/hosts | perl -ne '/^127\.0\.0\.1\s([-_0-9a-zA-Z]+(\.[-_0-9a-zA-Z]+){1,64})/ && print "$1\n"' | sed '1d' >> rules.txt
   curl -skL https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt | sed 's/[|^]//g' >> rules.txt
