@@ -40,7 +40,7 @@ jobs:
 
     - name: more mrs
       run: |
-        curl -skL https://github.com/Repcz/Tool/raw/X/Clash/Rules/AppleProxy.list | sed '/^#/d' | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,/+./g' | grep -v PROCESS-NAME | grep -v '^$' >apple.txt
+        curl -skL https://raw.githubusercontent.com/Repcz/Tool/refs/heads/X/mihomo/Rules/AppleProxy.list | sed '/^#/d' | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,/+./g' | grep -v PROCESS-NAME | grep -v '^$' >apple.txt
         wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_DNS_DOMAIN.txt
         wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_DNS_IP.txt
         wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Direct_DOMAIN.txt
