@@ -50,9 +50,9 @@ jobs:
         wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Fake_ip_filter_addon.txt
         mihomo convert-ruleset domain text apple.txt AppleProxy.mrs
         mihomo convert-ruleset domain text Custom_DNS_DOMAIN.txt Custom_DNS_DOMAIN.mrs
-        mihomo convert-ruleset domain text Custom_DNS_IP.txt Custom_DNS_IP.mrs
+        mihomo convert-ruleset ipcidr text Custom_DNS_IP.txt Custom_DNS_IP.mrs
         mihomo convert-ruleset domain text Custom_Direct_DOMAIN.txt Custom_Direct_DOMAIN.mrs
-        mihomo convert-ruleset domain text Custom_Direct_IP.txt Custom_Direct_IP.mrs
+        mihomo convert-ruleset ipcidr text Custom_Direct_IP.txt Custom_Direct_IP.mrs
         mihomo convert-ruleset domain text Custom_Emby.txt Custom_Emby.mrs
         mihomo convert-ruleset domain text Custom_Proxy.txt Custom_Proxy.mrs
         mihomo convert-ruleset domain text Fake_ip_filter_addon.txt Fake_ip_filter_addon.mrs
