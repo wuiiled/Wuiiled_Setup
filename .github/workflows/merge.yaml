@@ -40,16 +40,26 @@ jobs:
 
     - name: more mrs
       run: |
-        wget https://ruleset.skk.moe/Clash/domainset/speedtest.txt
         curl -skL https://github.com/Repcz/Tool/raw/X/Clash/Rules/AppleProxy.list | sed '/^#/d' | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,/+./g' | grep -v PROCESS-NAME | grep -v '^$' >apple.txt
-        wget https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt
-        mihomo convert-ruleset domain text speedtest.txt speedtest.mrs
+        wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_DNS_DOMAIN.txt
+        wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_DNS_IP.txt
+        wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Direct_DOMAIN.txt
+        wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Direct_IP.txt
+        wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Emby.txt
+        wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Proxy.txt
+        wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Fake_ip_filter_addon.txt
         mihomo convert-ruleset domain text apple.txt AppleProxy.mrs
-        mihomo convert-ruleset domain text ad_domain_list.txt ad_hostsVN.mrs
+        mihomo convert-ruleset domain text Custom_DNS_DOMAIN.txt Custom_DNS_DOMAIN.mrs
+        mihomo convert-ruleset domain text Custom_DNS_IP.txt Custom_DNS_IP.mrs
+        mihomo convert-ruleset domain text Custom_Direct_DOMAIN.txt Custom_Direct_DOMAIN.mrs
+        mihomo convert-ruleset domain text Custom_Direct_IP.txt Custom_Direct_IP.mrs
+        mihomo convert-ruleset domain text Custom_Emby.txt Custom_Emby.mrs
+        mihomo convert-ruleset domain text Custom_Proxy.txt Custom_Proxy.mrs
+        mihomo convert-ruleset domain text Fake_ip_filter_addon.txt Fake_ip_filter_addon.mrs
 
     - name: Commit and push changes
       run: |
-        mv {*.mrs,ADs_merged.txt,AIs_merged.txt,Fake_IP_Fliter_merged.txt} rules/
+        mv {*.mrs,ADs_merged.txt,AIs_merged.txt} rules/
         CURRENT_TIME=$(date +"%Y-%m-%d %H:%M")
         git config user.name 'github-actions[bot]'
         git config user.email 'github-actions[bot]@users.noreply.github.com'
