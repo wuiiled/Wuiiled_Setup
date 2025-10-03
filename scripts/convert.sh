@@ -4,7 +4,7 @@ generate_ads_merged() {
   # 下载并合并规则
   curl -skL https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt >>rules.txt
   echo "" >>rules.txt
-  curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Reject.list >>rules.txt
+  curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Reject.txt >>rules.txt
   echo "" >>rules.txt
   #curl -skL https://small.oisd.nl/domainswild2 >>rules.txt
   #echo "" >>rules.txt
