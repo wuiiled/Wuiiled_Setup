@@ -1,110 +1,104 @@
 # 自用
-#DOMAIN-SUFFIX,autopatchhk.yuanshen.com
-DOMAIN-SUFFIX,gitmirror.com
-DOMAIN-SUFFIX,sharepoint.cn
-DOMAIN-SUFFIX,steamserver.net
-DOMAIN-SUFFIX,bonjourr.fr
-#DOMAIN-SUFFIX,dongdianqiu.com
-PROCESS-NAME,tailscaled
-DOMAIN-SUFFIX,tailscale.com
-DOMAIN-SUFFIX,tailscale.io
-DOMAIN-SUFFIX,ts.net
-DST-PORT,123/3478/19302/22101/22102
-DOMAIN-SUFFIX,jiaomu.eu.org
++.gitmirror.com
++.sharepoint.cn
++.steamserver.net
++.bonjourr.fr
++.tailscale.com
++.tailscale.io
++.ts.net
++.jiaomu.eu.org
 
 # ImmortalWrt 相关
-DOMAIN-SUFFIX,immortalwrt.org
-DOMAIN-SUFFIX,kyarucloud.moe
++.immortalwrt.org
++.kyarucloud.moe
 
 # GitHub 反代 CDN
-DOMAIN-SUFFIX,ghfast.top
-DOMAIN-SUFFIX,imee.me
-DOMAIN-SUFFIX,ihtw.moe
-DOMAIN-SUFFIX,gh-proxy.com
-DOMAIN-SUFFIX,gh.con.sh
-DOMAIN-SUFFIX,gh.ddlc.top
-DOMAIN-SUFFIX,gh.llkk.cc
-DOMAIN-SUFFIX,ghp.ci
-DOMAIN-SUFFIX,ghproxy.cc
-DOMAIN-SUFFIX,ghproxy.cfd
-DOMAIN-SUFFIX,ghps.cc
-DOMAIN-SUFFIX,git.886.be
-DOMAIN-SUFFIX,github.abskoop.workers.dev
-DOMAIN-SUFFIX,github.boki.moe
-DOMAIN-SUFFIX,github.moeyy.xyz
-DOMAIN-SUFFIX,github.site
-DOMAIN-SUFFIX,github.store
-DOMAIN-SUFFIX,hub.gitmirror.com
-DOMAIN-SUFFIX,jsdelivr.net
-DOMAIN-SUFFIX,kgithub.com
++.ghfast.top
++.imee.me
++.ihtw.moe
++.gh-proxy.com
++.gh.con.sh
++.gh.ddlc.top
++.gh.llkk.cc
++.ghp.ci
++.ghproxy.cc
++.ghproxy.cfd
++.ghps.cc
++.git.886.be
++.github.abskoop.workers.dev
++.github.boki.moe
++.github.moeyy.xyz
++.github.site
++.github.store
++.hub.gitmirror.com
++.jsdelivr.net
++.kgithub.com
 
 # Docker 反代 CDN
-DOMAIN-SUFFIX,docker.1panel.live
-DOMAIN-SUFFIX,docker.kejilion.pro
-DOMAIN-SUFFIX,docker.unsee.tech
-DOMAIN-SUFFIX,dockerpull.pw
-DOMAIN-SUFFIX,dockerpull.org
-DOMAIN-SUFFIX,dhub.kubesre.xyz
-DOMAIN-SUFFIX,hub.crdz.gq
-DOMAIN-SUFFIX,hub.rat.dev
-DOMAIN-SUFFIX,hub.xdark.top
-DOMAIN-SUFFIX,registry.dockermirror.com
++.docker.1panel.live
++.docker.kejilion.pro
++.docker.unsee.tech
++.dockerpull.pw
++.dockerpull.org
++.dhub.kubesre.xyz
++.hub.crdz.gq
++.hub.rat.dev
++.hub.xdark.top
++.registry.dockermirror.com
 
 # Hugging Face 镜像
-DOMAIN-SUFFIX,hf-mirror.com
++.hf-mirror.com
 
 # 猫眼浏览器
-DOMAIN-SUFFIX,catsxp.com
++.catsxp.com
 
 # DDNS
-DOMAIN-KEYWORD,synology
-DOMAIN-KEYWORD,quickconnect
-DOMAIN-SUFFIX,checkip.dyndns.org
-DOMAIN-SUFFIX,checkipv6.dyndns.org
-DOMAIN-SUFFIX,ifconfig.co
-DOMAIN-SUFFIX,api.myip.com
-# DOMAIN-SUFFIX,ip-api.com 会影响某些 DNS 泄露检测网站的结果，暂时屏蔽
-DOMAIN-SUFFIX,ipapi.co
-DOMAIN-SUFFIX,ip6.seeip.org
-DOMAIN-SUFFIX,kit327.com
-DOMAIN-SUFFIX,members.3322.org
++.checkip.dyndns.org
++.checkipv6.dyndns.org
++.ifconfig.co
++.api.myip.com
+# +.ip-api.com 会影响某些 DNS 泄露检测网站的结果，暂时屏蔽
++.ipapi.co
++.ip6.seeip.org
++.kit327.com
++.members.3322.org
 
 # Windows 网络连接探测
-DOMAIN-SUFFIX,msftconnecttest.com
-DOMAIN-SUFFIX,msftncsi.com
++.msftconnecttest.com
++.msftncsi.com
 
 # Akamai CDN
-DOMAIN-SUFFIX,akamaihd.net
++.akamaihd.net
 
 # UniGetUI
-DOMAIN-SUFFIX,powershellgallery.com
++.powershellgallery.com
 
 # NTP Pool Project
-DOMAIN-SUFFIX,pool.ntp.org
++.pool.ntp.org
 
 # Dell
-DOMAIN-SUFFIX,dell.com
++.dell.com
 
 # FLiNG Trainer
-DOMAIN-SUFFIX,flingtrainer.com
++.flingtrainer.com
 
 # 媒体类规则
 # Emby 小雅 相关
-DOMAIN-SUFFIX,ddsrem.com
-DOMAIN-SUFFIX,ipinfo.io
-DOMAIN-SUFFIX,ggbond.org
-DOMAIN-SUFFIX,nn.ci
-DOMAIN-SUFFIX,wwwh.eu.org
-DOMAIN-SUFFIX,1996999.xyz
++.ddsrem.com
++.ipinfo.io
++.ggbond.org
++.nn.ci
++.wwwh.eu.org
++.1996999.xyz
 # Emby 直连
 # MeFun VIP Porn 资源
-DOMAIN-SUFFIX,sptv.ii00.cc
++.sptv.ii00.cc
 # MeFun VIP General 资源
-DOMAIN-SUFFIX,sgtv.ii00.cc
++.sgtv.ii00.cc
 # MeFun VIP Music 资源
-DOMAIN-SUFFIX,cn-music.mefun.vip
++.cn-music.mefun.vip
 # IPTV 相关
-DOMAIN-SUFFIX,112114.xyz
-DOMAIN-SUFFIX,epg.v1.mk
-DOMAIN-SUFFIX,epg.aptv.app
-DOMAIN-SUFFIX,gdcucc.v1.mk
++.112114.xyz
++.epg.v1.mk
++.epg.aptv.app
++.gdcucc.v1.mk
