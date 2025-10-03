@@ -10,6 +10,7 @@ DOMAIN-SUFFIX,tailscale.com
 DOMAIN-SUFFIX,tailscale.io
 DOMAIN-SUFFIX,ts.net
 DST-PORT,123/3478/19302/22101/22102
+DOMAIN-SUFFIX,jiaomu.eu.org
 
 # ImmortalWrt 相关
 DOMAIN-SUFFIX,immortalwrt.org
