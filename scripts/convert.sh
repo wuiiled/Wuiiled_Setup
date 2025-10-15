@@ -26,6 +26,8 @@ generate_ads_merged() {
   #echo "" >>rules.txt
   #curl -skL https://ruleset.skk.moe/Clash/domainset/reject_extra.txt | sed 's/+\.//g' >>rules.txt
   #echo "" >>rules.txt
+  curl -skL https://github.com/ForestL18/rules-dat/raw/mihomo/geo/classical/pcdn.list >>rules.txt
+  echo "" >>rules.txt
   # adobe验证规则
   curl -skL https://a.dove.isdumb.one/pihole.txt >>rules.txt
   echo "" >>rules.txt
