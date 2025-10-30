@@ -19,14 +19,16 @@ generate_ads_merged() {
   echo "" >>rules.txt
   curl -skL https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt | perl -ne '/^0\.0\.0\.0\s([-_0-9a-zA-Z]+(\.[-_0-9a-zA-Z]+){1,64})/ && print "$1\n"' | sed '1d' >> rules.txt
   echo "" >>rules.txt
-  curl -skL https://github.com/TG-Twilight/AWAvenue-Ads-Rule/raw/main/Filters/AWAvenue-Ads-Rule-Surge-RULE-SET.list | sed 's/^DOMAIN,//g' >>rules.txt
+  curl -skL https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Surge-RULE-SET.list | sed 's/^DOMAIN,//g' >>rules.txt
   echo "" >>rules.txt
   #curl -skL https://github.com/limbopro/Adblock4limbo/raw/main/rule/Surge/Adblock4limbo_surge.list | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,//g' | sed 's/,reject$//g' >>rules.txt
   #curl -skL https://ruleset.skk.moe/Clash/domainset/reject.txt | sed 's/+\.//g' >>rules.txt
   #echo "" >>rules.txt
   #curl -skL https://ruleset.skk.moe/Clash/domainset/reject_extra.txt | sed 's/+\.//g' >>rules.txt
   #echo "" >>rules.txt
-  curl -skL https://github.com/ForestL18/rules-dat/raw/mihomo/geo/classical/pcdn.list >>rules.txt
+  curl -skL https://raw.githubusercontent.com/ForestL18/rules-dat/mihomo/geo/classical/pcdn.list >>rules.txt
+  echo "" >>rules.txt
+  curl -skL https://raw.githubusercontent.com/ForestL18/rules-dat/refs/heads/mihomo/geo/classical/reject.list >>rules.txt
   echo "" >>rules.txt
   # adobe验证规则
   curl -skL https://a.dove.isdumb.one/pihole.txt >>rules.txt
