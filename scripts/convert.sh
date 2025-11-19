@@ -8,7 +8,8 @@ generate_ads_merged() {
   echo "" >>rules.txt
   #curl -skL https://small.oisd.nl/domainswild2 >>rules.txt
   #echo "" >>rules.txt
-  #curl -skL https://adrules.top/adrules_domainset.txt | sed 's/+\.//g' >>rules.txt
+  curl -skL https://adrules.top/adrules_domainset.txt | sed 's/+\.//g' >>rules.txt
+  echo "" >>rules.txt
   #curl -skL https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/reject-list.txt >>rules.txt
   #echo "" >>rules.txt
   #curl -sSL https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=1&mimetype=plaintext | perl -ne '/^127\.0\.0\.1\s([-_0-9a-zA-Z]+(\.[-_0-9a-zA-Z]+){1,64})$/ && print "$1\n"' >> rules.txt
@@ -34,10 +35,35 @@ generate_ads_merged() {
   curl -skL https://a.dove.isdumb.one/pihole.txt >>rules.txt
   echo "" >>rules.txt
 
-  # --- BEGIN: 提取以 @@ 开头的域名并生成 exclude.txt ---
-  # 从 rules.txt 中抽出以 @@ 开头的行，简化为二级域名写入 exclude.txt
-  # 步骤：去掉 @@、协议、路径、端口、前导通配符，降小写，提取公共后缀敏感的二级/三级域名并去重
+  # --- BEGIN: 将三份远程白名单加入 exclude.txt（去除空行和#注释并去重） ---
+  # 三个远程白名单来源
+  whitelist_urls=(
+    "https://raw.githubusercontent.com/Cats-Team/AdRules/refs/heads/script/script/allowlist.txt"
+    "https://raw.githubusercontent.com/mawenjian/china-cdn-domain-whitelist/refs/heads/master/china-cdn-domain-whitelist.txt"
+    "https://raw.githubusercontent.com/zoonderkins/blahdns/refs/heads/master/hosts/whitelist.txt"
+  )
 
+  # 下载并清洗（去空行/去注释/去前后空白/小写），将结果与现有 exclude.txt 合并去重写回 exclude.txt
+  tmp_whitelist="$(mktemp)"
+  curl -fsSL "${whitelist_urls[@]}" 2>/dev/null \
+    | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' \
+    | sed -E '/^$/d; /^#/d' \
+    | tr '[:upper:]' '[:lower:]' \
+    | sort -u > "$tmp_whitelist"
+
+  # 如果不存在 exclude.txt，先创建空文件
+  : > .tmp_existing_exclude.txt
+  [ -f exclude.txt ] && cp exclude.txt .tmp_existing_exclude.txt
+
+  # 合并去重并写回 exclude.txt
+  cat .tmp_existing_exclude.txt "$tmp_whitelist" | sort -u > exclude.txt
+
+  # 清理临时文件
+  rm -f .tmp_existing_exclude.txt "$tmp_whitelist"
+  # --- END: 添加白名单到 exclude.txt ---
+
+  # --- BEGIN: 提取以 @@ 开头的域名并生成 exclude.txt (原脚本逻辑) ---
+  # 从 rules.txt 中抽出以 @@ 开头的行，简化为二级域名写入临时排除文件（不会覆盖已生成的 exclude.txt）
   # 提取原始 @@ 条目并做初步清洗
   grep -E '^[[:space:]]*@@' rules.txt \
     | sed 's/^[[:space:]]*@@//' \
@@ -48,14 +74,9 @@ generate_ads_merged() {
     | tr '[:upper:]' '[:lower:]' \
     > .tmp_exclude_raw.txt
 
-  # 如果没有任何 @@ 条目，确保生成空的 exclude.txt
-  if [ ! -s .tmp_exclude_raw.txt ]; then
-    : > exclude.txt
-  else
-    # 使用 awk 处理公共后缀的简单列表，尽量保留像 example.co.uk 这样的三段域名
+  if [ -s .tmp_exclude_raw.txt ]; then
     awk -F'.' '
       BEGIN {
-        # 常见需要保留三段的公共后缀（可按需扩展）
         sfx_count = split("co.uk com.cn net.cn org.cn gov.cn ac.uk gov.uk co.jp or.jp", sfx_arr, " ")
       }
       {
@@ -65,12 +86,10 @@ generate_ads_merged() {
           print host
           next
         }
-        kept = "" 
-        # 检查是否匹配任一指定后缀（例如 co.uk）
+        kept = ""
         matched = 0
         for (i = 1; i <= sfx_count; i++) {
           suf = sfx_arr[i]
-          # 构造后缀匹配：以 .suf 结尾
           suf_regex = "\\." suf "$"
           if (host ~ suf_regex) {
             if (n >= 3) {
@@ -87,13 +106,16 @@ generate_ads_merged() {
         }
         print kept
       }
-    ' .tmp_exclude_raw.txt | sort -u > exclude.txt
+    ' .tmp_exclude_raw.txt | sort -u > .tmp_exclude_from_atat.txt
+
+    # 将提取到的放行域名合并到 exclude.txt 并去重
+    cat exclude.txt .tmp_exclude_from_atat.txt | sort -u > .tmp_exclude_combined && mv .tmp_exclude_combined exclude.txt
+    rm -f .tmp_exclude_from_atat.txt
   fi
 
-  # 清理临时文件
   rm -f .tmp_exclude_raw.txt
-  # --- END: 提取以 @@ 开头的域名并生成 exclude.txt ---
-  
+  # --- END: 提取 @@ 放行并合并到 exclude.txt ---
+
   # 移除注释+空行+无法识别规则
   sed -E '/\*/d; s/^[[:space:]]*//; /^[A-Za-z0-9]/!d' rules.txt > combined_raw.txt
 
