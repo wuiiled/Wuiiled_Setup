@@ -77,7 +77,7 @@ jobs:
 
     - name: Commit and push changes
       run: |
-        mv {*.mrs,alibaba.txt,tencent.txt,bilibili.txt,xiaomi.txt,bytedance.txt,baidu.txt,qihoo360,txtADs_merged.txt,AIs_merged.txt,Fake_IP_Fliter_merged.txt} rules/
+        mv {*.mrs,alibaba.txt,tencent.txt,bilibili.txt,xiaomi.txt,bytedance.txt,baidu.txt,qihoo360.txt,ADs_merged.txt,AIs_merged.txt,Fake_IP_Fliter_merged.txt} rules/
         CURRENT_TIME=$(date +"%Y-%m-%d %H:%M")
         git config user.name 'github-actions[bot]'
         git config user.email 'github-actions[bot]@users.noreply.github.com'
