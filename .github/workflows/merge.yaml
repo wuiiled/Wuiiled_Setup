@@ -50,13 +50,13 @@ jobs:
         wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Emby.txt
         wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Proxy.txt
         wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Fake_ip_filter_addon.txt
-        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/alibaba.txt | sed '/^#/d; /skk.moe/d; /^/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' > alibaba.txt
-        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/tencent.txt | sed '/^#/d; /skk\.moe/d; /^/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' > tencent.txt
-        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/bilibili.txt | sed '/^#/d; /skk.moe/d; /^/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' > bilibili.txt
-        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/xiaomi.txt | sed '/^#/d; /skk\.moe/d; /^/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' > xiaomi.txt
-        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/bytedance.txt | sed '/^#/d; /skk.moe/d; /^/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' > bytedance.txt
-        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/baidu.txt | sed '/^#/d; /skk\.moe/d; /^/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' > baidu.txt
-        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/qihoo360.txt | sed '/^#/d; /skk.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' > qihoo360.txt
+        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/alibaba.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > alibaba.txt
+        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/tencent.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > tencent.txt
+        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/bilibili.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > bilibili.txt
+        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/xiaomi.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > xiaomi.txt
+        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/bytedance.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > bytedance.txt
+        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/baidu.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > baidu.txt
+        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/qihoo360.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > qihoo360.txt
         mihomo convert-ruleset domain text AppleProxy.txt AppleProxy.mrs
         mihomo convert-ruleset domain text AppleCN.txt AppleCN.mrs
         mihomo convert-ruleset domain text private.txt private.mrs
