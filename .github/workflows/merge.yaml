@@ -50,6 +50,13 @@ jobs:
         wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Emby.txt
         wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Proxy.txt
         wget https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Fake_ip_filter_addon.txt
+        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/alibaba.txt | sed '/^#/d; /skk.moe/d; /^/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' > alibaba.txt
+        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/tencent.txt | sed '/^#/d; /skk\.moe/d; /^/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' > tencent.txt
+        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/bilibili.txt | sed '/^#/d; /skk.moe/d; /^/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' > bilibili.txt
+        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/xiaomi.txt | sed '/^#/d; /skk\.moe/d; /^/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' > xiaomi.txt
+        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/bytedance.txt | sed '/^#/d; /skk.moe/d; /^/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' > bytedance.txt
+        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/baidu.txt | sed '/^#/d; /skk\.moe/d; /^/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' > baidu.txt
+        curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/qihoo360.txt | sed '/^#/d; /skk.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' > qihoo360.txt
         mihomo convert-ruleset domain text AppleProxy.txt AppleProxy.mrs
         mihomo convert-ruleset domain text AppleCN.txt AppleCN.mrs
         mihomo convert-ruleset domain text private.txt private.mrs
@@ -60,6 +67,13 @@ jobs:
         mihomo convert-ruleset domain text Custom_Emby.txt Custom_Emby.mrs
         mihomo convert-ruleset domain text Custom_Proxy.txt Custom_Proxy.mrs
         mihomo convert-ruleset domain text Fake_ip_filter_addon.txt Fake_ip_filter_addon.mrs
+        mihomo convert-ruleset domain text alibaba.txt alibaba.mrs
+        mihomo convert-ruleset domain text tencent.txt tencent.mrs
+        mihomo convert-ruleset domain text bilibili.txt bilibili.mrs
+        mihomo convert-ruleset domain text xiaomi.txt xiaomi.mrs
+        mihomo convert-ruleset domain text bytedance.txt bytedance.mrs
+        mihomo convert-ruleset domain text baidu.txt baidu.mrs
+        mihomo convert-ruleset domain text qihoo360.txt qihoo360.mrs
 
     - name: Commit and push changes
       run: |
