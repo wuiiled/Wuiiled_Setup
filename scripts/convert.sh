@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # 函数：生成 ADs_merged.txt
 generate_ads_merged() {
   # 下载并合并规则
