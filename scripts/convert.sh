@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # 函数：生成 ADs_merged.txt
 generate_ads_merged() {
   # 下载并合并规则
@@ -128,40 +128,33 @@ generate_ads_merged() {
   # 关键词文件过滤
   #grep -v -f "scripts/exclude-keyword.txt" unique_domains.txt | grep -v '^DOMAIN-KEYWORD' | grep -v '^DOMAIN' >filtered_domains.txt
 
-  # --- BEGIN: 移除被包含的域名（如果 shorter 域存在则删除 longer 域） ---
-  # 输入: unique_domains.txt （已标准化、去重、按字典序）
-  # 输出: unique_noncov.txt（保留未被包含的域名）
-  # 逻辑：对于每个域，若其任一父域（去掉最左标签后）存在于集合中，则认为被包含并删除
-  
-  # 把域读入数组，按标签数升序处理（先处理短域，保证保留泛域）
+  # --- BEGIN: 移除被包含的域（兼容无关联数组环境） ---
   awk '{print}' unique_domains.txt | awk -F'.' '{print NF, $0}' | sort -n -k1,1 | cut -d' ' -f2- > .tmp_domains_by_len.txt
-  
-  # 构建哈希表并输出未被包含的域
-  declare -A _D
+
   : > unique_noncov.txt
+  : > .tmp_kept.txt
+
   while IFS= read -r domain; do
-    # 跳过空行
     [ -z "$domain" ] && continue
-    # 规范化（已小写且无前缀），确保没有前后空白
     domain="$(echo "$domain" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
-    # check parents
     parent_found=0
     tmp="$domain"
     while [[ "$tmp" == *.* ]]; do
-      tmp="${tmp#*.}"   # remove leftmost label
-      if [[ -n "${_D[$tmp]}" ]]; then
+      tmp="${tmp#*.}"
+      # 如果已保留的更短域存在于 .tmp_kept.txt，则认为被包含
+      if grep -Fxq "$tmp" .tmp_kept.txt; then
         parent_found=1
         break
       fi
     done
-    if [[ $parent_found -eq 0 ]]; then
-      _D[$domain]=1
+    if [ "$parent_found" -eq 0 ]; then
       printf '%s\n' "$domain" >> unique_noncov.txt
+      printf '%s\n' "$domain" >> .tmp_kept.txt
     fi
   done < .tmp_domains_by_len.txt
-  
-  rm -f .tmp_domains_by_len.txt
-  # --- END: 移除被包含的域名 ---
+
+  rm -f .tmp_domains_by_len.txt .tmp_kept.txt
+  # --- END: 移除被包含的域 ---
 
   # 在原有基础上，额外排除 exclude.txt 中的域名
   grep -v -f "scripts/exclude-keyword.txt" unique_noncov.txt \
