@@ -129,31 +129,29 @@ generate_ads_merged() {
   #grep -v -f "scripts/exclude-keyword.txt" unique_domains.txt | grep -v '^DOMAIN-KEYWORD' | grep -v '^DOMAIN' >filtered_domains.txt
 
   # --- BEGIN: 移除被包含的域（兼容无关联数组环境） ---
-  awk '{print}' unique_domains.txt | awk -F'.' '{print NF, $0}' | sort -n -k1,1 | cut -d' ' -f2- > .tmp_domains_by_len.txt
-
-  : > unique_noncov.txt
-  : > .tmp_kept.txt
-
-  while IFS= read -r domain; do
-    [ -z "$domain" ] && continue
-    domain="$(echo "$domain" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
-    parent_found=0
-    tmp="$domain"
-    while [[ "$tmp" == *.* ]]; do
-      tmp="${tmp#*.}"
-      # 如果已保留的更短域存在于 .tmp_kept.txt，则认为被包含
-      if grep -Fxq "$tmp" .tmp_kept.txt; then
-        parent_found=1
-        break
-      fi
-    done
-    if [ "$parent_found" -eq 0 ]; then
-      printf '%s\n' "$domain" >> unique_noncov.txt
-      printf '%s\n' "$domain" >> .tmp_kept.txt
-    fi
-  done < .tmp_domains_by_len.txt
-
-  rm -f .tmp_domains_by_len.txt .tmp_kept.txt
+  awk -F'.' '{print NF, $0}' unique_domains.txt \
+    | sort -n -k1,1 \
+    | cut -d' ' -f2- \
+    | awk '{
+        d[$0]=1
+        parts[$0]=$0
+      }
+      END {
+        for (x in parts) {
+          split(x,a,".")
+          keep=1
+          for(i=2;i<=length(a);i++){
+            p=""
+            for(j=i;j<=length(a);j++){
+              p = p (p?".":"") a[j]
+            }
+            if (p!=x && p in d) { keep=0; break }
+          }
+          if (keep) print x
+        }
+      }' \
+    | awk 'NR==1{print;prev=$0;next}{ if(!seen[$0]++){print}}' \
+    > unique_noncov.txt
   # --- END: 移除被包含的域 ---
 
   # 在原有基础上，额外排除 exclude.txt 中的域名
