@@ -57,6 +57,7 @@ jobs:
         curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/bytedance.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > bytedance.txt
         curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/baidu.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > baidu.txt
         curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/qihoo360.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > qihoo360.txt
+        curl -skL https://ruleset.skk.moe/Clash/domainset/download.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > download.txt
         mihomo convert-ruleset domain text AppleProxy.txt AppleProxy.mrs
         mihomo convert-ruleset domain text AppleCN.txt AppleCN.mrs
         mihomo convert-ruleset domain text private.txt private.mrs
@@ -74,10 +75,11 @@ jobs:
         mihomo convert-ruleset domain text bytedance.txt bytedance.mrs
         mihomo convert-ruleset domain text baidu.txt baidu.mrs
         mihomo convert-ruleset domain text qihoo360.txt qihoo360.mrs
+        mihomo convert-ruleset domain text download.txt download.mrs
 
     - name: Commit and push changes
       run: |
-        mv {*.mrs,alibaba.txt,tencent.txt,bilibili.txt,xiaomi.txt,bytedance.txt,baidu.txt,qihoo360.txt,ADs_merged.txt,AIs_merged.txt,Fake_IP_Fliter_merged.txt} rules/
+        mv {*.mrs,download.txt,alibaba.txt,tencent.txt,bilibili.txt,xiaomi.txt,bytedance.txt,baidu.txt,qihoo360.txt,ADs_merged.txt,AIs_merged.txt,Fake_IP_Fliter_merged.txt} rules/
         CURRENT_TIME=$(date +"%Y-%m-%d %H:%M")
         git config user.name 'github-actions[bot]'
         git config user.email 'github-actions[bot]@users.noreply.github.com'
