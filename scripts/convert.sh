@@ -246,24 +246,24 @@ generate_Fake_IP_Fliter_merged() {
   cat Fake_IP_Fliter.txt | sed '/^[#!]/d' >Fake_IP_Fliter_combined_raw.txt
 
   # 标准化域名
-  sed -E 's/^[\+\*\.]+//g' Fake_IP_Fliter_combined_raw.txt | grep -v '^$' | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:]]*$//' > Fake_IP_Fliter_normalized.txt
+  #sed -E 's/^[\+\*\.]+//g' Fake_IP_Fliter_combined_raw.txt | grep -v '^$' | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:]]*$//' > Fake_IP_Fliter_normalized.txt
 
   # 排序并去重
-  sort Fake_IP_Fliter_normalized.txt | uniq >Fake_IP_Fliter_domains.txt
+  sort Fake_IP_Fliter_combined_raw.txt | uniq >Fake_IP_Fliter_merged.txt
 
   # 处理域名：添加 +. 前缀（DOMAIN-KEYWORD 除外）
-  awk '{
-      if ($0 ~ /^DOMAIN-KEYWORD/) {
-          print $0
-      } else {
-          print "+." $0
-      }
-  }' Fake_IP_Fliter_domains.txt >Fake_IP_Fliter_merged.txt
+  #awk '{
+  #    if ($0 ~ /^DOMAIN-KEYWORD/) {
+  #        print $0
+  #    } else {
+  #        print "+." $0
+  #    }
+  #}' Fake_IP_Fliter_domains.txt >Fake_IP_Fliter_merged.txt
 
   mihomo convert-ruleset domain text Fake_IP_Fliter_merged.txt Fake_IP_Fliter_merged.mrs
 
   # Surge compatible
-  sed -i 's/+./DOMAIN-SUFFIX,/g' Fake_IP_Fliter_merged.txt
+  #sed -i 's/+./DOMAIN-SUFFIX,/g' Fake_IP_Fliter_merged.txt
 
   # 添加计数和时间戳
   count=$(wc -l <Fake_IP_Fliter_merged.txt)
