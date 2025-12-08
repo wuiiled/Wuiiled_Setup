@@ -247,11 +247,7 @@ generate_Fake_IP_Fliter_merged() {
 
   # 移除注释和空行并标准化域名
   #sed -E 's/^[\+\*\.]+//g' Fake_IP_Fliter_combined_raw.txt | grep -v '^$' | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:]]*$//' > Fake_IP_Fliter_normalized.txt
-  tr -d '\r' < Fake_IP_Fliter.txt \
-  | sed '/^[[:space:]]*#/d' \       # 删除以 # 或 注释开头的行（含前导空格）
-  | sed '/^[[:space:]]*$/d' \       # 删除空行或仅空白的行
-  | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
-  > Fake_IP_Fliter_combined_clean.txt
+  tr -d '\r' < Fake_IP_Fliter.txt | sed -E '/^[[:space:]]*(#|$)/d; s/^[[:space:]]+//; s/[[:space:]]+$//' > Fake_IP_Fliter_combined_clean.txt
 
   # 排序并去重
   sort Fake_IP_Fliter_combined_clean.txt | uniq >Fake_IP_Fliter_merged.txt
