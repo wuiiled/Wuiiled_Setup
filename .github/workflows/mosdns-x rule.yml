@@ -2,42 +2,58 @@ name: Convert to mosdns-x rule
 
 on:
   schedule:
-    - cron: '0 1 * * *' 
+    - cron: '0 1 * * *'
   workflow_dispatch:
 
 jobs:
   modify-file:
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      - name: Modify ADs_merged.txt
+      - name: Generate Rules
         run: |
-          curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/mihomo/rules/ADs_merged.txt | sed '/^$/d; s/DOMAIN-SUFFIX,//g' >ad_domain_list.txt
-          curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/alibaba.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/domain:/; s/^DOMAIN,/full:/' > alibaba.txt
-          curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/tencent.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/domain:/; s/^DOMAIN,/full:/' > tencent.txt
-          curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/bilibili.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/domain:/; s/^DOMAIN,/full:/' > bilibili.txt
-          curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/xiaomi.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/domain:/; s/^DOMAIN,/full:/' > xiaomi.txt
-          curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/bytedance.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/domain:/; s/^DOMAIN,/full:/' > bytedance.txt
-          curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/baidu.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/domain:/; s/^DOMAIN,/full:/' > baidu.txt
-          curl -skL https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/qihoo360.txt | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/domain:/; s/^DOMAIN,/full:/' > qihoo360.txt
+          mkdir -p rules
+
+          # --- 1. 处理广告列表 ---
+          # 逻辑：删除空行 -> 删除 DOMAIN-SUFFIX, -> 删除行首的 +.
+          echo "Processing ADs List..."
+          curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/mihomo/rules/ADs_merged.txt | \
+          sed '/^$/d; s/DOMAIN-SUFFIX,//g; s/^\+\.//g' > rules/ad_domain_list.txt
+
+          # --- 2. 处理厂商列表 (domain:/full: 格式) ---
+          PROVIDERS=("alibaba" "tencent" "bilibili" "xiaomi" "bytedance" "baidu" "qihoo360")
+          BASE_URL="https://ruleset.skk.moe/Internal/mihomo_nameserver_policy"
+
+          for PROVIDER in "${PROVIDERS[@]}"; do
+            echo "Processing ${PROVIDER}..."
+            curl -skL "${BASE_URL}/${PROVIDER}.txt" | \
+            sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/domain:/; s/^DOMAIN,/full:/' > "rules/${PROVIDER}.txt"
+          done
+
+          # 检查文件生成情况
+          ls -lh rules/
 
       - name: Commit and push changes
         run: |
-          mv *.txt rules/
           CURRENT_TIME=$(date +"%Y-%m-%d %H:%M")
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
+          
           git checkout --orphan mosdns-x
           git rm -rf .
           git add rules/*
+          
           git commit -m "Auto Update $CURRENT_TIME"
           git push -f origin mosdns-x
 
       - name: Delete workflow runs
-        uses: Mattraks/delete-workflow-runs@main
+        uses: Mattraks/delete-workflow-runs@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
