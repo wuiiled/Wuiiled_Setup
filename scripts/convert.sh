@@ -43,49 +43,47 @@ generate_ads_merged() {
         done
     }
 
-    # 专门用于清洗域名的函数
+    # 核心清洗函数：解决前缀残留和非法字符问题
     normalize_domain() {
-        # 1. dos2unix
-        # 2. 移除行尾注释 ($ 或 # 后面的内容)
-        # 3. 移除行首的 0.0.0.0 或 127.0.0.1 (针对 Hosts 格式)
-        # 4. 移除 DOMAIN-SUFFIX, DOMAIN-KEYWORD, DOMAIN, 等前缀
-        # 5. 移除 || 和 ^ (AdGuard 格式)
-        # 6. 如果有逗号分隔 (Surge格式)，只取第一部分
-        # 7. 转小写
-        # 8. 移除开头结尾空格
-        # 9. 只保留包含点的行 (过滤纯单词)
-        
-        tr -d '\r' \
+        # 1. 移除 Windows 换行符
+        # 2. 立即全部转为小写 (关键：确保后续正则能匹配所有大小写变体的 DOMAIN-SUFFIX)
+        tr -d '\r' | tr 'A-Z' 'a-z' \
         | sed 's/[\$#].*//g' \
         | sed -E 's/^(0\.0\.0\.0|127\.0\.0\.1)[[:space:]]+//g' \
-        | sed 's/DOMAIN-SUFFIX,//g; s/DOMAIN-KEYWORD,//g; s/DOMAIN,//g' \
         | sed 's/||//g; s/\^//g' \
+        | sed 's/domain-keyword,//g' \
+        | sed -E 's/^[[:space:]]*//' \
+        | sed 's/^domain-suffix,//g' \
+        | sed 's/^domain,//g' \
         | awk -F, '{print $1}' \
-        | tr 'A-Z' 'a-z' \
         | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+        | grep -E '^[a-z0-9]' \
         | awk '/\./ {print $0}'
     }
+    # 解释：
+    # sed -E 's/^[[:space:]]*//' : 先把行首空格删掉，防止 "  DOMAIN-SUFFIX" 这种匹配不到
+    # sed 's/^domain-suffix,//g' : 删掉开头的修饰符 (因为前面转了小写，这里写小写即可)
+    # grep -E '^[a-z0-9]'        : 【要求1】只保留数字或字母开头的行
 
     process_blocklist() {
         local input_file=$1
         local output_block=$2
         local output_allow_extra=$3
 
-        echo "🧹 正在处理拦截规则 (分离 @@ 白名单 和 Hosts 格式)..."
-
-        # 1. 提取 @@ 开头的行 (AdBlock 白名单)，清洗后存入额外白名单文件
+        echo "🧹 正在处理拦截规则..."
+        
+        # 提取 @@ 规则 (AdBlock 白名单)
         grep "^@@" "$input_file" | sed 's/^@@//g' | normalize_domain > "$output_allow_extra"
 
-        # 2. 提取非 @@ 开头的行，进行清洗
-        grep -v "^@@" "$input_file" | grep -v "DOMAIN-KEYWORD" | normalize_domain | sort -u > "$output_block"
+        # 提取正常规则
+        grep -v "^@@" "$input_file" | normalize_domain | sort -u > "$output_block"
     }
 
     optimize_list() {
         local input_file=$1
         local output_file=$2
 
-        echo "🧠 正在去重 (主域名自动覆盖子域名)..."
-        # 反转 -> 排序 -> awk去重 -> 反转回
+        echo "🧠 正在智能去重 (主域名覆盖子域名)..."
         cat "$input_file" \
         | rev | sort | awk 'NR==1 {prev=$0; print; next} {if (index($0, prev ".") != 1) {print; prev=$0}}' | rev | sort > "$output_file"
     }
@@ -95,73 +93,59 @@ generate_ads_merged() {
         local allow_file=$2
         local final_file=$3
 
-        echo "🛡️  正在执行高级白名单过滤 (如果白名单包含主域名，则移除拦截列表中的子域名)..."
+        echo "🛡️  正在应用白名单过滤..."
 
-        # 算法说明：
-        # 我们利用 ASCII 排序特性。
-        # 1. 准备白名单：反转字符串，并在末尾加 '!' (ASCII 33, 比 '.' 46 小)。
-        # 2. 准备黑名单：反转字符串。
-        # 3. 混合排序。
-        # 4. 遍历：因为 '!' 排在 '.' 前面，如果白名单是 "moc.diub!"，它会排在黑名单 "moc.diub.da" 前面。
-        #    awk 只要记录当前的白名单根，就能过滤掉后面匹配的黑名单项。
-
-        # 准备白名单：反转并加标记 !
+        # 准备白名单：反转 + 加标记
         cat "$allow_file" | rev | sed 's/$/!/' > "${WORK_DIR}/allow_rev_tagged.txt"
-
         # 准备黑名单：反转
         cat "$block_file" | rev > "${WORK_DIR}/block_rev.txt"
 
-        # 合并、排序、过滤
+        # 排序并过滤
         cat "${WORK_DIR}/allow_rev_tagged.txt" "${WORK_DIR}/block_rev.txt" \
         | sort \
         | awk '
-            # 如果行以 ! 结尾，说明是白名单规则
-            /\!$/ {
-                # 去掉 ! 保存为当前白名单根
-                root = substr($0, 1, length($0)-1);
-                next; 
-            }
-            # 处理黑名单行
+            /\!$/ { root = substr($0, 1, length($0)-1); next; }
             {
-                # 检查1: 是否完全相等 (黑名单 example.com vs 白名单 example.com)
                 if ($0 == root) next;
-                
-                # 检查2: 是否是子域名 (黑名单 a.example.com 匹配 root + ".")
-                # index 返回匹配位置，必须是 1 (即开头匹配)
                 if (root != "" && index($0, root ".") == 1) next;
-
-                # 如果没被白名单命中，打印出来
                 print;
             }
         ' \
-        | rev > "$final_file" # 反转回来
+        | rev > "$final_file"
+    }
+
+    add_final_prefix() {
+        local input_file=$1
+        local output_file=$2
+        
+        echo "✨ 正在添加最终前缀 (+.)..."
+        # 【要求3】在所有域名前添加 +.
+        sed 's/^/+./' "$input_file" > "$output_file"
     }
 
     # ================= 主程序流程 =================
 
     echo "=== 脚本开始运行 ==="
 
-    # 1. 下载原始文件
+    # 1. 下载
     download_files "${WORK_DIR}/raw_block_all.txt" "${BLOCK_URLS[@]}"
     download_files "${WORK_DIR}/raw_allow_all.txt" "${ALLOW_URLS[@]}"
 
-    # 2. 处理拦截规则 (清洗 + 分离出 @@ 规则)
-    #    分离出的规则会追加到 raw_allow_extra.txt
+    # 2. 清洗黑名单 (分离 @@)
     process_blocklist "${WORK_DIR}/raw_block_all.txt" "${WORK_DIR}/clean_block.txt" "${WORK_DIR}/raw_allow_extra.txt"
 
-    # 3. 合并所有白名单 (原始白名单 + 从拦截列表中提取的 @@ 规则)
+    # 3. 清洗并合并白名单
     cat "${WORK_DIR}/raw_allow_all.txt" "${WORK_DIR}/raw_allow_extra.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_allow.txt"
 
-    # 4. 优化列表 (自我去重：如果有了 google.com，去掉 ad.google.com)
-    #    先对自己优化，减少数据量
+    # 4. 自我优化去重 (此时全是纯域名，没有 +.)
     optimize_list "${WORK_DIR}/clean_block.txt" "${WORK_DIR}/opt_block.txt"
     optimize_list "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/opt_allow.txt"
 
-    # 5. 最终过滤：应用白名单剔除黑名单 (包含子域名逻辑)
-    advanced_whitelist_filter "${WORK_DIR}/opt_block.txt" "${WORK_DIR}/opt_allow.txt" "$OUTPUT_FILE"
+    # 5. 白名单过滤 (此时全是纯域名，进行逻辑比对)
+    advanced_whitelist_filter "${WORK_DIR}/opt_block.txt" "${WORK_DIR}/opt_allow.txt" "${WORK_DIR}/final_pure.txt"
 
-    # 6. 最终排序
-    sort -o "$OUTPUT_FILE" "$OUTPUT_FILE"
+    # 6. 【要求3】添加前缀 +. 并输出最终文件
+    add_final_prefix "${WORK_DIR}/final_pure.txt" "$OUTPUT_FILE"
 
     # 统计
     COUNT=$(wc -l < "$OUTPUT_FILE")
