@@ -163,6 +163,8 @@ generate_ads_merged() {
     # Surge compatible
     #sed -i 's/+./DOMAIN-SUFFIX,/g' ADs_merged.txt
 
+    mihomo convert-ruleset domain text ADs_merged.txt ADs_merged.mrs
+
     # 添加计数和时间戳
     count=$(wc -l <ADs_merged.txt)
     current_date=$(date +"%Y-%m-%d %H:%M:%S")
