@@ -236,7 +236,7 @@ generate_Fake_IP_Fliter_merged() {
   echo "" >>Fake_IP_Fliter.txt
   curl -skL https://raw.githubusercontent.com/vernesong/OpenClash/refs/heads/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list >>Fake_IP_Fliter.txt
   echo "" >>Fake_IP_Fliter.txt
-  curl -skL https://raw.githubusercontent.com/juewuy/ShellCrash/dev/public/fake_ip_filter.listt >>Fake_IP_Fliter.txt
+  curl -skL https://raw.githubusercontent.com/juewuy/ShellCrash/dev/public/fake_ip_filter.list >>Fake_IP_Fliter.txt
   echo "" >>Fake_IP_Fliter.txt
   curl -skL https://raw.githubusercontent.com/DustinWin/ruleset_geodata/refs/heads/mihomo-ruleset/fakeip-filter.list >>Fake_IP_Fliter.txt
   echo "" >>Fake_IP_Fliter.txt
