@@ -28,7 +28,7 @@ download_files() {
     done
 }
 
-# 核心清洗函数
+# 核心清洗函数 (用于 ADs 和 AI 模块)
 normalize_domain() {
     tr 'A-Z' 'a-z' | tr -d '\r' \
     | sed 's/[\$#].*//g' \
@@ -48,7 +48,7 @@ normalize_domain() {
     | awk '/\./ {print $0}'
 }
 
-# 智能去重函数
+# 智能去重函数 (主域名覆盖子域名)
 optimize_list() {
     local input_file=$1
     local output_file=$2
@@ -58,7 +58,7 @@ optimize_list() {
     | rev | sort | awk 'NR==1 {prev=$0; print; next} {if (index($0, prev ".") != 1) {print; prev=$0}}' | rev | sort > "$output_file"
 }
 
-# 关键词过滤函数 (通用)
+# 关键词过滤函数
 apply_keyword_filter() {
     local input_file=$1
     local output_file=$2
@@ -66,15 +66,13 @@ apply_keyword_filter() {
 
     if [ -f "$keyword_file" ]; then
         echo "🔍 应用本地关键词排除 ($keyword_file)..."
-        # 使用 grep -v -f 剔除包含关键词的行
         grep -v -f "$keyword_file" "$input_file" > "$output_file"
     else
-        # 文件不存在则直接复制
         cp "$input_file" "$output_file"
     fi
 }
 
-# 添加最终前缀 (+.)
+# 添加最终前缀 (+.) - 仅用于 ADs 和 AI 模块
 add_final_prefix() {
     local input_file=$1
     local output_file=$2
@@ -137,23 +135,21 @@ generate_ads_merged() {
 
     # 2. 处理拦截规则
     echo "🧹 处理拦截规则..."
-    # 提取 @@ 白名单
     grep "^@@" "${WORK_DIR}/raw_block_all.txt" | sed 's/^@@//g' | normalize_domain > "${WORK_DIR}/raw_allow_extra.txt"
-    # 提取黑名单
     grep -v "^@@" "${WORK_DIR}/raw_block_all.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_block.txt"
 
-    # 【新增功能】在模块 1 应用 exclude-keyword.txt 过滤
+    # 3. 关键词过滤 (仅模块 1)
     apply_keyword_filter "${WORK_DIR}/clean_block.txt" "${WORK_DIR}/filtered_block.txt"
 
-    # 3. 处理白名单
+    # 4. 处理白名单
     echo "🧹 处理白名单..."
     cat "${WORK_DIR}/raw_allow_all.txt" "${WORK_DIR}/raw_allow_extra.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_allow.txt"
 
-    # 4. 智能去重 (注意：这里使用的是过滤关键词后的 filtered_block.txt)
+    # 5. 智能去重
     optimize_list "${WORK_DIR}/filtered_block.txt" "${WORK_DIR}/opt_block.txt"
     optimize_list "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/opt_allow.txt"
 
-    # 5. 白名单过滤 (Apply Allowlist)
+    # 6. 白名单剔除
     echo "🛡️  正在应用白名单过滤..."
     cat "${WORK_DIR}/opt_allow.txt" | rev | sed 's/$/!/' > "${WORK_DIR}/allow_rev_tagged.txt"
     cat "${WORK_DIR}/opt_block.txt" | rev > "${WORK_DIR}/block_rev.txt"
@@ -163,10 +159,8 @@ generate_ads_merged() {
     | awk '/!$/ { root = substr($0, 1, length($0)-1); next; } { if ($0 == root) next; if (root != "" && index($0, root ".") == 1) next; print; }' \
     | rev > "${WORK_DIR}/final_pure.txt"
 
-    # 6. 生成最终文件
+    # 7. 生成最终文件 (添加 +.)
     add_final_prefix "${WORK_DIR}/final_pure.txt" "$OUTPUT_FILE"
-    
-    # 7. 转换与统计
     convert_to_mrs "$OUTPUT_FILE" "ADs_merged.mrs"
     add_header_info "$OUTPUT_FILE"
     echo "✅ ADs 规则生成完成。"
@@ -191,15 +185,11 @@ generate_ais_merged() {
     # 2. 清洗
     cat "${WORK_DIR}/raw_ai.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_ai.txt"
 
-    # 【变更】：这里不再应用关键词过滤，直接进入去重步骤
-
     # 3. 智能去重
     optimize_list "${WORK_DIR}/clean_ai.txt" "${WORK_DIR}/opt_ai.txt"
 
-    # 4. 生成最终文件
+    # 4. 生成最终文件 (添加 +.)
     add_final_prefix "${WORK_DIR}/opt_ai.txt" "$OUTPUT_FILE"
-
-    # 5. 转换与统计
     convert_to_mrs "$OUTPUT_FILE" "AIs_merged.mrs"
     add_header_info "$OUTPUT_FILE"
     echo "✅ AI 规则生成完成。"
@@ -221,14 +211,43 @@ generate_Fake_IP_Filter_merged() {
     # 1. 下载
     download_files "${WORK_DIR}/raw_fakeip.txt" "${FAKE_IP_URLS[@]}"
 
-    # 2. 清洗
-    cat "${WORK_DIR}/raw_fakeip.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_fakeip.txt"
+    # 2. 逻辑处理：
+    #    (1) 去除注释和空行
+    #    (2) AWK 逻辑：
+    #        - 提取根域名 (移除开头的 +. 或 .)
+    #        - 如果根域名未出现过 -> 存入
+    #        - 如果根域名已出现，但当前行以 +. 开头 -> 覆盖旧记录 (实现 +.google.com 覆盖 google.com)
+    #    (3) 排序
+    
+    echo "🧹 处理 Fake IP 规则 (冲突时优先保留 +. 开头的版本)..."
+    cat "${WORK_DIR}/raw_fakeip.txt" \
+    | tr -d '\r' \
+    | grep -vE '^\s*($|#|!)' \
+    | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+    | awk '{
+        origin = $0;
+        root = origin;
+        # 去除开头的 +. 或 . 得到根域名用于比对
+        sub(/^\+\./, "", root);
+        sub(/^\./, "", root);
 
-    # 3. 生成最终文件 (不应用过滤，也不进行深度子域名合并，以免误伤 FakeIP 白名单逻辑)
-    # 大多数 Fake IP 列表建议保持原样，或仅添加前缀
-    add_final_prefix "${WORK_DIR}/clean_fakeip.txt" "$OUTPUT_FILE"
+        if (!(root in seen)) {
+            seen[root] = origin;
+        } else {
+            # 如果现有记录不是 +. 开头，但新记录是 +. 开头，则更新为新记录
+            if (seen[root] !~ /^\+\./ && origin ~ /^\+\./) {
+                seen[root] = origin;
+            }
+        }
+    } END {
+        for (r in seen) {
+            print seen[r];
+        }
+    }' \
+    | sort \
+    > "$OUTPUT_FILE"
 
-    # 4. 转换与统计
+    # 3. 转换与统计
     convert_to_mrs "$OUTPUT_FILE" "Fake_IP_Filter_merged.mrs"
     add_header_info "$OUTPUT_FILE"
     echo "✅ Fake IP 规则生成完成。"
