@@ -156,17 +156,23 @@ generate_ads_merged() {
 
   # 在原有基础上，额外排除 exclude.txt 中的域名
   grep -v -f "scripts/exclude-keyword.txt" unique_noncov.txt \
-    | grep -v -f exclude.txt \
+    | grep -v -F -f exclude.txt \
     | grep -v '^DOMAIN-KEYWORD' | grep -v '^DOMAIN' >filtered_domains.txt
 
   # 处理域名：添加 +. 前缀（DOMAIN-KEYWORD 除外）
   awk '{
-      if ($0 ~ /^DOMAIN-KEYWORD/) {
-          print $0
-      } else {
-          print "+." $0
-      }
-  }' filtered_domains.txt >ADs_merged.txt
+        # 去除行首尾空格
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0);
+        if (length($0) == 0 || $0 == ".") next;
+        if ($0 ~ /^DOMAIN-KEYWORD/) {
+            print $0
+        } else {
+            print "+." $0
+        }
+    }' filtered_domains.txt >ADs_merged.txt
+
+  # 再次确保没有仅包含 "+." 的行（双重保险）
+  sed -i '/^\+\.$/d' ADs_merged.txt
 
   mihomo convert-ruleset domain text ADs_merged.txt ADs_merged.mrs
 
