@@ -1,192 +1,154 @@
 #!/bin/bash
 # 函数：生成 ADs_merged.txt
 generate_ads_merged() {
-  # 下载并合并规则
-  curl -skL https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt >>rules.txt
-  echo "" >>rules.txt
-  curl -skL https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Reject.txt >>rules.txt
-  echo "" >>rules.txt
-  #curl -skL https://small.oisd.nl/domainswild2 >>rules.txt
-  #echo "" >>rules.txt
-  curl -skL https://adrules.top/adrules_domainset.txt | sed 's/+\.//g' >>rules.txt
-  echo "" >>rules.txt
-  #curl -skL https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/reject-list.txt >>rules.txt
-  #echo "" >>rules.txt
-  #curl -sSL https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=1&mimetype=plaintext | perl -ne '/^127\.0\.0\.1\s([-_0-9a-zA-Z]+(\.[-_0-9a-zA-Z]+){1,64})$/ && print "$1\n"' >> rules.txt
-  #curl -sSL https://someonewhocares.org/hosts/hosts | perl -ne '/^127\.0\.0\.1\s([-_0-9a-zA-Z]+(\.[-_0-9a-zA-Z]+){1,64})/ && print "$1\n"' | sed '1d' >> rules.txt
-  curl -skL https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt | sed 's/[|^]//g' >> rules.txt
-  echo "" >>rules.txt
-  curl -skL https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt | sed 's/^||//g' | sed 's/\^$//g' >> rules.txt
-  echo "" >>rules.txt
-  curl -skL https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt | perl -ne '/^0\.0\.0\.0\s([-_0-9a-zA-Z]+(\.[-_0-9a-zA-Z]+){1,64})/ && print "$1\n"' | sed '1d' >> rules.txt
-  echo "" >>rules.txt
-  curl -skL https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Surge-RULE-SET.list | sed -E '/^DOMAIN-KEYWORD,/d; s/^(DOMAIN|DOMAIN-SUFFIX),//g' >>rules.txt
-  echo "" >>rules.txt
-  #curl -skL https://github.com/limbopro/Adblock4limbo/raw/main/rule/Surge/Adblock4limbo_surge.list | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,//g' | sed 's/,reject$//g' >>rules.txt
-  #curl -skL https://ruleset.skk.moe/Clash/domainset/reject.txt | sed 's/+\.//g' >>rules.txt
-  #echo "" >>rules.txt
-  #curl -skL https://ruleset.skk.moe/Clash/domainset/reject_extra.txt | sed 's/+\.//g' >>rules.txt
-  #echo "" >>rules.txt
-  curl -skL https://raw.githubusercontent.com/ForestL18/rules-dat/mihomo/geo/classical/pcdn.list | sed -E '/^DOMAIN-KEYWORD,/d; s/^(DOMAIN|DOMAIN-SUFFIX),//g' >>rules.txt
-  echo "" >>rules.txt
-  curl -skL https://raw.githubusercontent.com/ForestL18/rules-dat/refs/heads/mihomo/geo/classical/reject.list | sed -E '/^DOMAIN-KEYWORD,/d; s/^(DOMAIN|DOMAIN-SUFFIX),//g' >>rules.txt
-  echo "" >>rules.txt
-  # adobe验证规则
-  curl -skL https://a.dove.isdumb.one/pihole.txt >>rules.txt
-  echo "" >>rules.txt
+      # 最终输出文件
+    OUTPUT_FILE="ADs_merged.txt"
 
-  # --- BEGIN: 将三份远程白名单加入 exclude.txt（去除空行和#注释并去重） ---
-  # 三个远程白名单来源
-  whitelist_urls=(
-    "https://raw.githubusercontent.com/Cats-Team/AdRules/refs/heads/script/script/allowlist.txt"
-    "https://raw.githubusercontent.com/mawenjian/china-cdn-domain-whitelist/refs/heads/master/china-cdn-domain-whitelist.txt"
-    "https://raw.githubusercontent.com/zoonderkins/blahdns/refs/heads/master/hosts/whitelist.txt"
-  )
+    # 临时工作目录
+    WORK_DIR=$(mktemp -d)
+    trap "rm -rf ${WORK_DIR}" EXIT
 
-  # 下载并清洗（去空行/去注释/去前后空白/小写），将结果与现有 exclude.txt 合并去重写回 exclude.txt
-  tmp_whitelist="$(mktemp)"
-  curl -fsSL "${whitelist_urls[@]}" 2>/dev/null \
-    | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' \
-    | sed -E '/^$/d; /^#/d' \
-    | tr '[:upper:]' '[:lower:]' \
-    | sort -u > "$tmp_whitelist"
+    # 拦截规则源 (Blocklist URLs)
+    BLOCK_URLS=(
+        "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt"
+        "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Reject.txt"
+        "https://adrules.top/adrules_domainset.txt"
+        "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"
+        "https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt"
+        "https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt"
+        "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Surge-RULE-SET.list"
+        "https://raw.githubusercontent.com/ForestL18/rules-dat/mihomo/geo/classical/pcdn.list"
+        "https://raw.githubusercontent.com/ForestL18/rules-dat/refs/heads/mihomo/geo/classical/reject.list"
+        "https://a.dove.isdumb.one/pihole.txt"
+    )
 
-  # 如果不存在 exclude.txt，先创建空文件
-  : > .tmp_existing_exclude.txt
-  [ -f exclude.txt ] && cp exclude.txt .tmp_existing_exclude.txt
+    # 白名单源 (Allowlist URLs)
+    ALLOW_URLS=(
+        "https://raw.githubusercontent.com/Cats-Team/AdRules/refs/heads/script/script/allowlist.txt"
+        "https://raw.githubusercontent.com/mawenjian/china-cdn-domain-whitelist/refs/heads/master/china-cdn-domain-whitelist.txt"
+        "https://raw.githubusercontent.com/zoonderkins/blahdns/refs/heads/master/hosts/whitelist.txt"
+    )
 
-  # 合并去重并写回 exclude.txt
-  cat .tmp_existing_exclude.txt "$tmp_whitelist" | sort -u > exclude.txt
+    # ================= 功能函数 =================
 
-  # 清理临时文件
-  rm -f .tmp_existing_exclude.txt "$tmp_whitelist"
-  # --- END: 添加白名单到 exclude.txt ---
+    download_files() {
+        local urls=("$@")
+        local output_file=$1
+        # 移除第一个参数(输出文件名)，保留剩下的作为URL数组
+        shift
+        local url_list=("$@")
+        
+        for url in "${url_list[@]}"; do
+            echo "⬇️  正在下载: $url"
+            curl -sL --connect-timeout 10 --retry 3 "$url" >> "$output_file"
+            echo "" >> "$output_file" # 确保文件末尾有换行，防止拼接错误
+        done
+    }
 
-  # --- BEGIN: 提取以 @@ 开头的域名并生成 exclude.txt (原脚本逻辑) ---
-  # 从 rules.txt 中抽出以 @@ 开头的行，简化为二级域名写入临时排除文件（不会覆盖已生成的 exclude.txt）
-  # 提取原始 @@ 条目并做初步清洗
-  grep -E '^[[:space:]]*@@' rules.txt \
-    | sed 's/^[[:space:]]*@@//' \
-    | sed -E 's#^[[:alpha:]]+://##' \
-    | sed -E 's#/.*$##' \
-    | sed -E 's/[:].*$//' \
-    | sed -E 's/^[\*\.\s]+//' \
-    | tr '[:upper:]' '[:lower:]' \
-    > .tmp_exclude_raw.txt
+    clean_domains() {
+        local input_file=$1
+        local output_file=$2
 
-  if [ -s .tmp_exclude_raw.txt ]; then
-    awk -F'.' '
-      BEGIN {
-        sfx_count = split("co.uk com.cn net.cn org.cn gov.cn ac.uk gov.uk co.jp or.jp", sfx_arr, " ")
-      }
-      {
-        host = $0
-        n = NF
-        if (n <= 2) {
-          print host
-          next
-        }
-        kept = ""
-        matched = 0
-        for (i = 1; i <= sfx_count; i++) {
-          suf = sfx_arr[i]
-          suf_regex = "\\." suf "$"
-          if (host ~ suf_regex) {
-            if (n >= 3) {
-              kept = $(n-2) "." $(n-1) "." $n
-            } else {
-              kept = host
-            }
-            matched = 1
-            break
-          }
-        }
-        if (!matched) {
-          kept = $(n-1) "." $n
-        }
-        print kept
-      }
-    ' .tmp_exclude_raw.txt | sort -u > .tmp_exclude_from_atat.txt
+        echo "🧹 正在清洗规则..."
+        
+        # 解释 sed/grep 管道操作：
+        # 1. dos2unix: 移除 Windows 换行符 \r
+        # 2. grep -v: 移除包含 DOMAIN-KEYWORD 的行
+        # 3. sed 移除注释: 移除行首的 ! 和 #
+        # 4. sed 移除修饰符: 移除 || 和 ^
+        # 5. sed 移除前缀: 移除 DOMAIN-SUFFIX, 和 DOMAIN,
+        # 6. sed 移除行尾注释: 移除行内 $ 或 # 及其后面的内容
+        # 7. tr: 转小写 (方便去重)
+        # 8. sed 清理: 移除行首行尾空格
+        # 9. awk: 过滤只包含点号的合法域名 (排除纯单词)
+        
+        cat "$input_file" \
+        | tr -d '\r' \
+        | grep -v "DOMAIN-KEYWORD" \
+        | sed 's/^[!#].*//g' \
+        | sed 's/||//g; s/\^//g' \
+        | sed 's/DOMAIN-SUFFIX,//g; s/DOMAIN,//g' \
+        | sed 's/[\$#].*//g' \
+        | tr 'A-Z' 'a-z' \
+        | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+        | awk '/\./ {print $0}' \
+        | sort -u > "$output_file"
+    }
 
-    # 将提取到的放行域名合并到 exclude.txt 并去重
-    cat exclude.txt .tmp_exclude_from_atat.txt | sort -u > .tmp_exclude_combined && mv .tmp_exclude_combined exclude.txt
-    rm -f .tmp_exclude_from_atat.txt
-  fi
+    optimize_domains() {
+        local input_file=$1
+        local output_file=$2
 
-  rm -f .tmp_exclude_raw.txt
-  # --- END: 提取 @@ 放行并合并到 exclude.txt ---
+        echo "🧠 正在执行智能去重 (主域名覆盖子域名)..."
+        
+        # 算法说明：
+        # 1. rev: 将域名反转 (google.com -> moc.elgoog)
+        # 2. sort: 排序。这样 ad.google.com (moc.elgoog.da) 会紧挨着 google.com (moc.elgoog)
+        # 3. awk: 比较当前行是否以"上一行+."开头。如果是，说明是子域名，丢弃。
+        # 4. rev: 翻转回来
+        
+        cat "$input_file" \
+        | rev \
+        | sort \
+        | awk 'NR==1 {prev=$0; print; next} {if (index($0, prev ".") != 1) {print; prev=$0}}' \
+        | rev \
+        | sort > "$output_file"
+    }
 
-  # 移除注释+空行+无法识别规则
-  sed -E '/\*/d; s/^[[:space:]]*//; /^[A-Za-z0-9]/!d' rules.txt > combined_raw.txt
+    apply_whitelist() {
+        local block_file=$1
+        local allow_file=$2
+        local final_file=$3
 
-  # 标准化域名
-  sed -E 's/^[\+\*\.]+//g' combined_raw.txt | grep -v '^$' | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:]]*$//' > normalized.txt
+        echo "🛡️  正在应用白名单过滤..."
+        
+        # 使用 awk 读取白名单到数组，然后遍历黑名单进行过滤
+        # 比 grep -vf 快得多，且不需要两个文件都严格排序
+        
+        awk 'NR==FNR {whitelist[$0]=1; next} !whitelist[$0]' "$allow_file" "$block_file" > "$final_file"
+    }
 
-  # 排序并去重
-  sort normalized.txt | uniq >unique_domains.txt
-  
-  # 关键词文件过滤
-  #grep -v -f "scripts/exclude-keyword.txt" unique_domains.txt | grep -v '^DOMAIN-KEYWORD' | grep -v '^DOMAIN' >filtered_domains.txt
+    # ================= 主程序流程 =================
 
-  # --- BEGIN: 移除被包含的域（兼容无关联数组环境） ---
-  awk -F'.' '{print NF, $0}' unique_domains.txt \
-    | sort -n -k1,1 \
-    | cut -d' ' -f2- \
-    | awk '{
-        d[$0]=1
-        parts[$0]=$0
-      }
-      END {
-        for (x in parts) {
-          split(x,a,".")
-          keep=1
-          for(i=2;i<=length(a);i++){
-            p=""
-            for(j=i;j<=length(a);j++){
-              p = p (p?".":"") a[j]
-            }
-            if (p!=x && p in d) { keep=0; break }
-          }
-          if (keep) print x
-        }
-      }' \
-    | awk 'NR==1{print;prev=$0;next}{ if(!seen[$0]++){print}}' \
-    > unique_noncov.txt
-  # --- END: 移除被包含的域 ---
+    echo "=== 脚本开始运行 ==="
 
-  # 在原有基础上，额外排除 exclude.txt 中的域名
-  grep -v -f "scripts/exclude-keyword.txt" unique_noncov.txt \
-    | grep -v -F -f exclude.txt \
-    | grep -v '^DOMAIN-KEYWORD' | grep -v '^DOMAIN' >filtered_domains.txt
+    # 1. 下载并合并拦截规则
+    download_files "${WORK_DIR}/raw_block.txt" "${BLOCK_URLS[@]}"
 
-  # 处理域名：添加 +. 前缀（DOMAIN-KEYWORD 除外）
-  awk '{
-        # 去除行首尾空格
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0);
-        if (length($0) == 0 || $0 == ".") next;
-        if ($0 ~ /^DOMAIN-KEYWORD/) {
-            print $0
-        } else {
-            print "+." $0
-        }
-    }' filtered_domains.txt >ADs_merged.txt
+    # 2. 下载并合并白名单规则
+    download_files "${WORK_DIR}/raw_allow.txt" "${ALLOW_URLS[@]}"
 
-  # 再次确保没有仅包含 "+." 的行（双重保险）
-  sed -i '/^\+\.$/d' ADs_merged.txt
+    # 3. 清洗拦截规则
+    clean_domains "${WORK_DIR}/raw_block.txt" "${WORK_DIR}/clean_block.txt"
 
-  mihomo convert-ruleset domain text ADs_merged.txt ADs_merged.mrs
+    # 4. 清洗白名单 (白名单也必须清洗，否则格式对不上无法剔除)
+    clean_domains "${WORK_DIR}/raw_allow.txt" "${WORK_DIR}/clean_allow.txt"
 
-  # Surge compatible
-  sed -i 's/+./DOMAIN-SUFFIX,/g' ADs_merged.txt
+    # 5. 智能优化拦截规则 (去除被包含的子域名)
+    optimize_domains "${WORK_DIR}/clean_block.txt" "${WORK_DIR}/optimized_block.txt"
 
-  # 添加计数和时间戳
-  count=$(wc -l <ADs_merged.txt)
-  current_date=$(date +"%Y-%m-%d %H:%M:%S")
-  temp_file=$(mktemp)
-  echo "# Count: $count, Updated: $current_date" >"$temp_file"
-  cat ADs_merged.txt >>"$temp_file"
-  mv "$temp_file" ADs_merged.txt
-}
+    # 6. 应用白名单剔除
+    apply_whitelist "${WORK_DIR}/optimized_block.txt" "${WORK_DIR}/clean_allow.txt" "$OUTPUT_FILE"
+
+    # 统计
+    COUNT=$(wc -l < "$OUTPUT_FILE")
+    echo "✅ 任务完成！"
+    echo "📂 输出文件: $OUTPUT_FILE"
+    echo "📊 最终规则行数: $COUNT"
+
+    mihomo convert-ruleset domain text ADs_merged.txt ADs_merged.mrs
+
+    # Surge compatible
+    sed -i 's/+./DOMAIN-SUFFIX,/g' ADs_merged.txt
+
+    # 添加计数和时间戳
+    count=$(wc -l <ADs_merged.txt)
+    current_date=$(date +"%Y-%m-%d %H:%M:%S")
+    temp_file=$(mktemp)
+    echo "# Count: $count, Updated: $current_date" >"$temp_file"
+    cat ADs_merged.txt >>"$temp_file"
+    mv "$temp_file" ADs_merged.txt
+  }
 
 # 函数：生成 AIs_merged.txt
 generate_ais_merged() {
