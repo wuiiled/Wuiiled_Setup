@@ -43,7 +43,7 @@ generate_ads_merged() {
         done
     }
 
-    # 核心清洗函数：增加严格的字符校验
+    # 核心清洗函数 (包含 IP 过滤)
     normalize_domain() {
         # 1. 转小写 + 移除 Windows 换行符
         tr 'A-Z' 'a-z' | tr -d '\r' \
@@ -58,16 +58,18 @@ generate_ads_merged() {
         | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
         | grep -v "*" \
         | grep -v "[^a-z0-9.-]" \
+        | grep -vE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' \
         | grep -E '^[a-z0-9]' \
         | grep -E '[a-z0-9]$' \
         | awk '/\./ {print $0}'
     }
-    # 解释新增的过滤逻辑：
-    # grep -v "*"           : 【关键】剔除所有包含星号通配符的行 (解决 bondzgi* 问题)
-    # grep -v "[^a-z0-9.-]" : 【严格】剔除包含除 a-z, 0-9, ., - 以外字符的行 (剔除下划线、问号等非法域名字符)
+    # 清洗逻辑详解：
+    # grep -vE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' : 【新功能】使用正则剔除 IPv4 地址 (如 192.168.1.1)
+    # grep -v "*"           : 剔除包含通配符的行
+    # grep -v "[^a-z0-9.-]" : 剔除包含乱码/特殊符号的行
     # grep -E '^[a-z0-9]'   : 开头必须是字母或数字
-    # grep -E '[a-z0-9]$'   : 结尾必须是字母或数字 (剔除结尾是 . 或 - 的行)
-    # awk '/\./'            : 必须包含至少一个点
+    # grep -E '[a-z0-9]$'   : 结尾必须是字母或数字
+    # awk '/\./'            : 必须包含点 (排除纯单词)
 
     process_blocklist() {
         local input_file=$1
@@ -76,10 +78,10 @@ generate_ads_merged() {
 
         echo "🧹 正在处理拦截规则..."
         
-        # 提取 @@ 规则 (AdBlock 白名单)
+        # 提取 @@ 规则 (AdBlock 白名单) -> 清洗后存入临时白名单
         grep "^@@" "$input_file" | sed 's/^@@//g' | normalize_domain > "$output_allow_extra"
 
-        # 提取正常规则
+        # 提取正常规则 -> 清洗后存入拦截列表
         grep -v "^@@" "$input_file" | normalize_domain | sort -u > "$output_block"
     }
 
@@ -99,9 +101,12 @@ generate_ads_merged() {
 
         echo "🛡️  正在应用白名单过滤..."
 
+        # 准备白名单：反转 + 加标记
         cat "$allow_file" | rev | sed 's/$/!/' > "${WORK_DIR}/allow_rev_tagged.txt"
+        # 准备黑名单：反转
         cat "$block_file" | rev > "${WORK_DIR}/block_rev.txt"
 
+        # 排序并过滤
         cat "${WORK_DIR}/allow_rev_tagged.txt" "${WORK_DIR}/block_rev.txt" \
         | sort \
         | awk '
@@ -131,20 +136,22 @@ generate_ads_merged() {
     download_files "${WORK_DIR}/raw_block_all.txt" "${BLOCK_URLS[@]}"
     download_files "${WORK_DIR}/raw_allow_all.txt" "${ALLOW_URLS[@]}"
 
-    # 2. 清洗黑名单
+    # 2. 清洗黑名单 (分离 @@)
+    # 注意：process_blocklist 内部调用了 normalize_domain，会自动去除 IP
     process_blocklist "${WORK_DIR}/raw_block_all.txt" "${WORK_DIR}/clean_block.txt" "${WORK_DIR}/raw_allow_extra.txt"
 
     # 3. 清洗并合并白名单
+    # 【满足要求1】：白名单先经过 normalize_domain (去 IP、去修饰符) 成为纯域名后，才会被用于后续过滤
     cat "${WORK_DIR}/raw_allow_all.txt" "${WORK_DIR}/raw_allow_extra.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_allow.txt"
 
-    # 4. 自我优化
+    # 4. 自我优化去重 (此时全是纯域名，IP已被剔除)
     optimize_list "${WORK_DIR}/clean_block.txt" "${WORK_DIR}/opt_block.txt"
     optimize_list "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/opt_allow.txt"
 
-    # 5. 过滤
+    # 5. 白名单过滤 (使用清洗过的白名单 过滤 清洗过的黑名单)
     advanced_whitelist_filter "${WORK_DIR}/opt_block.txt" "${WORK_DIR}/opt_allow.txt" "${WORK_DIR}/final_pure.txt"
 
-    # 6. 添加前缀
+    # 6. 添加前缀 (+.) 并输出
     add_final_prefix "${WORK_DIR}/final_pure.txt" "$OUTPUT_FILE"
 
     # 统计
@@ -153,10 +160,8 @@ generate_ads_merged() {
     echo "📂 输出文件: $OUTPUT_FILE"
     echo "📊 最终规则行数: $COUNT"
 
-    mihomo convert-ruleset domain text ADs_merged.txt ADs_merged.mrs
-
     # Surge compatible
-    sed -i 's/+./DOMAIN-SUFFIX,/g' ADs_merged.txt
+    #sed -i 's/+./DOMAIN-SUFFIX,/g' ADs_merged.txt
 
     # 添加计数和时间戳
     count=$(wc -l <ADs_merged.txt)
