@@ -43,11 +43,10 @@ generate_ads_merged() {
         done
     }
 
-    # 核心清洗函数：解决前缀残留和非法字符问题
+    # 核心清洗函数：增加严格的字符校验
     normalize_domain() {
-        # 1. 移除 Windows 换行符
-        # 2. 立即全部转为小写 (关键：确保后续正则能匹配所有大小写变体的 DOMAIN-SUFFIX)
-        tr -d '\r' | tr 'A-Z' 'a-z' \
+        # 1. 转小写 + 移除 Windows 换行符
+        tr 'A-Z' 'a-z' | tr -d '\r' \
         | sed 's/[\$#].*//g' \
         | sed -E 's/^(0\.0\.0\.0|127\.0\.0\.1)[[:space:]]+//g' \
         | sed 's/||//g; s/\^//g' \
@@ -57,13 +56,18 @@ generate_ads_merged() {
         | sed 's/^domain,//g' \
         | awk -F, '{print $1}' \
         | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+        | grep -v "*" \
+        | grep -v "[^a-z0-9.-]" \
         | grep -E '^[a-z0-9]' \
+        | grep -E '[a-z0-9]$' \
         | awk '/\./ {print $0}'
     }
-    # 解释：
-    # sed -E 's/^[[:space:]]*//' : 先把行首空格删掉，防止 "  DOMAIN-SUFFIX" 这种匹配不到
-    # sed 's/^domain-suffix,//g' : 删掉开头的修饰符 (因为前面转了小写，这里写小写即可)
-    # grep -E '^[a-z0-9]'        : 【要求1】只保留数字或字母开头的行
+    # 解释新增的过滤逻辑：
+    # grep -v "*"           : 【关键】剔除所有包含星号通配符的行 (解决 bondzgi* 问题)
+    # grep -v "[^a-z0-9.-]" : 【严格】剔除包含除 a-z, 0-9, ., - 以外字符的行 (剔除下划线、问号等非法域名字符)
+    # grep -E '^[a-z0-9]'   : 开头必须是字母或数字
+    # grep -E '[a-z0-9]$'   : 结尾必须是字母或数字 (剔除结尾是 . 或 - 的行)
+    # awk '/\./'            : 必须包含至少一个点
 
     process_blocklist() {
         local input_file=$1
@@ -95,12 +99,9 @@ generate_ads_merged() {
 
         echo "🛡️  正在应用白名单过滤..."
 
-        # 准备白名单：反转 + 加标记
         cat "$allow_file" | rev | sed 's/$/!/' > "${WORK_DIR}/allow_rev_tagged.txt"
-        # 准备黑名单：反转
         cat "$block_file" | rev > "${WORK_DIR}/block_rev.txt"
 
-        # 排序并过滤
         cat "${WORK_DIR}/allow_rev_tagged.txt" "${WORK_DIR}/block_rev.txt" \
         | sort \
         | awk '
@@ -119,7 +120,6 @@ generate_ads_merged() {
         local output_file=$2
         
         echo "✨ 正在添加最终前缀 (+.)..."
-        # 【要求3】在所有域名前添加 +.
         sed 's/^/+./' "$input_file" > "$output_file"
     }
 
@@ -131,20 +131,20 @@ generate_ads_merged() {
     download_files "${WORK_DIR}/raw_block_all.txt" "${BLOCK_URLS[@]}"
     download_files "${WORK_DIR}/raw_allow_all.txt" "${ALLOW_URLS[@]}"
 
-    # 2. 清洗黑名单 (分离 @@)
+    # 2. 清洗黑名单
     process_blocklist "${WORK_DIR}/raw_block_all.txt" "${WORK_DIR}/clean_block.txt" "${WORK_DIR}/raw_allow_extra.txt"
 
     # 3. 清洗并合并白名单
     cat "${WORK_DIR}/raw_allow_all.txt" "${WORK_DIR}/raw_allow_extra.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_allow.txt"
 
-    # 4. 自我优化去重 (此时全是纯域名，没有 +.)
+    # 4. 自我优化
     optimize_list "${WORK_DIR}/clean_block.txt" "${WORK_DIR}/opt_block.txt"
     optimize_list "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/opt_allow.txt"
 
-    # 5. 白名单过滤 (此时全是纯域名，进行逻辑比对)
+    # 5. 过滤
     advanced_whitelist_filter "${WORK_DIR}/opt_block.txt" "${WORK_DIR}/opt_allow.txt" "${WORK_DIR}/final_pure.txt"
 
-    # 6. 【要求3】添加前缀 +. 并输出最终文件
+    # 6. 添加前缀
     add_final_prefix "${WORK_DIR}/final_pure.txt" "$OUTPUT_FILE"
 
     # 统计
