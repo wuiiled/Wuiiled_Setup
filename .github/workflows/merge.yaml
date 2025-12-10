@@ -34,7 +34,7 @@ jobs:
       run: |
         bash scripts/convert.sh ais
         
-    - name: Convert Fake_IP_Fliter Rules into mrs
+    - name: Convert Fake_IP_Filter Rules into mrs
       run: |
         bash scripts/convert.sh fakeip
 
