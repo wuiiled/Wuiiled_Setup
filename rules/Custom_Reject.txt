@@ -10,3 +10,4 @@ jddebug.com
 stun.syncthing.net
 d.mentuan.net
 upotv.cn
+edge.mountaintoys.cn
