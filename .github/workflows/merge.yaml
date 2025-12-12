@@ -1,4 +1,4 @@
-name: Merge Rules
+name: Merge Rules All-in-One
 
 on:
   schedule:
@@ -6,8 +6,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  merge-and-clean:
+  merge-and-generate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       TZ: 'Asia/Shanghai'
 
@@ -22,123 +24,204 @@ jobs:
 
     - name: Install mihomo
       run: |
+        echo "Installing mihomo..."
         version=$(curl -skL https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt)
         curl -skLo mihomo.deb "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/mihomo-linux-amd64-$version.deb"
         sudo dpkg -i mihomo.deb
 
     - name: Run Existing Conversion Scripts
       run: |
-        # 这些脚本会在根目录生成 .txt 和 .mrs 文件
+        # 运行仓库自带脚本，生成 ADs_merged.txt 等基础文件
         bash scripts/convert.sh ads
         bash scripts/convert.sh ais
         bash scripts/convert.sh fakeip
 
-    - name: Download and Process Rules
+    - name: Process All Rules
       shell: bash
       run: |
-        mkdir -p rules temp-rules
-
-        # === 定义处理函数 ===
+        # =======================================================
+        #                 1. 配置区域
+        # =======================================================
         
-        # 1. 通用处理
-        process_generic() {
-            local url=$1
-            local name=$2
-            echo "Processing $name..."
-            curl -skL "$url" | sed '/^#/d' | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,/+./g' | grep -v PROCESS-NAME | grep -v '^$' > "temp-rules/$name.txt"
-        }
-
-        # 2. SKK 专用处理
-        process_skk() {
-            local url=$1
-            local name=$2
-            echo "Processing SKK $name..."
-            curl -skL "$url" | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > "temp-rules/$name.txt"
-        }
-
-        # 3. 直接下载
-        download_raw() {
-            local url=$1
-            local name=$2
-            echo "Downloading $name..."
-            curl -skL "$url" -o "temp-rules/$name.txt"
-        }
-
-        # === 并行下载任务 ===
+        # --- Mihomo & 通用源 ---
         
-        process_generic "https://raw.githubusercontent.com/Repcz/Tool/refs/heads/X/mihomo/Rules/AppleProxy.list" "AppleProxy" &
-        process_generic "https://raw.githubusercontent.com/Repcz/Tool/refs/heads/X/mihomo/Rules/AppleCN.list" "AppleCN" &
-        process_generic "https://raw.githubusercontent.com/ForestL18/rules-dat/refs/heads/mihomo/geo/classical/private.list" "private" &
-
-        declare -A skk_list=(
-            ["alibaba"]="https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/alibaba.txt"
-            ["tencent"]="https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/tencent.txt"
-            ["bilibili"]="https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/bilibili.txt"
-            ["xiaomi"]="https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/xiaomi.txt"
-            ["bytedance"]="https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/bytedance.txt"
-            ["baidu"]="https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/baidu.txt"
-            ["qihoo360"]="https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/qihoo360.txt"
-            ["download"]="https://ruleset.skk.moe/Clash/domainset/download.txt"
+        # A. 通用规则
+        LIST_GENERIC=(
+            "AppleProxy|https://raw.githubusercontent.com/Repcz/Tool/refs/heads/X/mihomo/Rules/AppleProxy.list"
+            "AppleCN|https://raw.githubusercontent.com/Repcz/Tool/refs/heads/X/mihomo/Rules/AppleCN.list"
+            "private|https://raw.githubusercontent.com/ForestL18/rules-dat/refs/heads/mihomo/geo/classical/private.list"
         )
-        for name in "${!skk_list[@]}"; do
-            process_skk "${skk_list[$name]}" "$name" &
-        done
 
-        base_url="https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules"
-        files=("Custom_DNS_DOMAIN" "Custom_DNS_IP" "Custom_Direct_DOMAIN" "Custom_Direct_IP" "Custom_Emby" "Custom_Proxy" "Fake_ip_filter_addon")
-        for f in "${files[@]}"; do
-            download_raw "$base_url/$f.txt" "$f" &
-        done
+        # B. SKK 规则 (用于 Mihomo 和 MosDNS)
+        LIST_SKK=(
+            "alibaba|https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/alibaba.txt"
+            "tencent|https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/tencent.txt"
+            "bilibili|https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/bilibili.txt"
+            "xiaomi|https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/xiaomi.txt"
+            "bytedance|https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/bytedance.txt"
+            "baidu|https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/baidu.txt"
+            "qihoo360|https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/qihoo360.txt"
+            "download|https://ruleset.skk.moe/Clash/domainset/download.txt"
+        )
 
-        wait
-        echo "All downloads finished."
+        # C. 原样下载 (用于 Mihomo)
+        LIST_RAW=(
+            "Custom_DNS_DOMAIN|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_DNS_DOMAIN.txt"
+            "Custom_DNS_IP|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_DNS_IP.txt"
+            "Custom_Direct_DOMAIN|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Direct_DOMAIN.txt"
+            "Custom_Direct_IP|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Direct_IP.txt"
+            "Custom_Emby|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Emby.txt"
+            "Custom_Proxy|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Proxy.txt"
+            "Fake_ip_filter_addon|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Fake_ip_filter_addon.txt"
+        )
 
-    - name: Convert to MRS and Organize
-      run: |
-        # 1. 处理 temp-rules 中的新下载文件
-        cd temp-rules
+        # --- ADG 专用源 ---
+        URL_HTTPDNS="https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/category-httpdns-cn.list"
+        URL_PCDN="https://raw.githubusercontent.com/wuiiled/PCDN-mihomo-list/refs/heads/main/pcdn.list"
+
+        # =======================================================
+        #                 2. 准备工作
+        # =======================================================
+        
+        # 创建工作目录
+        mkdir -p temp_ws output/mihomo output/adg output/mosdns-x
+
+        # 检查本地是否有 convert.sh 生成的 ADs_merged.txt
+        # 如果没有则下载备用，保证后续流程不报错
+        if [ ! -f "ADs_merged.txt" ]; then
+            echo "Local ADs_merged.txt not found, downloading..."
+            curl -skLo "ADs_merged.txt" "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/mihomo/rules/ADs_merged.txt"
+        fi
+
+        # =======================================================
+        #                 3. 处理逻辑 - Mihomo
+        # =======================================================
+        echo ">>> Processing Mihomo Rules..."
+        
+        func_mihomo_generic() {
+            curl -skL "$2" | sed '/^#/d' | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,/+./g' | grep -v PROCESS-NAME | grep -v '^$' > "temp_ws/$1.txt"
+        }
+        func_mihomo_skk() {
+            curl -skL "$2" | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > "temp_ws/$1.txt"
+        }
+        func_mihomo_raw() {
+            curl -skL "$2" -o "temp_ws/$1.txt"
+        }
+
+        # 3.1 下载
+        for i in "${LIST_GENERIC[@]}"; do IFS='|' read -r n u <<< "$i"; func_mihomo_generic "$n" "$u" & done
+        for i in "${LIST_SKK[@]}"; do IFS='|' read -r n u <<< "$i"; func_mihomo_skk "$n" "$u" & done
+        for i in "${LIST_RAW[@]}"; do IFS='|' read -r n u <<< "$i"; func_mihomo_raw "$n" "$u" & done
+        
+        wait 
+
+        # 3.2 转换格式
+        cd temp_ws
         for file in *.txt; do
             filename=$(basename "$file" .txt)
-            echo "Converting $filename..."
-            
             rule_type="domain"
-            if [[ "$filename" == *"_IP"* ]]; then
-                rule_type="ipcidr"
-            fi
-            
+            [[ "$filename" == *"_IP"* ]] && rule_type="ipcidr"
             mihomo convert-ruleset "$rule_type" text "$file" "$filename.mrs"
         done
         cd ..
 
-        # 2. 收集文件到 rules 目录
-        
-        # A. 移动并行下载生成的 mrs
-        mv temp-rules/*.mrs rules/
-        
-        # B. 移动 convert.sh 生成在根目录的 mrs (这里处理你的 convert.sh 生成的文件)
-        # 使用 2>/dev/null 防止没有文件时报错
-        mv *.mrs rules/ 2>/dev/null || true
-        
-        # C. 移动需要保留的 txt (SKK系列 + convert.sh 生成的 merged txt)
-        mv temp-rules/{alibaba,tencent,bilibili,xiaomi,bytedance,baidu,qihoo360,download}.txt rules/ 2>/dev/null || true
-        mv *_merged.txt rules/ 2>/dev/null || true
-        
-        # 清理临时目录
-        rm -rf temp-rules
+        # 3.3 归档 Mihomo
+        mv temp_ws/*.mrs output/mihomo/
+        mv temp_ws/*.txt output/mihomo/
+        # 收集根目录脚本产物
+        mv *.mrs output/mihomo/ 2>/dev/null || true
+        cp *_merged.txt output/mihomo/ 2>/dev/null || true # 使用 cp 因为后续任务还需要 ADs_merged.txt
 
-    - name: Commit and push changes
+        # =======================================================
+        #                 4. 处理逻辑 - AdGuard (ADG)
+        # =======================================================
+        echo ">>> Processing ADG Rules..."
+        
+        # 4.1 ADs_merged (转 ADG 格式)
+        cat ADs_merged.txt | sed '/^$/d; s/DOMAIN-SUFFIX,/||/g; s/$/^/' > output/adg/ADs_merged_adg.txt
+        
+        # 4.2 Httpdns
+        curl -skL "$URL_HTTPDNS" | sed '/^$/d; s/+./||/g; s/$/^/' > output/adg/Httpdns_adg.txt &
+
+        # 4.3 PCDN
+        curl -skL "$URL_PCDN" | sed '/DOMAIN-REGEX,/d; /^#/d; /^$/d; s/DOMAIN-SUFFIX,/||/g; s/DOMAIN,/||/g; s/$/^/' > output/adg/PCDN_adg.txt &
+
+        wait
+
+        # =======================================================
+        #                 5. 处理逻辑 - MosDNS-X
+        # =======================================================
+        echo ">>> Processing MosDNS-X Rules..."
+
+        # 5.1 ADs_merged (转 MosDNS 格式)
+        # 逻辑：删除空行 -> 删除 DOMAIN-SUFFIX, -> 删除行首的 +.
+        cat ADs_merged.txt | sed '/^$/d; s/DOMAIN-SUFFIX,//g; s/^\+\.//g' > output/mosdns-x/ad_domain_list.txt
+
+        # 5.2 SKK Providers (转 MosDNS 格式: domain:/full:)
+        # 重用 LIST_SKK 列表，但应用不同的 sed 逻辑
+        func_mosdns_skk() {
+            local name=$1
+            local url=$2
+            # 排除 download.txt (通常不做 provider 用)
+            if [[ "$name" == "download" ]]; then return; fi
+
+            echo "MosDNS: $name"
+            curl -skL "$url" | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/domain:/; s/^DOMAIN,/full:/' > "output/mosdns-x/$name.txt"
+        }
+
+        for i in "${LIST_SKK[@]}"; do 
+            IFS='|' read -r name url <<< "$i"
+            func_mosdns_skk "$name" "$url" & 
+        done
+
+        wait
+
+        # =======================================================
+        #                 6. 最终清理
+        # =======================================================
+        rm -rf temp_ws
+        # 删除根目录残留的 merged txt (已经 cp 到了 output/mihomo)
+        rm -f *_merged.txt 
+        
+        echo "All processing complete."
+        echo "Mihomo files:" && ls output/mihomo | wc -l
+        echo "ADG files:" && ls output/adg
+        echo "MosDNS files:" && ls output/mosdns-x
+
+    # --- 任务 A: 推送 Mihomo ---
+    - name: Push to Mihomo branch
       run: |
-        CURRENT_TIME=$(date +"%Y-%m-%d %H:%M")
         git config user.name 'github-actions[bot]'
         git config user.email 'github-actions[bot]@users.noreply.github.com'
         git checkout --orphan mihomo
         git rm -rf .
-        
-        # 此时 rules/ 目录下已经包含了所有来源的 mrs 和 txt
+        mkdir -p rules
+        cp -r output/mihomo/* rules/
         git add rules/*
-        
-        git commit -m "Auto Update $CURRENT_TIME"
+        git commit -m "Auto Update Mihomo $(date +"%Y-%m-%d %H:%M")"
         git push -f origin mihomo
+
+    # --- 任务 B: 推送 ADG ---
+    - name: Push to ADG branch
+      run: |
+        git checkout --orphan adg
+        git rm -rf .
+        mkdir -p rules
+        cp -r output/adg/* rules/
+        git add rules/*
+        git commit -m "Auto Update ADG $(date +"%Y-%m-%d %H:%M")"
+        git push -f origin adg
+
+    # --- 任务 C: 推送 MosDNS-X ---
+    - name: Push to MosDNS-X branch
+      run: |
+        git checkout --orphan mosdns-x
+        git rm -rf .
+        mkdir -p rules
+        cp -r output/mosdns-x/* rules/
+        git add rules/*
+        git commit -m "Auto Update MosDNS $(date +"%Y-%m-%d %H:%M")"
+        git push -f origin mosdns-x
 
     - name: Delete workflow runs
       uses: Mattraks/delete-workflow-runs@main
