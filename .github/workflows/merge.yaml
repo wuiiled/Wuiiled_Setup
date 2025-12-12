@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     env:
       TZ: 'Asia/Shanghai'
 
@@ -31,7 +32,6 @@ jobs:
 
     - name: Run Existing Conversion Scripts
       run: |
-        # 运行仓库自带脚本，生成 ADs_merged.txt 等基础文件
         bash scripts/convert.sh ads
         bash scripts/convert.sh ais
         bash scripts/convert.sh fakeip
@@ -129,13 +129,13 @@ jobs:
         # =======================================================
         echo ">>> Processing ADG Rules..."
         
-        # 4.1 ADs_merged (转 ADG 格式)
+        # 4.1 ADs_merged
         cat ADs_merged.txt | sed '
-            /^$/d;                      # 删除空行
-            s/^DOMAIN-SUFFIX,/||/g;     # 转换 DOMAIN-SUFFIX
-            s/^DOMAIN,/||/g;            # 转换 DOMAIN
-            s/^\+\./||/g;               # 转换 +.
-            /^#/!s/$/^/                 # 仅对非注释行添加结尾 ^
+            /^$/d;                      
+            s/^DOMAIN-SUFFIX,/||/g;     
+            s/^DOMAIN,/||/g;            
+            s/^\+\./||/g;               
+            /^#/!s/$/^/                 
         ' > output/adg/ADs_merged_adg.txt
         
         # 4.2 Httpdns
