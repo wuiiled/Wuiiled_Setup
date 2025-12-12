@@ -83,11 +83,9 @@ jobs:
         #                 2. 准备工作
         # =======================================================
         
-        # 创建工作目录
         mkdir -p temp_ws output/mihomo output/adg output/mosdns-x
 
-        # 检查本地是否有 convert.sh 生成的 ADs_merged.txt
-        # 如果没有则下载备用，保证后续流程不报错
+        # 检查本地是否有 ADs_merged.txt，没有则下载
         if [ ! -f "ADs_merged.txt" ]; then
             echo "Local ADs_merged.txt not found, downloading..."
             curl -skLo "ADs_merged.txt" "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/mihomo/rules/ADs_merged.txt"
@@ -128,23 +126,38 @@ jobs:
         # 3.3 归档 Mihomo
         mv temp_ws/*.mrs output/mihomo/
         mv temp_ws/*.txt output/mihomo/
-        # 收集根目录脚本产物
         mv *.mrs output/mihomo/ 2>/dev/null || true
-        cp *_merged.txt output/mihomo/ 2>/dev/null || true # 使用 cp 因为后续任务还需要 ADs_merged.txt
+        cp *_merged.txt output/mihomo/ 2>/dev/null || true
 
         # =======================================================
         #                 4. 处理逻辑 - AdGuard (ADG)
         # =======================================================
         echo ">>> Processing ADG Rules..."
         
-        # 4.1 ADs_merged (转 ADG 格式)
-        cat ADs_merged.txt | sed '/^$/d; s/DOMAIN-SUFFIX,/||/g; s/$/^/' > output/adg/ADs_merged_adg.txt
+        # [修复重点]: 增加了 s/^\+\./||/g 来处理 Mihomo 格式的 +., 
+        # 同时保留 s/^DOMAIN-SUFFIX,/||/g 以防源文件格式变动
         
-        # 4.2 Httpdns
-        curl -skL "$URL_HTTPDNS" | sed '/^$/d; s/+./||/g; s/$/^/' > output/adg/Httpdns_adg.txt &
+        # 4.1 ADs_merged (转 ADG 格式)
+        cat ADs_merged.txt | sed '
+            /^$/d;                      # 删除空行
+            s/^DOMAIN-SUFFIX,/||/g;     # 替换 DOMAIN-SUFFIX, 为 ||
+            s/^DOMAIN,/||/g;            # 替换 DOMAIN, 为 ||
+            s/^\+\./||/g;               # 替换 +. 为 || (修复点)
+            s/$/^/                      # 行尾添加 ^
+        ' > output/adg/ADs_merged_adg.txt
+        
+        # 4.2 Httpdns (修复了正则转义)
+        curl -skL "$URL_HTTPDNS" | sed '/^$/d; s/^\+\./||/g; s/$/^/' > output/adg/Httpdns_adg.txt &
 
         # 4.3 PCDN
-        curl -skL "$URL_PCDN" | sed '/DOMAIN-REGEX,/d; /^#/d; /^$/d; s/DOMAIN-SUFFIX,/||/g; s/DOMAIN,/||/g; s/$/^/' > output/adg/PCDN_adg.txt &
+        curl -skL "$URL_PCDN" | sed '
+            /DOMAIN-REGEX,/d; 
+            /^#/d; /^$/d; 
+            s/DOMAIN-SUFFIX,/||/g; 
+            s/DOMAIN,/||/g; 
+            s/^\+\./||/g;
+            s/$/^/
+        ' > output/adg/PCDN_adg.txt &
 
         wait
 
@@ -154,15 +167,12 @@ jobs:
         echo ">>> Processing MosDNS-X Rules..."
 
         # 5.1 ADs_merged (转 MosDNS 格式)
-        # 逻辑：删除空行 -> 删除 DOMAIN-SUFFIX, -> 删除行首的 +.
         cat ADs_merged.txt | sed '/^$/d; s/DOMAIN-SUFFIX,//g; s/^\+\.//g' > output/mosdns-x/ad_domain_list.txt
 
-        # 5.2 SKK Providers (转 MosDNS 格式: domain:/full:)
-        # 重用 LIST_SKK 列表，但应用不同的 sed 逻辑
+        # 5.2 SKK Providers
         func_mosdns_skk() {
             local name=$1
             local url=$2
-            # 排除 download.txt (通常不做 provider 用)
             if [[ "$name" == "download" ]]; then return; fi
 
             echo "MosDNS: $name"
@@ -180,7 +190,6 @@ jobs:
         #                 6. 最终清理
         # =======================================================
         rm -rf temp_ws
-        # 删除根目录残留的 merged txt (已经 cp 到了 output/mihomo)
         rm -f *_merged.txt 
         
         echo "All processing complete."
