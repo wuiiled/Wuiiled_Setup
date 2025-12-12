@@ -28,7 +28,7 @@ jobs:
 
     - name: Run Existing Conversion Scripts
       run: |
-        # 假设这些脚本会生成 ADs_merged.txt 等文件
+        # 这些脚本会在根目录生成 .txt 和 .mrs 文件
         bash scripts/convert.sh ads
         bash scripts/convert.sh ais
         bash scripts/convert.sh fakeip
@@ -40,7 +40,7 @@ jobs:
 
         # === 定义处理函数 ===
         
-        # 1. 通用处理: 去除注释、去除 DOMAIN 前缀等
+        # 1. 通用处理
         process_generic() {
             local url=$1
             local name=$2
@@ -48,7 +48,7 @@ jobs:
             curl -skL "$url" | sed '/^#/d' | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,/+./g' | grep -v PROCESS-NAME | grep -v '^$' > "temp-rules/$name.txt"
         }
 
-        # 2. SKK 专用处理: 清理 skk.moe 特有的头部和格式
+        # 2. SKK 专用处理
         process_skk() {
             local url=$1
             local name=$2
@@ -56,7 +56,7 @@ jobs:
             curl -skL "$url" | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > "temp-rules/$name.txt"
         }
 
-        # 3. 直接下载: 仅下载不处理 (Wuiiled 系列)
+        # 3. 直接下载
         download_raw() {
             local url=$1
             local name=$2
@@ -64,15 +64,12 @@ jobs:
             curl -skL "$url" -o "temp-rules/$name.txt"
         }
 
-        # === 开始并行任务 ===
+        # === 并行下载任务 ===
         
-        # 组 1: 通用规则
         process_generic "https://raw.githubusercontent.com/Repcz/Tool/refs/heads/X/mihomo/Rules/AppleProxy.list" "AppleProxy" &
         process_generic "https://raw.githubusercontent.com/Repcz/Tool/refs/heads/X/mihomo/Rules/AppleCN.list" "AppleCN" &
         process_generic "https://raw.githubusercontent.com/ForestL18/rules-dat/refs/heads/mihomo/geo/classical/private.list" "private" &
 
-        # 组 2: SKK 规则
-        # 使用数组循环提交后台任务
         declare -A skk_list=(
             ["alibaba"]="https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/alibaba.txt"
             ["tencent"]="https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/tencent.txt"
@@ -87,26 +84,23 @@ jobs:
             process_skk "${skk_list[$name]}" "$name" &
         done
 
-        # 组 3: 自定义规则 (Wuiiled)
         base_url="https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules"
         files=("Custom_DNS_DOMAIN" "Custom_DNS_IP" "Custom_Direct_DOMAIN" "Custom_Direct_IP" "Custom_Emby" "Custom_Proxy" "Fake_ip_filter_addon")
         for f in "${files[@]}"; do
             download_raw "$base_url/$f.txt" "$f" &
         done
 
-        # 等待所有后台下载任务完成
         wait
         echo "All downloads finished."
 
     - name: Convert to MRS and Organize
       run: |
+        # 1. 处理 temp-rules 中的新下载文件
         cd temp-rules
-        
         for file in *.txt; do
             filename=$(basename "$file" .txt)
             echo "Converting $filename..."
             
-            # 自动判断类型: 如果文件名包含 "_IP"，则使用 ipcidr，否则使用 domain
             rule_type="domain"
             if [[ "$filename" == *"_IP"* ]]; then
                 rule_type="ipcidr"
@@ -114,32 +108,33 @@ jobs:
             
             mihomo convert-ruleset "$rule_type" text "$file" "$filename.mrs"
         done
-        
-        # 将生成的 mrs 文件移动到 rules 目录
-        mv *.mrs ../rules/
-        
-        # 根据你原脚本的需求，部分 txt 文件也需要保留并移动
-        # 这里保留 skk 相关的 txt 和 download.txt
-        cp {alibaba,tencent,bilibili,xiaomi,bytedance,baidu,qihoo360,download}.txt ../rules/ 2>/dev/null || true
-        
         cd ..
+
+        # 2. 收集文件到 rules 目录
         
-        # 移动脚本生成的 merged txt 文件 (如果存在)
-        mv ADs_merged.txt AIs_merged.txt Fake_IP_Filter_merged.txt rules/ 2>/dev/null || true
+        # A. 移动并行下载生成的 mrs
+        mv temp-rules/*.mrs rules/
+        
+        # B. 移动 convert.sh 生成在根目录的 mrs (这里处理你的 convert.sh 生成的文件)
+        # 使用 2>/dev/null 防止没有文件时报错
+        mv *.mrs rules/ 2>/dev/null || true
+        
+        # C. 移动需要保留的 txt (SKK系列 + convert.sh 生成的 merged txt)
+        mv temp-rules/{alibaba,tencent,bilibili,xiaomi,bytedance,baidu,qihoo360,download}.txt rules/ 2>/dev/null || true
+        mv *_merged.txt rules/ 2>/dev/null || true
+        
+        # 清理临时目录
+        rm -rf temp-rules
 
     - name: Commit and push changes
       run: |
         CURRENT_TIME=$(date +"%Y-%m-%d %H:%M")
         git config user.name 'github-actions[bot]'
         git config user.email 'github-actions[bot]@users.noreply.github.com'
-        
-        # 切换到孤儿分支 (Orphan Branch)
         git checkout --orphan mihomo
-        
-        # 清空当前暂存区和工作目录 (除了 .git)
         git rm -rf .
         
-        # 只添加 rules 目录下的文件
+        # 此时 rules/ 目录下已经包含了所有来源的 mrs 和 txt
         git add rules/*
         
         git commit -m "Auto Update $CURRENT_TIME"
