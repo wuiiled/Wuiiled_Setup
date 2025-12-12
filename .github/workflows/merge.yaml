@@ -44,15 +44,12 @@ jobs:
         # =======================================================
         
         # --- Mihomo & 通用源 ---
-        
-        # A. 通用规则
         LIST_GENERIC=(
             "AppleProxy|https://raw.githubusercontent.com/Repcz/Tool/refs/heads/X/mihomo/Rules/AppleProxy.list"
             "AppleCN|https://raw.githubusercontent.com/Repcz/Tool/refs/heads/X/mihomo/Rules/AppleCN.list"
             "private|https://raw.githubusercontent.com/ForestL18/rules-dat/refs/heads/mihomo/geo/classical/private.list"
         )
 
-        # B. SKK 规则 (用于 Mihomo 和 MosDNS)
         LIST_SKK=(
             "alibaba|https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/alibaba.txt"
             "tencent|https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/tencent.txt"
@@ -64,7 +61,6 @@ jobs:
             "download|https://ruleset.skk.moe/Clash/domainset/download.txt"
         )
 
-        # C. 原样下载 (用于 Mihomo)
         LIST_RAW=(
             "Custom_DNS_DOMAIN|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_DNS_DOMAIN.txt"
             "Custom_DNS_IP|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_DNS_IP.txt"
@@ -85,7 +81,6 @@ jobs:
         
         mkdir -p temp_ws output/mihomo output/adg output/mosdns-x
 
-        # 检查本地是否有 ADs_merged.txt，没有则下载
         if [ ! -f "ADs_merged.txt" ]; then
             echo "Local ADs_merged.txt not found, downloading..."
             curl -skLo "ADs_merged.txt" "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/mihomo/rules/ADs_merged.txt"
@@ -134,20 +129,17 @@ jobs:
         # =======================================================
         echo ">>> Processing ADG Rules..."
         
-        # [修复重点]: 增加了 s/^\+\./||/g 来处理 Mihomo 格式的 +., 
-        # 同时保留 s/^DOMAIN-SUFFIX,/||/g 以防源文件格式变动
-        
         # 4.1 ADs_merged (转 ADG 格式)
         cat ADs_merged.txt | sed '
             /^$/d;                      # 删除空行
-            s/^DOMAIN-SUFFIX,/||/g;     # 替换 DOMAIN-SUFFIX, 为 ||
-            s/^DOMAIN,/||/g;            # 替换 DOMAIN, 为 ||
-            s/^\+\./||/g;               # 替换 +. 为 || (修复点)
-            s/$/^/                      # 行尾添加 ^
+            s/^DOMAIN-SUFFIX,/||/g;     # 转换 DOMAIN-SUFFIX
+            s/^DOMAIN,/||/g;            # 转换 DOMAIN
+            s/^\+\./||/g;               # 转换 +.
+            /^#/!s/$/^/                 # 仅对非注释行添加结尾 ^
         ' > output/adg/ADs_merged_adg.txt
         
-        # 4.2 Httpdns (修复了正则转义)
-        curl -skL "$URL_HTTPDNS" | sed '/^$/d; s/^\+\./||/g; s/$/^/' > output/adg/Httpdns_adg.txt &
+        # 4.2 Httpdns
+        curl -skL "$URL_HTTPDNS" | sed '/^$/d; s/^\+\./||/g; /^#/!s/$/^/' > output/adg/Httpdns_adg.txt &
 
         # 4.3 PCDN
         curl -skL "$URL_PCDN" | sed '
@@ -156,7 +148,7 @@ jobs:
             s/DOMAIN-SUFFIX,/||/g; 
             s/DOMAIN,/||/g; 
             s/^\+\./||/g;
-            s/$/^/
+            /^#/!s/$/^/
         ' > output/adg/PCDN_adg.txt &
 
         wait
@@ -166,7 +158,7 @@ jobs:
         # =======================================================
         echo ">>> Processing MosDNS-X Rules..."
 
-        # 5.1 ADs_merged (转 MosDNS 格式)
+        # 5.1 ADs_merged
         cat ADs_merged.txt | sed '/^$/d; s/DOMAIN-SUFFIX,//g; s/^\+\.//g' > output/mosdns-x/ad_domain_list.txt
 
         # 5.2 SKK Providers
@@ -174,7 +166,6 @@ jobs:
             local name=$1
             local url=$2
             if [[ "$name" == "download" ]]; then return; fi
-
             echo "MosDNS: $name"
             curl -skL "$url" | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/domain:/; s/^DOMAIN,/full:/' > "output/mosdns-x/$name.txt"
         }
@@ -193,11 +184,8 @@ jobs:
         rm -f *_merged.txt 
         
         echo "All processing complete."
-        echo "Mihomo files:" && ls output/mihomo | wc -l
-        echo "ADG files:" && ls output/adg
-        echo "MosDNS files:" && ls output/mosdns-x
 
-    # --- 任务 A: 推送 Mihomo ---
+    # --- 推送 Mihomo ---
     - name: Push to Mihomo branch
       run: |
         git config user.name 'github-actions[bot]'
@@ -210,7 +198,7 @@ jobs:
         git commit -m "Auto Update Mihomo $(date +"%Y-%m-%d %H:%M")"
         git push -f origin mihomo
 
-    # --- 任务 B: 推送 ADG ---
+    # --- 推送 ADG ---
     - name: Push to ADG branch
       run: |
         git checkout --orphan adg
@@ -221,7 +209,7 @@ jobs:
         git commit -m "Auto Update ADG $(date +"%Y-%m-%d %H:%M")"
         git push -f origin adg
 
-    # --- 任务 C: 推送 MosDNS-X ---
+    # --- 推送 MosDNS-X ---
     - name: Push to MosDNS-X branch
       run: |
         git checkout --orphan mosdns-x
