@@ -113,7 +113,7 @@ generate_ads_merged() {
     BLOCK_URLS=(
         "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt"
         "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Reject.txt"
-        "https://adrules.top/adrules_domainset.txt"
+        #"https://adrules.top/adrules_domainset.txt"
         "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"
         "https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt"
         "https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt"
@@ -121,6 +121,7 @@ generate_ads_merged() {
         "https://raw.githubusercontent.com/ForestL18/rules-dat/mihomo/geo/classical/pcdn.list"
         "https://raw.githubusercontent.com/ForestL18/rules-dat/refs/heads/mihomo/geo/classical/reject.list"
         "https://a.dove.isdumb.one/pihole.txt"
+        "https://raw.githubusercontent.com/limbopro/Adblock4limbo/main/rule/Surge/Adblock4limbo_surge.list"
     )
 
     ALLOW_URLS=(
