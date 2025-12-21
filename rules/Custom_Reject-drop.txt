@@ -9,3 +9,4 @@
 #+.ap.dongdianqiu.com
 +.volceapplog.com
 +.mssdk.volces.com
++.collect.alipay.com
