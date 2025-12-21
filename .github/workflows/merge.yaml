@@ -35,6 +35,7 @@ jobs:
         bash scripts/convert.sh ads
         bash scripts/convert.sh ais
         bash scripts/convert.sh fakeip
+        bash scripts/convert.sh reject
 
     - name: Process All Rules
       shell: bash
