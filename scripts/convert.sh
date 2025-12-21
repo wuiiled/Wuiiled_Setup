@@ -72,7 +72,7 @@ apply_keyword_filter() {
     fi
 }
 
-# 添加最终前缀 (+.) - 仅用于 ADs 和 AI 模块
+# 添加最终前缀 (+.) - 仅用于 ADs, AI 和 Reject Drop 模块
 add_final_prefix() {
     local input_file=$1
     local output_file=$2
@@ -139,7 +139,7 @@ generate_ads_merged() {
     grep "^@@" "${WORK_DIR}/raw_block_all.txt" | sed 's/^@@//g' | normalize_domain > "${WORK_DIR}/raw_allow_extra.txt"
     grep -v "^@@" "${WORK_DIR}/raw_block_all.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_block.txt"
 
-    # 3. 关键词过滤 (仅模块 1)
+    # 3. 关键词过滤
     apply_keyword_filter "${WORK_DIR}/clean_block.txt" "${WORK_DIR}/filtered_block.txt"
 
     # 4. 处理白名单
@@ -254,6 +254,62 @@ generate_Fake_IP_Filter_merged() {
     echo "✅ Fake IP 规则生成完成。"
 }
 
+# ================= 模块 4: Reject Drop (新模块) =================
+
+generate_reject_drop_merged() {
+    echo "=== 开始生成 Reject Drop 规则 ==="
+    OUTPUT_FILE="Reject_Drop_merged.txt"
+
+    # 拦截源 (新)
+    BLOCK_URLS=(
+        "https://ruleset.skk.moe/Clash/non_ip/reject-drop.txt"
+        "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Reject-drop.txt"
+    )
+
+    # 白名单源 (与模块 1 相同)
+    ALLOW_URLS=(
+        "https://raw.githubusercontent.com/Cats-Team/AdRules/refs/heads/script/script/allowlist.txt"
+        "https://raw.githubusercontent.com/mawenjian/china-cdn-domain-whitelist/refs/heads/master/china-cdn-domain-whitelist.txt"
+        "https://raw.githubusercontent.com/zoonderkins/blahdns/refs/heads/master/hosts/whitelist.txt"
+    )
+
+    # 1. 下载
+    download_files "${WORK_DIR}/raw_rd_block_all.txt" "${BLOCK_URLS[@]}"
+    download_files "${WORK_DIR}/raw_rd_allow_all.txt" "${ALLOW_URLS[@]}"
+
+    # 2. 处理拦截规则
+    echo "🧹 处理拦截规则..."
+    grep "^@@" "${WORK_DIR}/raw_rd_block_all.txt" | sed 's/^@@//g' | normalize_domain > "${WORK_DIR}/raw_rd_allow_extra.txt"
+    grep -v "^@@" "${WORK_DIR}/raw_rd_block_all.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_rd_block.txt"
+
+    # 3. 关键词过滤 (与模块 1 逻辑一致)
+    apply_keyword_filter "${WORK_DIR}/clean_rd_block.txt" "${WORK_DIR}/filtered_rd_block.txt"
+
+    # 4. 处理白名单
+    echo "🧹 处理白名单..."
+    cat "${WORK_DIR}/raw_rd_allow_all.txt" "${WORK_DIR}/raw_rd_allow_extra.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_rd_allow.txt"
+
+    # 5. 智能去重
+    optimize_list "${WORK_DIR}/filtered_rd_block.txt" "${WORK_DIR}/opt_rd_block.txt"
+    optimize_list "${WORK_DIR}/clean_rd_allow.txt" "${WORK_DIR}/opt_rd_allow.txt"
+
+    # 6. 白名单剔除
+    echo "🛡️  正在应用白名单过滤..."
+    cat "${WORK_DIR}/opt_rd_allow.txt" | rev | sed 's/$/!/' > "${WORK_DIR}/allow_rev_tagged.txt"
+    cat "${WORK_DIR}/opt_rd_block.txt" | rev > "${WORK_DIR}/block_rev.txt"
+
+    cat "${WORK_DIR}/allow_rev_tagged.txt" "${WORK_DIR}/block_rev.txt" \
+    | sort \
+    | awk '/!$/ { root = substr($0, 1, length($0)-1); next; } { if ($0 == root) next; if (root != "" && index($0, root ".") == 1) next; print; }' \
+    | rev > "${WORK_DIR}/final_rd_pure.txt"
+
+    # 7. 生成最终文件 (添加 +.)
+    add_final_prefix "${WORK_DIR}/final_rd_pure.txt" "$OUTPUT_FILE"
+    convert_to_mrs "$OUTPUT_FILE" "Reject_Drop_merged.mrs"
+    add_header_info "$OUTPUT_FILE"
+    echo "✅ Reject Drop 规则生成完成。"
+}
+
 # ================= 主程序入口 =================
 
 main() {
@@ -267,13 +323,17 @@ main() {
         fakeip)
             generate_Fake_IP_Filter_merged
             ;;
+        reject)
+            generate_reject_drop_merged
+            ;;
         all)
             generate_ads_merged
             generate_ais_merged
             generate_Fake_IP_Filter_merged
+            generate_reject_drop_merged
             ;;
         *)
-            echo "用法: $0 [ads|ais|fakeip|all]"
+            echo "用法: $0 [ads|ais|fakeip|reject|all]"
             exit 1
             ;;
     esac
