@@ -254,57 +254,61 @@ generate_Fake_IP_Filter_merged() {
     echo "✅ Fake IP 规则生成完成。"
 }
 
-# ================= 模块 4: Reject Drop (新模块) =================
+# ================= 模块 4: Reject Drop ======================
 
 generate_reject_drop_merged() {
     echo "=== 开始生成 Reject Drop 规则 ==="
     OUTPUT_FILE="Reject_Drop_merged.txt"
 
-    # 拦截源 (新)
+    # 1. 下载链接 (已修正 wuiiled 链接格式)
     BLOCK_URLS=(
         "https://ruleset.skk.moe/Clash/non_ip/reject-drop.txt"
         "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Reject-drop.txt"
     )
 
-    # 白名单源 (与模块 1 相同)
     ALLOW_URLS=(
         "https://raw.githubusercontent.com/Cats-Team/AdRules/refs/heads/script/script/allowlist.txt"
         "https://raw.githubusercontent.com/mawenjian/china-cdn-domain-whitelist/refs/heads/master/china-cdn-domain-whitelist.txt"
         "https://raw.githubusercontent.com/zoonderkins/blahdns/refs/heads/master/hosts/whitelist.txt"
     )
 
-    # 1. 下载
-    download_files "${WORK_DIR}/raw_rd_block_all.txt" "${BLOCK_URLS[@]}"
-    download_files "${WORK_DIR}/raw_rd_allow_all.txt" "${ALLOW_URLS[@]}"
+    download_files "${WORK_DIR}/raw_rd_block.txt" "${BLOCK_URLS[@]}"
+    download_files "${WORK_DIR}/raw_rd_allow.txt" "${ALLOW_URLS[@]}"
 
-    # 2. 处理拦截规则
-    echo "🧹 处理拦截规则..."
-    grep "^@@" "${WORK_DIR}/raw_rd_block_all.txt" | sed 's/^@@//g' | normalize_domain > "${WORK_DIR}/raw_rd_allow_extra.txt"
-    grep -v "^@@" "${WORK_DIR}/raw_rd_block_all.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_rd_block.txt"
+    # 2. 清洗 Blocklist
+    echo "🧹 清洗黑名单 (执行特定 sed 规则)..."
+    cat "${WORK_DIR}/raw_rd_block.txt" \
+    | tr -d '\r' \
+    | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' \
+    > "${WORK_DIR}/clean_rd_block.txt"
 
-    # 3. 关键词过滤 (与模块 1 逻辑一致)
-    apply_keyword_filter "${WORK_DIR}/clean_rd_block.txt" "${WORK_DIR}/filtered_rd_block.txt"
+    # 3. 处理白名单：使用标准清洗 (转为纯域名以便匹配)
+    echo "🧹 清洗白名单..."
+    cat "${WORK_DIR}/raw_rd_allow.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_rd_allow.txt"
 
-    # 4. 处理白名单
-    echo "🧹 处理白名单..."
-    cat "${WORK_DIR}/raw_rd_allow_all.txt" "${WORK_DIR}/raw_rd_allow_extra.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_rd_allow.txt"
+    # 4. 白名单过滤：
+    #    由于黑名单中现在含有 +.google.com 和 google.com 两种格式
+    #    我们需要在比对时临时去掉 +. 前缀来和白名单匹配
+    echo "🛡️  应用白名单过滤..."
+    awk 'NR==FNR { allow[$0]=1; next } 
+    {
+        # 创建一个临时变量 clean_domain 用于检查
+        clean_domain = $0;
+        # 去掉开头的 +. 或 .
+        sub(/^\+\./, "", clean_domain);
+        sub(/^\./, "", clean_domain);
+        
+        # 如果白名单中没有这个纯域名，则输出原行
+        if (!(clean_domain in allow)) {
+            print $0;
+        }
+    }' "${WORK_DIR}/clean_rd_allow.txt" "${WORK_DIR}/clean_rd_block.txt" > "${WORK_DIR}/filtered_rd_block.txt"
 
-    # 5. 智能去重
-    optimize_list "${WORK_DIR}/filtered_rd_block.txt" "${WORK_DIR}/opt_rd_block.txt"
-    optimize_list "${WORK_DIR}/clean_rd_allow.txt" "${WORK_DIR}/opt_rd_allow.txt"
+    # 5. 去重 (简单排序去重)
+    echo "🧠 正在去重..."
+    sort -u "${WORK_DIR}/filtered_rd_block.txt" > "$OUTPUT_FILE"
 
-    # 6. 白名单剔除
-    echo "🛡️  正在应用白名单过滤..."
-    cat "${WORK_DIR}/opt_rd_allow.txt" | rev | sed 's/$/!/' > "${WORK_DIR}/allow_rev_tagged.txt"
-    cat "${WORK_DIR}/opt_rd_block.txt" | rev > "${WORK_DIR}/block_rev.txt"
-
-    cat "${WORK_DIR}/allow_rev_tagged.txt" "${WORK_DIR}/block_rev.txt" \
-    | sort \
-    | awk '/!$/ { root = substr($0, 1, length($0)-1); next; } { if ($0 == root) next; if (root != "" && index($0, root ".") == 1) next; print; }' \
-    | rev > "${WORK_DIR}/final_rd_pure.txt"
-
-    # 7. 生成最终文件 (添加 +.)
-    add_final_prefix "${WORK_DIR}/final_rd_pure.txt" "$OUTPUT_FILE"
+    # 6. 转换与统计
     convert_to_mrs "$OUTPUT_FILE" "Reject_Drop_merged.mrs"
     add_header_info "$OUTPUT_FILE"
     echo "✅ Reject Drop 规则生成完成。"
