@@ -263,7 +263,7 @@ generate_reject_drop_merged() {
     # 拦截源 (新)
     BLOCK_URLS=(
         "https://ruleset.skk.moe/Clash/non_ip/reject-drop.txt"
-        "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Reject-drop.txt"
+        "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Reject-drop.txt"
     )
 
     # 白名单源 (与模块 1 相同)
