@@ -12,3 +12,4 @@
 +.collect.alipay.com
 +.spider-tracker.xiaohongshu.com
 +.apm-native.xiaohongshu.com
++.mum.alibabachengdun.com
