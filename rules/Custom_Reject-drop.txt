@@ -13,4 +13,3 @@
 +.spider-tracker.xiaohongshu.com
 +.apm-native.xiaohongshu.com
 +.mum.alibabachengdun.com
-+.wgo.mmstat.com
