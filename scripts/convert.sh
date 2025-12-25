@@ -227,6 +227,7 @@ generate_ads() {
         "https://raw.githubusercontent.com/limbopro/Adblock4limbo/main/rule/Surge/Adblock4limbo_surge.list"
         "https://raw.githubusercontent.com/Cats-Team/AdRules/main/adrules_domainset.txt"
         "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/refs/heads/release/reject-list.txt"
+        "https://ruleset.skk.moe/Clash/domainset/reject.txt"
     )
 
     download_files_parallel "${WORK_DIR}/raw_ads.txt" "${BLOCK_URLS[@]}"
