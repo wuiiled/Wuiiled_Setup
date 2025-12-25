@@ -142,7 +142,6 @@ generate_ads_merged() {
     optimize_list "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/opt_allow.txt"
 
     echo "🛡️  应用白名单过滤..."
-    # 模块1依然沿用基础去重逻辑，因为它全是纯域名，且数量庞大
     cat "${WORK_DIR}/opt_allow.txt" | rev | sed 's/$/!/' > "${WORK_DIR}/allow_rev.txt"
     cat "${WORK_DIR}/opt_block.txt" | rev | sed 's/$/~/' > "${WORK_DIR}/block_rev.txt"
 
@@ -239,7 +238,6 @@ generate_reject_drop_merged() {
     | sort -u \
     > "${WORK_DIR}/clean_rd_block.txt"
 
-    # 复用或下载白名单
     if [ -f "${WORK_DIR}/clean_allow.txt" ]; then
         echo "♻️  复用白名单..."
         cp "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/clean_rd_allow.txt"
@@ -249,12 +247,12 @@ generate_reject_drop_merged() {
         cat "${WORK_DIR}/raw_allow_temp.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_rd_allow.txt"
     fi
 
-    echo "🛡️  应用白名单 (懒惰输出逻辑)..."
-    # 1. 准备白名单：reversed + type=1
+    echo "🛡️  应用白名单 (双向覆盖+完全一致覆盖)..."
+    
+    # 1. 准备白名单: reversed pure + type 1
     cat "${WORK_DIR}/clean_rd_allow.txt" | rev | awk '{print $0, 1}' > "${WORK_DIR}/rd_merged_input.txt"
 
-    # 2. 准备黑名单：reversed_pure + type=0 + original_line
-    #    这里需要保留原始行(含+.)用于输出，但使用纯域名反转用于排序比较
+    # 2. 准备黑名单: reversed pure + type 0 + original line
     awk '{
         pure = $0;
         sub(/^\+\./, "", pure);
@@ -265,37 +263,35 @@ generate_reject_drop_merged() {
         print rev_pure, 0, $0;
     }' "${WORK_DIR}/clean_rd_block.txt" >> "${WORK_DIR}/rd_merged_input.txt"
 
-    # 3. 排序 & 处理
-    #    排序后：moc.tatsmm 0 (黑名单) -> moc.tatsmm.ogw 1 (白名单)
+    # 3. 排序 + 过滤
+    # 排序说明: 纯字符串排序。
+    # 由于 0 (ASCII 48) < 1 (ASCII 49)，同域名下黑名单(0)排在白名单(1)前面。
     sort "${WORK_DIR}/rd_merged_input.txt" \
     | awk '
     {
         key = $1
         type = $2
-        # $3及以后是原始行 (仅黑名单有)
         original = $3
         
         # 逻辑：
-        # 我们使用 buffer 存储一个潜在的黑名单父域名。
-        # 如果遇到子域名：
-        #   - 是白名单：说明该黑名单父域名会误杀白名单 -> 销毁 buffer。
-        #   - 是黑名单：说明是冗余子域名 -> 忽略当前行。
-        # 如果遇到无关域名：
-        #   - 输出 buffer，更新 buffer。
+        # buffered_key 存储的是一个尚未输出的黑名单父域名 (如 moc.tatsmm)
+        # key 是当前行 (如 moc.tatsmm.ogw)
+        
+        # 1. 检查当前行是否是 Buffer 的子域名/或完全相等
+        is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
 
-        # 检查当前 key 是否是 buffered_key 的子域名
-        if (buffered_key != "" && index(key, buffered_key ".") == 1) {
-            # 是子域名
+        if (is_child_or_equal) {
+            # 当前行与 Buffer 有父子关系或相等
             if (type == 1) {
-                # 致命！白名单子域名存在，说明 buffered_key (黑名单) 太宽泛了
-                # wgo.mmstat.com (Allow) 杀死了 +.mmstat.com (Block)
+                # 当前是白名单 (如 wgo.mmstat.com)
+                # 意味着之前的 Buffer (如 mmstat.com) 过于宽泛，必须删除！
                 buffered_key = ""
                 buffered_line = ""
-            } 
-            # 如果是 type 0 (黑名单子域名)，直接忽略，达到去重效果
+            }
+            # 如果是 type 0 (黑名单子域名)，则作为冗余去重，忽略
         } else {
-            # 不是子域名，说明进入了新的域名分支
-            # 输出上一个幸存的黑名单
+            # 没有关系，说明是新分支
+            # 先把旧的 Buffer 输出来 (它安全了)
             if (buffered_line != "") {
                 print buffered_line
             }
@@ -305,7 +301,7 @@ generate_reject_drop_merged() {
                 buffered_key = key
                 buffered_line = original
             } else {
-                # 白名单不需要进入 Buffer，它只负责杀人
+                # 白名单不用存，因为它只用来"杀"前面的黑名单
                 buffered_key = ""
                 buffered_line = ""
             }
