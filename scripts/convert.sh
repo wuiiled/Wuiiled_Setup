@@ -3,8 +3,9 @@
 # ================= 全局配置 =================
 
 # 【核心】强制使用 C 语言区域设置
-# 1. 确保 ASCII 排序顺序稳定 (Space < . < 0 < 1)
-# 2. 只有这样，Buffer 算法才能正确识别父子域名关系
+# 1. 确保 sort 速度最快
+# 2. 确保 ASCII 排序顺序：Space(32) < . (46) < 0 (48) < 1 (49)
+#    这是算法正确识别父子域名、区分黑白名单的基础
 export LC_ALL=C
 
 WORK_DIR=$(mktemp -d)
@@ -21,7 +22,7 @@ CHECK_MIHOMO() {
 
 # ================= 核心工具函数 =================
 
-# 1. 并行下载 (极速)
+# 1. 并行下载 (极速模式)
 download_files_parallel() {
     local output_file=$1
     shift
@@ -36,6 +37,7 @@ download_files_parallel() {
         local temp_out="${temp_map_dir}/${i}.txt"
         (
             if curl -sLf --connect-timeout 15 --retry 3 "$url" > "$temp_out"; then
+                # 确保文件末尾有换行，防止拼接错误
                 [ -n "$(tail -c1 "$temp_out")" ] && echo "" >> "$temp_out"
                 echo "   ✅ 完成: $(basename "$url")"
             else
@@ -50,7 +52,7 @@ download_files_parallel() {
     cat "${temp_map_dir}"/*.txt > "$output_file" 2>/dev/null
 }
 
-# 2. 域名标准化
+# 2. 域名标准化 (去除装饰符、IP、注释、空格)
 normalize_domain() {
     tr 'A-Z' 'a-z' | tr -d '\r' \
     | sed 's/[\$#].*//g' \
@@ -75,14 +77,8 @@ normalize_domain() {
 # 3. 自身去重 (子域名覆盖)
 optimize_self() {
     echo "🧠 执行自身智能去重..."
-    # 逻辑: 排序后，相邻比较。如果 index($0, prev ".")==1，说明当前行是上一行的子域名，保留当前行，上一行被覆盖(但awk流式处理很难覆盖上一行)。
-    # 更优逻辑: 反转 -> 排序。这样 子域名(长) 会排在 父域名(短) 后面 (例如 moc.qq vs moc.qq.ad)。
-    # 等等，Space(32) < .(46)。
-    # moc.qq (end) vs moc.qq.ad
-    # 排序后: moc.qq 先出现。
-    # 我们希望保留父域名(短)，去除子域名(长)。
-    # 所以: 如果当前行以 prev + "." 开头，说明当前行是子域名，丢弃。
-    
+    # 逻辑：反转 -> 排序 -> 比较相邻行 -> 再次反转
+    # 如果当前行是上一行的子域名 (index=1)，则丢弃当前行 (保留短的父域名)
     cat "$1" | rev | sort | awk '
         NR==1 {prev=$0; print; next} 
         {
@@ -104,19 +100,20 @@ apply_keyword_filter() {
     fi
 }
 
-# 5. 【核心通用算法】高级白名单过滤 (Buffer 算法)
-# 适用于 模块1 和 模块4
-# 输入 Blocklist (可能含 +.) 和 Whitelist (纯域名)
+# 5. 【核心算法】高级白名单过滤 (Buffer + Active Root)
+# 解决了双向覆盖：
+# A. 白名单是黑名单子域名 (wgo.mmstat.com vs mmstat.com) -> Buffer Logic 解决
+# B. 黑名单是白名单子域名 (ad.google.com vs google.com) -> Active Root Logic 解决
+# C. 完全相等 -> 任意 Logic 解决
 apply_advanced_whitelist_filter() {
     local block_in=$1
     local allow_in=$2
     local final_out=$3
 
-    echo "🛡️  应用高级白名单过滤 (Buffer 算法)..."
+    echo "🛡️  应用全向白名单过滤算法..."
 
     # --- 步骤 A: 准备白名单 ---
     # 格式: [反转纯域名] [1]
-    # 例如: moc.tatsmm.ogw 1
     awk '{ 
         key=$0; 
         reversed = ""; len = length(key);
@@ -126,7 +123,7 @@ apply_advanced_whitelist_filter() {
 
     # --- 步骤 B: 准备黑名单 ---
     # 格式: [反转纯域名] [0] [原始行]
-    # 例如: moc.tatsmm 0 +.mmstat.com
+    # 保留原始行是为了输出时保留 "+."
     awk '{ 
         original=$0;
         pure=original;
@@ -137,45 +134,73 @@ apply_advanced_whitelist_filter() {
         print reversed, 0, original 
     }' "$block_in" >> "${WORK_DIR}/algo_input.txt"
 
-    # --- 步骤 C: 排序与 Buffer 逻辑 ---
-    # 排序关键: Space(32) < .(46) < 0(48) < 1(49)
-    # 1. 父域名 (moc.tatsmm) 会排在 子域名 (moc.tatsmm.ogw) 之前。
-    # 2. 同域名下，黑名单 (0) 会排在 白名单 (1) 之前。
-    
-    sort "${WORK_DIR}/algo_input.txt" | awk '
+    # --- 步骤 C: 排序与双向过滤 ---
+    # 排序顺序: 父域名(短) < 子域名(长) ; 0(Block) < 1(Allow)
+    sort -k1,1 "${WORK_DIR}/algo_input.txt" | awk '
+    BEGIN { FS=" " }
     {
         key = $1
         type = $2
-        original = $3
-        
-        # 判断缓冲区的黑名单是否覆盖了当前行
-        # 情况1: Buffer(父) vs 当前(子)。例如 moc.tatsmm vs moc.tatsmm.ogw
-        # 情况2: Buffer(相等) vs 当前(相等)。例如 moc.tatsmm vs moc.tatsmm
-        
-        is_related = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
+        original = $3 # 仅 Block 有
 
-        if (is_related) {
+        # === 逻辑 1: 白名单父域名覆盖检测 (Active Root) ===
+        # 如果当前 Key 是 active_white_root 的子域名，说明它被一个更短的白名单覆盖了
+        # 例子: active=moc.elgoog (google.com), key=moc.elgoog.da (ad.google.com)
+        if (active_white_root != "" && index(key, active_white_root ".") == 1) {
+            # 这是一个被白名单覆盖的子域名
             if (type == 1) {
-                # 发现白名单子域名/同名域名！
-                # 这意味着之前的 Buffer (黑名单父域名) 会误杀白名单，必须删除 Buffer。
+                # 白名单子域名，更新 active root 吗？不需要，保留短的即可。
+                # 但为了严谨，我们可以不操作，它自然被保护。
+                next 
+            } else {
+                # 黑名单子域名，被白名单父域名覆盖 -> 删除
+                next 
+            }
+        }
+
+        # === 逻辑 2: 缓冲区检测 (Buffer) ===
+        # 检查当前 Key 是否是 Buffer (黑名单父域名) 的子域名或相等
+        # 例子: Buffer=moc.tatsmm (mmstat.com), Key=moc.tatsmm.ogw (wgo.mmstat.com)
+        is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
+
+        if (is_child_or_equal) {
+            if (type == 1) {
+                # 关键：白名单子域名出现！
+                # 说明之前的黑名单 Buffer (父域名) 过于宽泛，误杀了这个白名单。
+                # 必须杀死 Buffer。
                 buffered_key = ""
                 buffered_line = ""
+                
+                # 同时，将当前白名单设为 active，以防止后续更长的黑名单子域名
+                active_white_root = key
             }
-            # 如果是黑名单子域名 (type 0)，则是冗余，忽略
+            # 如果是 type 0 (黑名单子域名)，它是冗余的，忽略
         } else {
-            # 无关的新分支，说明之前的 Buffer 安全存活
+            # === 新的分支 ===
+            # 先输出之前确认为安全的 Buffer
             if (buffered_line != "") {
                 print buffered_line
             }
 
-            # 更新 Buffer
-            if (type == 0) {
-                buffered_key = key
-                buffered_line = original
-            } else {
-                # 白名单不进 Buffer，只负责杀
+            if (type == 1) {
+                # 这是一个新的白名单根
+                active_white_root = key
+                
+                # 白名单不进 Buffer
                 buffered_key = ""
                 buffered_line = ""
+            } else {
+                # 这是一个新的黑名单根
+                buffered_key = key
+                buffered_line = original
+                
+                # 黑名单阻断了之前的白名单覆盖吗？
+                # 不，黑名单也是一种覆盖。但这里我们只处理去重。
+                # 我们重置 active_white_root 吗？
+                # 不，因为 input 已经排序。
+                # 如果 key 是 "moc.a"，active 是 "moc"，则会在逻辑1被处理。
+                # 如果代码走到这里，说明 key 不是 active 的子域名。
+                active_white_root = "" 
             }
         }
     }
@@ -189,6 +214,9 @@ finalize_output() {
     local src=$1
     local dst=$2
     local mode=$3
+
+    # 再次去重，确保万无一失
+    sort -u "$src" -o "$src"
 
     if [ "$mode" == "add_prefix" ]; then
         echo "✨ 添加统一前缀 (+.)..."
@@ -215,7 +243,7 @@ ALLOW_URLS=(
     "https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exceptions.txt"
 )
 
-# ================= 模块定义 =================
+# ================= 模块 1: ADs =================
 
 generate_ads() {
     echo "=== 🚀 模块 1: ADs 规则 ==="
@@ -235,7 +263,7 @@ generate_ads() {
     download_files_parallel "${WORK_DIR}/raw_ads.txt" "${BLOCK_URLS[@]}"
     download_files_parallel "${WORK_DIR}/raw_allow.txt" "${ALLOW_URLS[@]}"
 
-    # 清洗：拦截列表去 @@，白名单去修饰符
+    # 清洗
     grep -vE '^\s*@@' "${WORK_DIR}/raw_ads.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_ads.txt"
     apply_keyword_filter "${WORK_DIR}/clean_ads.txt" "${WORK_DIR}/filter_ads.txt"
     cat "${WORK_DIR}/raw_allow.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_allow.txt"
@@ -244,12 +272,14 @@ generate_ads() {
     optimize_self "${WORK_DIR}/filter_ads.txt" "${WORK_DIR}/opt_ads.txt"
     optimize_self "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/opt_allow.txt"
 
-    # 【修复点】使用 Buffer 算法处理模块 1，彻底解决父子域名冲突
+    # 核心过滤
     apply_advanced_whitelist_filter "${WORK_DIR}/opt_ads.txt" "${WORK_DIR}/opt_allow.txt" "${WORK_DIR}/final_ads.txt"
 
     finalize_output "${WORK_DIR}/final_ads.txt" "ADs_merged.mrs" "add_prefix"
     mv "${WORK_DIR}/final_ads.txt" "ADs_merged.txt"
 }
+
+# ================= 模块 2: AI =================
 
 generate_ai() {
     echo "=== 🚀 模块 2: AI 规则 ==="
@@ -266,6 +296,8 @@ generate_ai() {
     mv "${WORK_DIR}/opt_ai.txt" "AIs_merged.txt"
 }
 
+# ================= 模块 3: Fake IP =================
+
 generate_fakeip() {
     echo "=== 🚀 模块 3: Fake IP ==="
     local FAKE_IP_URLS=(
@@ -276,7 +308,8 @@ generate_fakeip() {
     )
     download_files_parallel "${WORK_DIR}/raw_fakeip.txt" "${FAKE_IP_URLS[@]}"
     
-    echo "🧹 清洗与冲突解决..."
+    # 逻辑：保留原始格式，优先保留 +.
+    echo "🧹 清洗..."
     cat "${WORK_DIR}/raw_fakeip.txt" \
     | tr -d '\r' | grep -vE '^\s*($|#|!)' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
     | awk '{
@@ -290,6 +323,8 @@ generate_fakeip() {
     mv "${WORK_DIR}/final_fakeip.txt" "Fake_IP_Filter_merged.txt"
 }
 
+# ================= 模块 4: Reject Drop =================
+
 generate_reject() {
     echo "=== 🚀 模块 4: Reject Drop ==="
     local BLOCK_URLS=(
@@ -299,8 +334,10 @@ generate_reject() {
     download_files_parallel "${WORK_DIR}/raw_rd.txt" "${BLOCK_URLS[@]}"
 
     echo "🧹 SED 清洗..."
+    # 【修复】增加去尾部空格，防止 wgo.mmstat.com 匹配失败
     cat "${WORK_DIR}/raw_rd.txt" \
     | tr -d '\r' | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' \
+    | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
     | sort -u > "${WORK_DIR}/clean_rd.txt"
 
     if [ -f "${WORK_DIR}/clean_allow.txt" ]; then
@@ -310,18 +347,16 @@ generate_reject() {
         echo "ℹ️  下载白名单..."
         download_files_parallel "${WORK_DIR}/raw_allow_temp.txt" "${ALLOW_URLS[@]}"
         cat "${WORK_DIR}/raw_allow_temp.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_rd_allow.txt"
-        optimize_self "${WORK_DIR}/clean_rd_allow.txt" "${WORK_DIR}/opt_allow.txt"
-        cp "${WORK_DIR}/opt_allow.txt" "${WORK_DIR}/clean_rd_allow.txt"
     fi
 
-    # 【修复点】使用 Buffer 算法
+    # 核心过滤
     apply_advanced_whitelist_filter "${WORK_DIR}/clean_rd.txt" "${WORK_DIR}/clean_rd_allow.txt" "${WORK_DIR}/final_rd.txt"
 
     finalize_output "${WORK_DIR}/final_rd.txt" "Reject_Drop_merged.mrs" "none"
     mv "${WORK_DIR}/final_rd.txt" "Reject_Drop_merged.txt"
 }
 
-# ================= 主程序入口 =================
+# ================= 主程序 =================
 
 main() {
     local target=${1:-all}
