@@ -225,6 +225,7 @@ generate_ads() {
         "https://raw.githubusercontent.com/ForestL18/rules-dat/refs/heads/mihomo/geo/classical/reject.list"
         "https://a.dove.isdumb.one/pihole.txt"
         "https://raw.githubusercontent.com/limbopro/Adblock4limbo/main/rule/Surge/Adblock4limbo_surge.list"
+        "https://raw.githubusercontent.com/Cats-Team/AdRules/main/adrules_domainset.txt"
     )
 
     download_files_parallel "${WORK_DIR}/raw_ads.txt" "${BLOCK_URLS[@]}"
