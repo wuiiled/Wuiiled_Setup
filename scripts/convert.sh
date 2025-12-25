@@ -2,7 +2,7 @@
 
 # ================= 全局配置 =================
 
-# 【关键】强制 ASCII 排序，确保 ! < . < ~
+# 【核心】强制使用 C 语言区域设置，确保 ASCII 排序顺序稳定
 export LC_ALL=C
 
 WORK_DIR=$(mktemp -d)
@@ -46,7 +46,7 @@ download_files() {
     done
 }
 
-# 清洗函数
+# 核心清洗函数 (仅保留纯域名)
 normalize_domain() {
     tr 'A-Z' 'a-z' | tr -d '\r' \
     | sed 's/[\$#].*//g' \
@@ -68,7 +68,7 @@ normalize_domain() {
     | awk '/\./ {print $0}'
 }
 
-# 自身去重
+# 自身去重函数
 optimize_list() {
     local input_file=$1
     local output_file=$2
@@ -135,13 +135,14 @@ generate_ads_merged() {
 
     grep -vE '^\s*@@' "${WORK_DIR}/raw_block_all.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_block.txt"
     apply_keyword_filter "${WORK_DIR}/clean_block.txt" "${WORK_DIR}/filtered_block.txt"
+    
     cat "${WORK_DIR}/raw_allow_all.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_allow.txt"
 
     optimize_list "${WORK_DIR}/filtered_block.txt" "${WORK_DIR}/opt_block.txt"
     optimize_list "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/opt_allow.txt"
 
-    echo "🛡️  应用白名单 (ADs)..."
-    # 这里复用简单的剔除逻辑，因为模块1是纯域名
+    echo "🛡️  应用白名单过滤..."
+    # 模块1依然沿用基础去重逻辑，因为它全是纯域名，且数量庞大
     cat "${WORK_DIR}/opt_allow.txt" | rev | sed 's/$/!/' > "${WORK_DIR}/allow_rev.txt"
     cat "${WORK_DIR}/opt_block.txt" | rev | sed 's/$/~/' > "${WORK_DIR}/block_rev.txt"
 
@@ -149,17 +150,12 @@ generate_ads_merged() {
     | sort \
     | awk '{
         if ($0 ~ /!$/) {
-            # 记录最新的 allow 规则
             allow_root = substr($0, 1, length($0)-1);
         } else {
             block_domain = substr($0, 1, length($0)-1);
-            # 检查1: 完全相等
             if (block_domain == allow_root) next;
-            # 检查2: Block 是 Allow 的子域名 (常规)
             if (allow_root != "" && index(block_domain, allow_root ".") == 1) next;
-            # 检查3: Allow 是 Block 的子域名 (您的需求)
             if (allow_root != "" && index(allow_root, block_domain ".") == 1) next;
-            
             print block_domain;
         }
     }' \
@@ -229,19 +225,21 @@ generate_Fake_IP_Filter_merged() {
 generate_reject_drop_merged() {
     echo "=== 生成 Reject Drop 规则 ==="
     OUTPUT_FILE="Reject_Drop_merged.txt"
-
     BLOCK_URLS=(
         "https://ruleset.skk.moe/Clash/non_ip/reject-drop.txt"
         "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Reject-drop.txt"
     )
+    
     download_files "${WORK_DIR}/raw_rd_block.txt" "${BLOCK_URLS[@]}"
 
-    echo "🧹 清洗黑名单 (sed)..."
+    echo "🧹 清洗黑名单 (sed + 去重)..."
     cat "${WORK_DIR}/raw_rd_block.txt" \
     | tr -d '\r' \
     | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' \
+    | sort -u \
     > "${WORK_DIR}/clean_rd_block.txt"
 
+    # 复用或下载白名单
     if [ -f "${WORK_DIR}/clean_allow.txt" ]; then
         echo "♻️  复用白名单..."
         cp "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/clean_rd_allow.txt"
@@ -251,72 +249,70 @@ generate_reject_drop_merged() {
         cat "${WORK_DIR}/raw_allow_temp.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_rd_allow.txt"
     fi
 
-    echo "🛡️  应用白名单 (双向覆盖+前瞻逻辑)..."
-    
-    # 1. 准备白名单：反转 + "!"
-    cat "${WORK_DIR}/clean_rd_allow.txt" | rev | sed 's/$/!/' > "${WORK_DIR}/rd_allow_rev.txt"
+    echo "🛡️  应用白名单 (懒惰输出逻辑)..."
+    # 1. 准备白名单：reversed + type=1
+    cat "${WORK_DIR}/clean_rd_allow.txt" | rev | awk '{print $0, 1}' > "${WORK_DIR}/rd_merged_input.txt"
 
-    # 2. 准备黑名单：保留原行内容，提取纯域名反转 + "~"
-    #    格式：reversed_pure_key ~ original_line
+    # 2. 准备黑名单：reversed_pure + type=0 + original_line
+    #    这里需要保留原始行(含+.)用于输出，但使用纯域名反转用于排序比较
     awk '{
         pure = $0;
         sub(/^\+\./, "", pure);
         sub(/^\./, "", pure);
-        # 输出：reversed_key ~ original_line
         cmd = "echo " pure " | rev";
         cmd | getline rev_pure;
         close(cmd);
-        print rev_pure " ~ " $0;
-    }' "${WORK_DIR}/clean_rd_block.txt" > "${WORK_DIR}/rd_block_rev.txt"
+        print rev_pure, 0, $0;
+    }' "${WORK_DIR}/clean_rd_block.txt" >> "${WORK_DIR}/rd_merged_input.txt"
 
-    # 3. 排序 & AWK 双向过滤
-    cat "${WORK_DIR}/rd_allow_rev.txt" "${WORK_DIR}/rd_block_rev.txt" \
-    | sort \
+    # 3. 排序 & 处理
+    #    排序后：moc.tatsmm 0 (黑名单) -> moc.tatsmm.ogw 1 (白名单)
+    sort "${WORK_DIR}/rd_merged_input.txt" \
     | awk '
-    BEGIN { FS=" " }
     {
         key = $1
-        marker = $2
+        type = $2
+        # $3及以后是原始行 (仅黑名单有)
+        original = $3
         
-        # 检查是否被之前的 Allow Parent 覆盖 (Block is child of Allow)
-        if (last_allow_parent != "" && index(key, last_allow_parent ".") == 1) {
-            # Drop current block
-            next
-        }
-        
-        if (marker == "!") {
-            # === 白名单行 ===
-            last_allow_parent = key
-            
-            # 关键：检查缓冲区 (Handle: Allow is child of buffered Block)
-            # 如果刚才缓存了一个 Block (如 mmstat.com)，现在来了一个 Allow (如 wgo.mmstat.com)
-            # 那么这个 Block 必须死。
-            if (buffered_block != "") {
-                if (index(key, buffered_key ".") == 1) {
-                    # 冲突！Allow 是 Block 的子域名 -> 丢弃 Block
-                    buffered_block = ""
-                    buffered_key = ""
-                }
+        # 逻辑：
+        # 我们使用 buffer 存储一个潜在的黑名单父域名。
+        # 如果遇到子域名：
+        #   - 是白名单：说明该黑名单父域名会误杀白名单 -> 销毁 buffer。
+        #   - 是黑名单：说明是冗余子域名 -> 忽略当前行。
+        # 如果遇到无关域名：
+        #   - 输出 buffer，更新 buffer。
+
+        # 检查当前 key 是否是 buffered_key 的子域名
+        if (buffered_key != "" && index(key, buffered_key ".") == 1) {
+            # 是子域名
+            if (type == 1) {
+                # 致命！白名单子域名存在，说明 buffered_key (黑名单) 太宽泛了
+                # wgo.mmstat.com (Allow) 杀死了 +.mmstat.com (Block)
+                buffered_key = ""
+                buffered_line = ""
+            } 
+            # 如果是 type 0 (黑名单子域名)，直接忽略，达到去重效果
+        } else {
+            # 不是子域名，说明进入了新的域名分支
+            # 输出上一个幸存的黑名单
+            if (buffered_line != "") {
+                print buffered_line
             }
-            next
-        }
-        
-        if (marker == "~") {
-            # === 黑名单行 ===
-            # 先输出上一个幸存的 Block
-            if (buffered_block != "") {
-                print buffered_block
+
+            # 更新 Buffer
+            if (type == 0) {
+                buffered_key = key
+                buffered_line = original
+            } else {
+                # 白名单不需要进入 Buffer，它只负责杀人
+                buffered_key = ""
+                buffered_line = ""
             }
-            
-            # 放入缓冲区，等待下一行审判
-            # $3 开始是原行内容 (处理可能的空格)
-            # 这里简单取 $3，因为我们构造时没有空格干扰
-            buffered_block = $3
-            buffered_key = key
         }
     }
     END {
-        if (buffered_block != "") print buffered_block
+        if (buffered_line != "") print buffered_line
     }' > "$OUTPUT_FILE"
 
     convert_to_mrs "$OUTPUT_FILE" "Reject_Drop_merged.mrs"
