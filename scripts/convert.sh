@@ -1,8 +1,10 @@
 #!/bin/bash
 
-# ================= 全局性能优化 =================
+# ================= 全局配置 =================
 
-# 强制使用 ASCII 排序，极大提升 sort 速度并确保逻辑正确
+# 【核心】强制使用 C 语言区域设置
+# 1. 确保 ASCII 排序顺序稳定 (Space < . < 0 < 1)
+# 2. 只有这样，Buffer 算法才能正确识别父子域名关系
 export LC_ALL=C
 
 WORK_DIR=$(mktemp -d)
@@ -19,7 +21,7 @@ CHECK_MIHOMO() {
 
 # ================= 核心工具函数 =================
 
-# 1. 并行下载 (极速下载)
+# 1. 并行下载 (极速)
 download_files_parallel() {
     local output_file=$1
     shift
@@ -34,7 +36,6 @@ download_files_parallel() {
         local temp_out="${temp_map_dir}/${i}.txt"
         (
             if curl -sLf --connect-timeout 15 --retry 3 "$url" > "$temp_out"; then
-                # 确保文件末尾有换行
                 [ -n "$(tail -c1 "$temp_out")" ] && echo "" >> "$temp_out"
                 echo "   ✅ 完成: $(basename "$url")"
             else
@@ -49,7 +50,7 @@ download_files_parallel() {
     cat "${temp_map_dir}"/*.txt > "$output_file" 2>/dev/null
 }
 
-# 2. 域名标准化 (去注释/修饰符/IP)
+# 2. 域名标准化
 normalize_domain() {
     tr 'A-Z' 'a-z' | tr -d '\r' \
     | sed 's/[\$#].*//g' \
@@ -71,14 +72,20 @@ normalize_domain() {
     | awk '/\./ {print $0}'
 }
 
-# 3. 自身去重优化 (去除子域名冗余)
-# 逻辑：反转 -> 排序 -> 比较相邻行 -> 再次反转
+# 3. 自身去重 (子域名覆盖)
 optimize_self() {
     echo "🧠 执行自身智能去重..."
+    # 逻辑: 排序后，相邻比较。如果 index($0, prev ".")==1，说明当前行是上一行的子域名，保留当前行，上一行被覆盖(但awk流式处理很难覆盖上一行)。
+    # 更优逻辑: 反转 -> 排序。这样 子域名(长) 会排在 父域名(短) 后面 (例如 moc.qq vs moc.qq.ad)。
+    # 等等，Space(32) < .(46)。
+    # moc.qq (end) vs moc.qq.ad
+    # 排序后: moc.qq 先出现。
+    # 我们希望保留父域名(短)，去除子域名(长)。
+    # 所以: 如果当前行以 prev + "." 开头，说明当前行是子域名，丢弃。
+    
     cat "$1" | rev | sort | awk '
         NR==1 {prev=$0; print; next} 
         {
-            # 如果当前行以 prev + "." 开头，说明是子域名，跳过
             if (index($0, prev ".") != 1) {
                 print
                 prev=$0
@@ -97,77 +104,66 @@ apply_keyword_filter() {
     fi
 }
 
-# 5. 【核心优化】高级白名单过滤 (Buffer 算法 - 批量处理版)
-# 解决了 "wgo.mmstat.com" (白) 去除 "+.mmstat.com" (黑) 的问题
-# 速度提升关键：所有 rev 操作都在 awk 外部批量完成
+# 5. 【核心通用算法】高级白名单过滤 (Buffer 算法)
+# 适用于 模块1 和 模块4
+# 输入 Blocklist (可能含 +.) 和 Whitelist (纯域名)
 apply_advanced_whitelist_filter() {
     local block_in=$1
     local allow_in=$2
     local final_out=$3
 
-    echo "🛡️  应用高级白名单过滤 (批量流式处理)..."
+    echo "🛡️  应用高级白名单过滤 (Buffer 算法)..."
 
-    # --- 步骤 A: 预处理白名单 ---
-    # 格式: [反转域名] [标记1]
-    # 例如: moc.elgoog 1
-    cat "$allow_in" | rev | awk '{print $0, 1}' > "${WORK_DIR}/input_stream.txt"
+    # --- 步骤 A: 准备白名单 ---
+    # 格式: [反转纯域名] [1]
+    # 例如: moc.tatsmm.ogw 1
+    awk '{ 
+        key=$0; 
+        reversed = ""; len = length(key);
+        for (i=len; i>=1; i--) reversed = reversed substr(key, i, 1);
+        print reversed, 1 
+    }' "$allow_in" > "${WORK_DIR}/algo_input.txt"
 
-    # --- 步骤 B: 预处理黑名单 ---
-    # 黑名单可能带 +., 我们需要提取纯域名进行反转排序，同时保留原始行
-    # 格式: [反转纯域名] [标记0] [原始行]
-    # 例如: moc.elgoog 0 +.google.com
-    awk '{
-        original = $0;
-        # 去除开头修饰符
-        sub(/^\+\./, "", $0);
-        sub(/^\./, "", $0);
-        print $0, 0, original;
-    }' "$block_in" \
-    | rev \
-    | awk '{
-        # rev 会把 "moc.elgoog 0 moc.elgoog.+" 翻转成 "+.google.com 0 google.com"
-        # 我们需要修正列的顺序。
-        # 上一步 pipe 给 rev 后，整行被翻转了。
-        # 输入: moc.elgoog 0 +.google.com
-        # rev后: moc.elgoog.+ 0 google.com
-        # 这很麻烦，所以我们在 awk 内部只打印纯域名给 rev，剩下的拼接
-        
-        # 修正策略：不使用全行 rev，而是分别处理
-    }' 
-    
-    # --- 修正步骤 B (更高效的方法) ---
-    # 我们使用 paste 拼接 "反转纯域名" 和 "原始信息"
-    
-    # 1. 提取纯域名并反转
-    awk '{sub(/^\+\./,""); sub(/^\./,""); print}' "$block_in" | rev > "${WORK_DIR}/block_rev_keys.txt"
-    # 2. 拼接: [反转Key] 0 [原始行]
-    paste -d ' ' "${WORK_DIR}/block_rev_keys.txt" <(yes 0 | head -n $(wc -l < "$block_in")) "$block_in" >> "${WORK_DIR}/input_stream.txt"
+    # --- 步骤 B: 准备黑名单 ---
+    # 格式: [反转纯域名] [0] [原始行]
+    # 例如: moc.tatsmm 0 +.mmstat.com
+    awk '{ 
+        original=$0;
+        pure=original;
+        sub(/^\+\./, "", pure);
+        sub(/^\./, "", pure);
+        reversed = ""; len = length(pure);
+        for (i=len; i>=1; i--) reversed = reversed substr(pure, i, 1);
+        print reversed, 0, original 
+    }' "$block_in" >> "${WORK_DIR}/algo_input.txt"
 
     # --- 步骤 C: 排序与 Buffer 逻辑 ---
-    # 排序优先级: 字符顺序。 0 (ASCII 48) < 1 (ASCII 49)。
-    # 同域名下，黑名单(0) 会排在 白名单(1) 前面。
-    # 父域名 (短) 会排在 子域名 (长) 前面。
-
-    sort "${WORK_DIR}/input_stream.txt" | awk '
+    # 排序关键: Space(32) < .(46) < 0(48) < 1(49)
+    # 1. 父域名 (moc.tatsmm) 会排在 子域名 (moc.tatsmm.ogw) 之前。
+    # 2. 同域名下，黑名单 (0) 会排在 白名单 (1) 之前。
+    
+    sort "${WORK_DIR}/algo_input.txt" | awk '
     {
         key = $1
         type = $2
-        # $3 是原始行 (仅黑名单有)
         original = $3
         
-        # 判断：当前 Key 是否是 Buffered Key 的子域名 (或者完全相等)
-        is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
+        # 判断缓冲区的黑名单是否覆盖了当前行
+        # 情况1: Buffer(父) vs 当前(子)。例如 moc.tatsmm vs moc.tatsmm.ogw
+        # 情况2: Buffer(相等) vs 当前(相等)。例如 moc.tatsmm vs moc.tatsmm
+        
+        is_related = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
 
-        if (is_child_or_equal) {
+        if (is_related) {
             if (type == 1) {
-                # 场景：Buffer是 "moc.tatsmm" (黑)，当前是 "moc.tatsmm.ogw" (白)
-                # 结论：白名单子域名存在 -> 杀死父级黑名单
+                # 发现白名单子域名/同名域名！
+                # 这意味着之前的 Buffer (黑名单父域名) 会误杀白名单，必须删除 Buffer。
                 buffered_key = ""
                 buffered_line = ""
             }
-            # 场景：Buffer是黑，当前也是黑子域名 -> 自身冗余，忽略
+            # 如果是黑名单子域名 (type 0)，则是冗余，忽略
         } else {
-            # 新的分支，输出之前安全的黑名单
+            # 无关的新分支，说明之前的 Buffer 安全存活
             if (buffered_line != "") {
                 print buffered_line
             }
@@ -177,6 +173,7 @@ apply_advanced_whitelist_filter() {
                 buffered_key = key
                 buffered_line = original
             } else {
+                # 白名单不进 Buffer，只负责杀
                 buffered_key = ""
                 buffered_line = ""
             }
@@ -200,7 +197,6 @@ finalize_output() {
 
     local count=$(wc -l < "$src")
     local date=$(date +"%Y-%m-%d %H:%M:%S")
-    # 添加头部
     sed -i "1i # Count: $count\n# Updated: $date" "$src"
     
     if [ -n "$dst" ] && CHECK_MIHOMO; then
@@ -248,7 +244,7 @@ generate_ads() {
     optimize_self "${WORK_DIR}/filter_ads.txt" "${WORK_DIR}/opt_ads.txt"
     optimize_self "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/opt_allow.txt"
 
-    # 高级白名单过滤 (复用优化后的函数)
+    # 【修复点】使用 Buffer 算法处理模块 1，彻底解决父子域名冲突
     apply_advanced_whitelist_filter "${WORK_DIR}/opt_ads.txt" "${WORK_DIR}/opt_allow.txt" "${WORK_DIR}/final_ads.txt"
 
     finalize_output "${WORK_DIR}/final_ads.txt" "ADs_merged.mrs" "add_prefix"
@@ -281,7 +277,6 @@ generate_fakeip() {
     download_files_parallel "${WORK_DIR}/raw_fakeip.txt" "${FAKE_IP_URLS[@]}"
     
     echo "🧹 清洗与冲突解决..."
-    # 逻辑：去除注释 -> AWK 关联数组去重 (优先保留+.) -> 排序
     cat "${WORK_DIR}/raw_fakeip.txt" \
     | tr -d '\r' | grep -vE '^\s*($|#|!)' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
     | awk '{
@@ -308,7 +303,6 @@ generate_reject() {
     | tr -d '\r' | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' \
     | sort -u > "${WORK_DIR}/clean_rd.txt"
 
-    # 复用或下载白名单
     if [ -f "${WORK_DIR}/clean_allow.txt" ]; then
         echo "♻️  复用模块 1 白名单..."
         cp "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/clean_rd_allow.txt"
@@ -320,14 +314,14 @@ generate_reject() {
         cp "${WORK_DIR}/opt_allow.txt" "${WORK_DIR}/clean_rd_allow.txt"
     fi
 
-    # 高级过滤 (Buffer算法)
+    # 【修复点】使用 Buffer 算法
     apply_advanced_whitelist_filter "${WORK_DIR}/clean_rd.txt" "${WORK_DIR}/clean_rd_allow.txt" "${WORK_DIR}/final_rd.txt"
 
     finalize_output "${WORK_DIR}/final_rd.txt" "Reject_Drop_merged.mrs" "none"
     mv "${WORK_DIR}/final_rd.txt" "Reject_Drop_merged.txt"
 }
 
-# ================= 主程序 =================
+# ================= 主程序入口 =================
 
 main() {
     local target=${1:-all}
