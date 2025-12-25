@@ -130,36 +130,79 @@ generate_ads_merged() {
         "https://raw.githubusercontent.com/limbopro/Adblock4limbo/main/rule/Surge/Adblock4limbo_surge.list"
     )
 
+    # 1. 下载
     download_files "${WORK_DIR}/raw_block_all.txt" "${BLOCK_URLS[@]}"
     download_files "${WORK_DIR}/raw_allow_all.txt" "${ALLOW_URLS[@]}"
 
+    # 2. 清洗
     grep -vE '^\s*@@' "${WORK_DIR}/raw_block_all.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_block.txt"
     apply_keyword_filter "${WORK_DIR}/clean_block.txt" "${WORK_DIR}/filtered_block.txt"
-    
     cat "${WORK_DIR}/raw_allow_all.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_allow.txt"
 
+    # 3. 自身优化 (去除子域名冗余)
     optimize_list "${WORK_DIR}/filtered_block.txt" "${WORK_DIR}/opt_block.txt"
     optimize_list "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/opt_allow.txt"
 
-    echo "🛡️  应用白名单过滤..."
-    cat "${WORK_DIR}/opt_allow.txt" | rev | sed 's/$/!/' > "${WORK_DIR}/allow_rev.txt"
-    cat "${WORK_DIR}/opt_block.txt" | rev | sed 's/$/~/' > "${WORK_DIR}/block_rev.txt"
+    # 4. 白名单过滤 (使用模块4的缓冲区算法)
+    echo "🛡️  应用白名单过滤 (Buffer算法)..."
+    
+    # 白名单: 反转 + type 1
+    cat "${WORK_DIR}/opt_allow.txt" | rev | awk '{print $0, 1}' > "${WORK_DIR}/merged_input.txt"
+    # 黑名单: 反转 + type 0
+    cat "${WORK_DIR}/opt_block.txt" | rev | awk '{print $0, 0}' >> "${WORK_DIR}/merged_input.txt"
 
-    cat "${WORK_DIR}/allow_rev.txt" "${WORK_DIR}/block_rev.txt" \
-    | sort \
-    | awk '{
-        if ($0 ~ /!$/) {
-            allow_root = substr($0, 1, length($0)-1);
+    # 排序：0 (黑) 排在 1 (白) 前面。
+    # 例子：
+    # 黑名单: mmstat.com -> moc.tatsmm 0
+    # 白名单: wgo.mmstat.com -> moc.tatsmm.ogw 1
+    # 排序后: moc.tatsmm 0, moc.tatsmm.ogw 1
+    
+    sort "${WORK_DIR}/merged_input.txt" \
+    | awk '
+    {
+        key = $1
+        type = $2
+        
+        # 1. 检查是否是 Buffer (黑名单) 的子域名或相等
+        is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
+
+        if (is_child_or_equal) {
+            if (type == 1) {
+                # 白名单子域名出现 -> 杀死父级黑名单 (Buffer)
+                buffered_key = ""
+                buffered_line = ""
+            }
+            # 如果是黑名单子域名，忽略 (自身去重)
         } else {
-            block_domain = substr($0, 1, length($0)-1);
-            if (block_domain == allow_root) next;
-            if (allow_root != "" && index(block_domain, allow_root ".") == 1) next;
-            if (allow_root != "" && index(allow_root, block_domain ".") == 1) next;
-            print block_domain;
-        }
-    }' \
-    | rev > "${WORK_DIR}/final_pure.txt"
+            # 新分支，输出上一个存活的黑名单
+            if (buffered_line != "") {
+                # 还原: 这里的 buffered_line 是反转的，需要再反转回来
+                cmd = "echo " buffered_line " | rev"
+                cmd | getline result
+                close(cmd)
+                print result
+            }
 
+            # 更新 Buffer
+            if (type == 0) {
+                buffered_key = key
+                buffered_line = key # 这里暂存反转的字符串，输出时再转回
+            } else {
+                buffered_key = ""
+                buffered_line = ""
+            }
+        }
+    }
+    END {
+        if (buffered_line != "") {
+            cmd = "echo " buffered_line " | rev"
+            cmd | getline result
+            close(cmd)
+            print result
+        }
+    }' > "${WORK_DIR}/final_pure.txt"
+
+    # 5. 添加前缀
     add_final_prefix "${WORK_DIR}/final_pure.txt" "$OUTPUT_FILE"
     convert_to_mrs "$OUTPUT_FILE" "ADs_merged.mrs"
     add_header_info "$OUTPUT_FILE"
@@ -247,8 +290,7 @@ generate_reject_drop_merged() {
         cat "${WORK_DIR}/raw_allow_temp.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_rd_allow.txt"
     fi
 
-    echo "🛡️  应用白名单 (双向覆盖+完全一致覆盖)..."
-    
+    echo "🛡️  应用白名单 (Buffer算法)..."
     # 1. 准备白名单: reversed pure + type 1
     cat "${WORK_DIR}/clean_rd_allow.txt" | rev | awk '{print $0, 1}' > "${WORK_DIR}/rd_merged_input.txt"
 
@@ -263,9 +305,7 @@ generate_reject_drop_merged() {
         print rev_pure, 0, $0;
     }' "${WORK_DIR}/clean_rd_block.txt" >> "${WORK_DIR}/rd_merged_input.txt"
 
-    # 3. 排序 + 过滤
-    # 排序说明: 纯字符串排序。
-    # 由于 0 (ASCII 48) < 1 (ASCII 49)，同域名下黑名单(0)排在白名单(1)前面。
+    # 3. 排序 + Buffer处理
     sort "${WORK_DIR}/rd_merged_input.txt" \
     | awk '
     {
@@ -273,35 +313,22 @@ generate_reject_drop_merged() {
         type = $2
         original = $3
         
-        # 逻辑：
-        # buffered_key 存储的是一个尚未输出的黑名单父域名 (如 moc.tatsmm)
-        # key 是当前行 (如 moc.tatsmm.ogw)
-        
-        # 1. 检查当前行是否是 Buffer 的子域名/或完全相等
+        # 检查是否是 Buffer 的子域名/或相等
         is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
 
         if (is_child_or_equal) {
-            # 当前行与 Buffer 有父子关系或相等
             if (type == 1) {
-                # 当前是白名单 (如 wgo.mmstat.com)
-                # 意味着之前的 Buffer (如 mmstat.com) 过于宽泛，必须删除！
+                # 白名单子域名 -> 杀死父级黑名单
                 buffered_key = ""
                 buffered_line = ""
             }
-            # 如果是 type 0 (黑名单子域名)，则作为冗余去重，忽略
         } else {
-            # 没有关系，说明是新分支
-            # 先把旧的 Buffer 输出来 (它安全了)
-            if (buffered_line != "") {
-                print buffered_line
-            }
+            if (buffered_line != "") print buffered_line
 
-            # 更新 Buffer
             if (type == 0) {
                 buffered_key = key
                 buffered_line = original
             } else {
-                # 白名单不用存，因为它只用来"杀"前面的黑名单
                 buffered_key = ""
                 buffered_line = ""
             }
