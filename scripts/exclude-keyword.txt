@@ -7,7 +7,7 @@ sacdnssedge.com
 #flash.xiaohongshu.com
 #xiaohongshu.com
 #apm-native.xiaohongshu.com
-h-adashx.ut.taobao.com
-amdc-sibling.alipay.com.cn
-mum.alibabachengdun.com
-applog.uc.cn
+#h-adashx.ut.taobao.com
+#amdc-sibling.alipay.com.cn
+#mum.alibabachengdun.com
+#applog.uc.cn
