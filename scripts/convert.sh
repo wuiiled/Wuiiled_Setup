@@ -37,7 +37,7 @@ download_files_parallel() {
         local temp_out="${temp_map_dir}/${i}.txt"
         (
             if curl -sLf --connect-timeout 15 --retry 3 "$url" > "$temp_out"; then
-                # 🛡️ 确保文件末尾有换行符，防止拼接错误
+                # 🛡️ 确保文件末尾有换行符
                 [ -n "$(tail -c1 "$temp_out")" ] && echo "" >> "$temp_out"
                 echo "   ✅ 完成: $(basename "$url")"
             else
@@ -54,16 +54,17 @@ download_files_parallel() {
     rm -rf "$temp_map_dir"
 }
 
-# 2. 域名标准化 (已修复 53kf 问题)
+# 2. 域名标准化 (修复 53kf 丢失问题)
+# 逻辑顺序：去空 -> 去注释 -> 去修饰符 -> 【先】去前缀 -> 【后】字符校验
 normalize_domain() {
     tr 'A-Z' 'a-z' | tr -d '\r' \
+    | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
     | sed 's/[\$#].*//g' \
     | sed -E 's/^(0\.0\.0\.0|127\.0\.0\.1)[[:space:]]+//g' \
     | sed 's/^!.*//g' \
     | sed 's/^@@//g' \
     | sed 's/||//g; s/\^//g; s/|//g' \
     | sed 's/domain-keyword,//g' \
-    | sed -E 's/^[[:space:]]*//' \
     | sed 's/^domain-suffix,//g' \
     | sed 's/^domain,//g' \
     | awk -F, '{print $1}' \
@@ -78,15 +79,14 @@ normalize_domain() {
     | grep -E '[a-z0-9_]$' \
     | awk '/\./ {print $0}'
 }
-# 说明：先执行 sed 去除 +. 再执行 grep，确保 +.accwww9.53kf.com 能通过校验。
 
-# 3. 自身去重 (仅排序)
+# 3. 自身去重 (简单排序)
 optimize_self() {
     echo "🧠 执行自身简单去重..."
     sort -u "$1" > "$2"
 }
 
-# 4. 关键词过滤 (仅保留 grep 逻辑，不再处理白名单)
+# 4. 关键词过滤 (仅处理 grep，不涉及白名单逻辑)
 apply_keyword_filter() {
     local keyword_file="scripts/exclude-keyword.txt"
     if [ -f "$keyword_file" ] && [ -s "$keyword_file" ]; then
@@ -100,16 +100,16 @@ apply_keyword_filter() {
     fi
 }
 
-# 5. 【核心算法】精准白名单过滤
-# 逻辑：
-# - 白名单子域名 (wgo.mmstat.com) -> 删除 黑名单父域名 (+.mmstat.com) [防误杀]
-# - 白名单父域名 (xhscdn.com) -> 保留 黑名单子域名 (ads.xhscdn.com) [精准拦截]
+# 5. 【核心算法】双向智能白名单过滤
+# 逻辑目标：
+# - 白名单 mmstat.com -> 删除黑名单 cnzz.mmstat.com (Parent kills Child)
+# - 白名单 wgo.mmstat.com -> 删除黑名单 +.mmstat.com (Child kills Parent)
 apply_advanced_whitelist_filter() {
     local block_in=$1
     local allow_in=$2
     local final_out=$3
 
-    echo "🛡️  应用智能白名单过滤..."
+    echo "🛡️  应用双向白名单过滤 (Parent<->Child)..."
 
     # 步骤 A: 准备白名单 [反转] [1]
     awk '{ 
@@ -119,7 +119,7 @@ apply_advanced_whitelist_filter() {
     }' "$allow_in" > "${WORK_DIR}/algo_input.txt"
 
     # 步骤 B: 准备黑名单 [反转] [0] [原始]
-    # 注意：纯域名用于比较，原始行用于输出
+    # 注意：original 保留原始行（含 +.），pure 用于排序比较
     awk '{ 
         original=$0; pure=original;
         sub(/^\+\./,"",pure); sub(/^\./,"",pure);
@@ -129,7 +129,11 @@ apply_advanced_whitelist_filter() {
     }' "$block_in" >> "${WORK_DIR}/algo_input.txt"
 
     # 步骤 C: 排序与过滤
-    # 排序顺序: moc.tatsmm (0) -> moc.tatsmm (1) -> moc.tatsmm.zznc (0)
+    # 排序后示例:
+    # 1. moc.tatsmm 0 (+.mmstat.com 黑)
+    # 2. moc.tatsmm 1 (mmstat.com 白)
+    # 3. moc.tatsmm.zznc 0 (cnzz.mmstat.com 黑)
+    
     sort "${WORK_DIR}/algo_input.txt" | awk '
     BEGIN { FS=" " }
     {
@@ -137,36 +141,47 @@ apply_advanced_whitelist_filter() {
         type = $2
         original = $3
 
-        # Buffer 检测: 检查当前 Key 是否是 Buffer (黑名单父域名) 的子域名或相等
-        # Buffer = moc.tatsmm (0)
-        # Key    = moc.tatsmm.ogw (1)
+        # === 逻辑 1: Active Root (白名单父域名 杀 黑名单子域名) ===
+        # 场景：Active="moc.tatsmm"(白), Current="moc.tatsmm.zznc"(黑)
+        if (active_white_root != "" && index(key, active_white_root ".") == 1) {
+            # 这是一个被白名单覆盖的子域名，删除。
+            next
+        }
+
+        # === 逻辑 2: Buffer (白名单子域名/同名 杀 黑名单父域名) ===
+        # 场景：Buffer="moc.tatsmm"(黑), Current="moc.tatsmm"(白) -> Buffer死
+        # 场景：Buffer="moc.tatsmm"(黑), Current="moc.tatsmm.ogw"(白) -> Buffer死
         is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
 
         if (is_child_or_equal) {
             if (type == 1) {
-                # 白名单子域名出现 -> 杀死 Buffer (黑名单父域名)
-                # 场景：Allow=wgo.mmstat.com, Block=+.mmstat.com -> Block被删
+                # 白名单出现！反杀黑名单 Buffer
                 buffered_key = ""
                 buffered_line = ""
+                
+                # 【关键】将当前白名单设为 Active Root，继续保护后续子域名
+                active_white_root = key
             } else {
-                # 黑名单子域名 -> 保留
-                # 场景：Block=ads.xhscdn.com (Buffer=xhscdn.com) -> 保留ads
-                if (buffered_line != "") print buffered_line
-                buffered_key = key
-                buffered_line = original
+                # 黑名单子域名。Buffer (黑父) 覆盖了 Current (黑子)。
+                # 自身去重优化：丢弃黑子，保留黑父。
+                # (如果不想合并黑名单，可以把这里改为 print original)
             }
         } else {
-            # 新分支
+            # === 新的分支 ===
+            # 输出之前安全的黑名单 Buffer
             if (buffered_line != "") print buffered_line
 
             if (type == 1) {
-                # 白名单不进 Buffer
+                # 新的白名单根
+                active_white_root = key
                 buffered_key = ""
                 buffered_line = ""
             } else {
-                # 黑名单进 Buffer
+                # 新的黑名单根
                 buffered_key = key
                 buffered_line = original
+                # 进入黑名单领地，之前的白名单保护失效
+                active_white_root = "" 
             }
         }
     }
@@ -181,7 +196,7 @@ finalize_output() {
     local dst=$2
     local mode=$3
 
-    # 最终去重排序
+    # 最终兜底去重
     sort -u "$src" -o "$src"
 
     if [ "$mode" == "add_prefix" ]; then
@@ -232,18 +247,16 @@ generate_ads() {
     download_files_parallel "${WORK_DIR}/raw_ads.txt" "${BLOCK_URLS[@]}"
     download_files_parallel "${WORK_DIR}/raw_allow.txt" "${ALLOW_URLS[@]}"
 
-    # 清洗：去除 @@ 行，标准化域名
-    # normalize_domain 现在正确处理 +. 前缀，53kf.com 不会丢失
+    # 清洗：去除 @@ 行，标准化域名 (normalize_domain 已修复)
     grep -vE '^\s*@@' "${WORK_DIR}/raw_ads.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_ads.txt"
     
-    # 关键词过滤 (scripts/exclude-keyword.txt 中的词条会被删除)
+    # 关键词过滤
     apply_keyword_filter "${WORK_DIR}/clean_ads.txt" "${WORK_DIR}/filter_ads.txt"
 
-    # 处理白名单 (合并在线 + 本地 exclude-keyword 作为强制白名单)
+    # 处理白名单 (在线 + 本地 keyword 强转白名单)
     echo "📥 合并本地白名单 (scripts/exclude-keyword.txt)..."
     local_allow="scripts/exclude-keyword.txt"
     if [ -f "$local_allow" ]; then
-        # 修复：去除注释#和空行
         grep -vE '^\s*($|#)' "$local_allow" > "${WORK_DIR}/local_allow_clean.txt"
         cat "${WORK_DIR}/raw_allow.txt" "${WORK_DIR}/local_allow_clean.txt" > "${WORK_DIR}/merged_allow_raw.txt"
     else
@@ -255,7 +268,7 @@ generate_ads() {
     optimize_self "${WORK_DIR}/filter_ads.txt" "${WORK_DIR}/opt_ads.txt"
     optimize_self "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/opt_allow.txt"
 
-    # 核心过滤
+    # 核心：双向白名单过滤
     apply_advanced_whitelist_filter "${WORK_DIR}/opt_ads.txt" "${WORK_DIR}/opt_allow.txt" "${WORK_DIR}/final_ads.txt"
 
     # 输出 (mode=add_prefix)
