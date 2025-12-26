@@ -4,6 +4,7 @@
 
 # 【核心】强制使用 C 语言区域设置
 # 确保 ASCII 排序顺序：Space(32) < . (46) < 0 (48) < 1 (49)
+# 排序结果：父域名在前，子域名在后；同名时黑名单在前，白名单在后
 export LC_ALL=C
 
 WORK_DIR=$(mktemp -d)
@@ -36,7 +37,6 @@ download_files_parallel() {
         local temp_out="${temp_map_dir}/${i}.txt"
         (
             if curl -sLf --connect-timeout 15 --retry 3 "$url" > "$temp_out"; then
-                # 确保文件末尾有换行
                 [ -n "$(tail -c1 "$temp_out")" ] && echo "" >> "$temp_out"
                 echo "   ✅ 完成: $(basename "$url")"
             else
@@ -53,7 +53,9 @@ download_files_parallel() {
     rm -rf "$temp_map_dir"
 }
 
-# 2. 域名标准化 (修复 Bug 核心)
+# 2. 域名标准化 (增强版)
+# 修复了之前 grep 过于严格导致 .53kf.com 丢失的问题
+# 增加了对下划线 _ 的支持
 normalize_domain() {
     tr 'A-Z' 'a-z' | tr -d '\r' \
     | sed 's/[\$#].*//g' \
@@ -77,10 +79,6 @@ normalize_domain() {
     | grep -E '[a-z0-9_]$' \
     | awk '/\./ {print $0}'
 }
-# 修复说明：
-# 1. 增加了 sed 's/^\+\.//g' 和 sed 's/^\.//g'：先去除行首的 +. 或 .
-# 2. grep 增加了 _ (下划线)，防止误杀部分 CDN 域名。
-# 3. 这样 +.accwww9.53kf.com 会被清洗为 accwww9.53kf.com，从而通过 grep 检查。
 
 # 3. 自身去重 (仅排序)
 optimize_self() {
@@ -102,16 +100,16 @@ apply_keyword_filter() {
     fi
 }
 
-# 5. 【核心算法】智能白名单过滤
-# 逻辑保持不变：
-# - 白名单子域名 (wgo.mmstat.com) -> 删除 黑名单父域名 (+.mmstat.com) [防误杀]
-# - 白名单父域名 (xhscdn.com) -> 保留 黑名单子域名 (ads.xhscdn.com) [精准拦截]
+# 5. 【核心算法】双向智能白名单过滤
+# 逻辑：
+# A. 白名单父域名 (mmstat.com) -> 删除所有黑名单子域名 (cnzz.mmstat.com)
+# B. 白名单子域名 (wgo.mmstat.com) -> 删除黑名单父域名 (+.mmstat.com)
 apply_advanced_whitelist_filter() {
     local block_in=$1
     local allow_in=$2
     local final_out=$3
 
-    echo "🛡️  应用智能白名单过滤..."
+    echo "🛡️  应用双向白名单过滤..."
 
     # 步骤 A: 准备白名单 [反转] [1]
     awk '{ 
@@ -121,7 +119,6 @@ apply_advanced_whitelist_filter() {
     }' "$allow_in" > "${WORK_DIR}/algo_input.txt"
 
     # 步骤 B: 准备黑名单 [反转] [0] [原始]
-    # 注意：这里会处理原始行 (original)，确保模块4的 +. 能保留
     awk '{ 
         original=$0; pure=original;
         sub(/^\+\./,"",pure); sub(/^\./,"",pure);
@@ -131,6 +128,12 @@ apply_advanced_whitelist_filter() {
     }' "$block_in" >> "${WORK_DIR}/algo_input.txt"
 
     # 步骤 C: 排序与过滤
+    # 排序关键: Space(32) < .(46) < 0(48) < 1(49)
+    # 结果流示例:
+    # moc.tatsmm 0 (+.mmstat.com - 黑)
+    # moc.tatsmm 1 (mmstat.com - 白)
+    # moc.tatsmm.zznc 0 (cnzz.mmstat.com - 黑)
+    
     sort "${WORK_DIR}/algo_input.txt" | awk '
     BEGIN { FS=" " }
     {
@@ -138,32 +141,46 @@ apply_advanced_whitelist_filter() {
         type = $2
         original = $3
 
-        # Buffer 检测: 检查当前 Key 是否是 Buffer (黑名单父域名) 的子域名
+        # === 逻辑 1: Active Root (白名单父域名覆盖黑名单子域名) ===
+        # 如果当前 Key 是 active_white_root 的子域名 -> 删除 (next)
+        # 例如: active="moc.tatsmm" (mmstat.com), key="moc.tatsmm.zznc" (cnzz.mmstat.com) -> 删除
+        if (active_white_root != "" && index(key, active_white_root ".") == 1) {
+            next
+        }
+
+        # === 逻辑 2: Buffer (白名单子域名/同名 反杀 黑名单父域名) ===
+        # 检查当前 Key 是否是 Buffer (黑名单父域名) 的子域名或相等
         is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
 
         if (is_child_or_equal) {
             if (type == 1) {
-                # 白名单子域名出现 -> 杀死 Buffer (黑名单父域名)
+                # 白名单出现 (子域名或同名)!
+                # 场景1: Buffer="moc.tatsmm"(黑), Key="moc.tatsmm.ogw"(白) -> Buffer死
+                # 场景2: Buffer="moc.tatsmm"(黑), Key="moc.tatsmm"(白) -> Buffer死
                 buffered_key = ""
                 buffered_line = ""
+                
+                # 并将自己设为新的 Active Root，保护后续更长的子域名
+                active_white_root = key
             } else {
-                # 黑名单子域名 -> 保留 (不进行父子合并，确保精准黑名单不丢失)
-                if (buffered_line != "") print buffered_line
-                buffered_key = key
-                buffered_line = original
+                # 黑名单子域名 -> 冗余，忽略
             }
         } else {
-            # 新分支
+            # === 新的分支 ===
+            # 输出之前的安全黑名单
             if (buffered_line != "") print buffered_line
 
             if (type == 1) {
-                # 白名单不进 Buffer
+                # 新的白名单根
+                active_white_root = key
                 buffered_key = ""
                 buffered_line = ""
             } else {
-                # 黑名单进 Buffer
+                # 新的黑名单根
                 buffered_key = key
                 buffered_line = original
+                # 由于进入了新的黑名单分支，之前的白名单保护失效
+                active_white_root = "" 
             }
         }
     }
@@ -178,7 +195,6 @@ finalize_output() {
     local dst=$2
     local mode=$3
 
-    # 最终去重排序
     sort -u "$src" -o "$src"
 
     if [ "$mode" == "add_prefix" ]; then
@@ -229,8 +245,7 @@ generate_ads() {
     download_files_parallel "${WORK_DIR}/raw_ads.txt" "${BLOCK_URLS[@]}"
     download_files_parallel "${WORK_DIR}/raw_allow.txt" "${ALLOW_URLS[@]}"
 
-    # 清洗：去除 @@ 行，标准化域名
-    # 修复点：normalize_domain 现在会剥离 +. 前缀，使 53kf.com 能通过检查
+    # 清洗 (normalize_domain 已修复 +. 问题)
     grep -vE '^\s*@@' "${WORK_DIR}/raw_ads.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_ads.txt"
     
     # 关键词过滤
@@ -254,7 +269,7 @@ generate_ads() {
     # 白名单过滤
     apply_advanced_whitelist_filter "${WORK_DIR}/opt_ads.txt" "${WORK_DIR}/opt_allow.txt" "${WORK_DIR}/final_ads.txt"
 
-    # 输出 (mode=add_prefix: 统一添加 +.)
+    # 输出 (mode=add_prefix)
     finalize_output "${WORK_DIR}/final_ads.txt" "ADs_merged.mrs" "add_prefix"
     mv "${WORK_DIR}/final_ads.txt" "ADs_merged.txt"
 }
@@ -331,7 +346,7 @@ generate_reject() {
 
     apply_advanced_whitelist_filter "${WORK_DIR}/clean_rd.txt" "${WORK_DIR}/clean_rd_allow.txt" "${WORK_DIR}/final_rd.txt"
 
-    # 输出 (mode=none: 保持源文件的前缀逻辑)
+    # 输出 (mode=none)
     finalize_output "${WORK_DIR}/final_rd.txt" "Reject_Drop_merged.mrs" "none"
     mv "${WORK_DIR}/final_rd.txt" "Reject_Drop_merged.txt"
 }
