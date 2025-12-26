@@ -3,8 +3,8 @@
 # ================= 全局配置 =================
 
 # 【核心】强制使用 C 语言区域设置
-# 确保 ASCII 排序顺序：Space(32) < . (46) < 0 (48) < 1 (49)
-# 排序结果：父域名在前，子域名在后；同名时黑名单在前，白名单在后
+# 1. 性能：ASCII 排序速度最快。
+# 2. 逻辑：Space(32) < . (46) < 0 (48) < 1 (49)。
 export LC_ALL=C
 
 WORK_DIR=$(mktemp -d)
@@ -21,7 +21,7 @@ CHECK_MIHOMO() {
 
 # ================= 核心工具函数 =================
 
-# 1. 并行下载
+# 1. 并行下载 (保持不变)
 download_files_parallel() {
     local output_file=$1
     shift
@@ -37,7 +37,6 @@ download_files_parallel() {
         local temp_out="${temp_map_dir}/${i}.txt"
         (
             if curl -sLf --connect-timeout 15 --retry 3 "$url" > "$temp_out"; then
-                # 🛡️ 确保文件末尾有换行符
                 [ -n "$(tail -c1 "$temp_out")" ] && echo "" >> "$temp_out"
                 echo "   ✅ 完成: $(basename "$url")"
             else
@@ -54,39 +53,33 @@ download_files_parallel() {
     rm -rf "$temp_map_dir"
 }
 
-# 2. 域名标准化 (修复 53kf 丢失问题)
-# 逻辑顺序：去空 -> 去注释 -> 去修饰符 -> 【先】去前缀 -> 【后】字符校验
+# 2. 域名标准化 (高性能版)
+# 优化点：合并了所有 sed 操作，合并了 grep 操作
 normalize_domain() {
     tr 'A-Z' 'a-z' | tr -d '\r' \
-    | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
-    | sed 's/[\$#].*//g' \
-    | sed -E 's/^(0\.0\.0\.0|127\.0\.0\.1)[[:space:]]+//g' \
-    | sed 's/^!.*//g' \
-    | sed 's/^@@//g' \
-    | sed 's/||//g; s/\^//g; s/|//g' \
-    | sed 's/domain-keyword,//g' \
-    | sed 's/^domain-suffix,//g' \
-    | sed 's/^domain,//g' \
-    | awk -F, '{print $1}' \
-    | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
-    | sed 's/^\+\.//g' \
-    | sed 's/^\.//g' \
-    | sed 's/\.$//' \
-    | grep -v "*" \
-    | grep -v "[^a-z0-9._-]" \
-    | grep -vE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' \
+    | sed -E '
+        s/^[[:space:]]*//; s/[[:space:]]*$//;    # 去首尾空格
+        s/[\$#].*//g;                            # 去注释
+        s/^(0\.0\.0\.0|127\.0\.0\.1)[[:space:]]+//g; # 去HOSTS IP
+        s/^!.*//; s/^@@//;                       # 去AdGuard修饰符
+        s/\|\|//; s/\^//; s/\|//;                # 去AdGuard符号
+        s/^domain-keyword,//; s/^domain-suffix,//; s/^domain,//; # 去Clash修饰符
+        s/^([^,]+).*/\1/;                        # 提取逗号前内容(awk)
+        s/^\+\.//; s/^\.//; s/\.$//              # 去除前缀 +. 或 . 以及后缀 .
+    ' \
+    | grep -vE '(\*|[^a-z0-9._-]|^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$)' \
     | grep -E '^[a-z0-9_]' \
-    | grep -E '[a-z0-9_]$' \
     | awk '/\./ {print $0}'
 }
+# 逻辑说明：保留了对 _ 的支持，保留了对 +. 的去除，确保 53kf 和 mmstat 都能正确通过。
 
-# 3. 自身去重 (简单排序)
+# 3. 自身去重
 optimize_self() {
     echo "🧠 执行自身简单去重..."
     sort -u "$1" > "$2"
 }
 
-# 4. 关键词过滤 (仅处理 grep，不涉及白名单逻辑)
+# 4. 关键词过滤
 apply_keyword_filter() {
     local keyword_file="scripts/exclude-keyword.txt"
     if [ -f "$keyword_file" ] && [ -s "$keyword_file" ]; then
@@ -101,15 +94,15 @@ apply_keyword_filter() {
 }
 
 # 5. 【核心算法】双向智能白名单过滤
-# 逻辑目标：
-# - 白名单 mmstat.com -> 删除黑名单 cnzz.mmstat.com (Parent kills Child)
-# - 白名单 wgo.mmstat.com -> 删除黑名单 +.mmstat.com (Child kills Parent)
+# 逻辑：
+# 1. Active Root (父杀子): Allow(mmstat.com) -> Kill Block(cnzz.mmstat.com)
+# 2. Buffer (子杀父): Allow(wgo.mmstat.com) -> Kill Block(+.mmstat.com)
 apply_advanced_whitelist_filter() {
     local block_in=$1
     local allow_in=$2
     local final_out=$3
 
-    echo "🛡️  应用双向白名单过滤 (Parent<->Child)..."
+    echo "🛡️  应用双向白名单过滤..."
 
     # 步骤 A: 准备白名单 [反转] [1]
     awk '{ 
@@ -119,7 +112,6 @@ apply_advanced_whitelist_filter() {
     }' "$allow_in" > "${WORK_DIR}/algo_input.txt"
 
     # 步骤 B: 准备黑名单 [反转] [0] [原始]
-    # 注意：original 保留原始行（含 +.），pure 用于排序比较
     awk '{ 
         original=$0; pure=original;
         sub(/^\+\./,"",pure); sub(/^\./,"",pure);
@@ -129,11 +121,7 @@ apply_advanced_whitelist_filter() {
     }' "$block_in" >> "${WORK_DIR}/algo_input.txt"
 
     # 步骤 C: 排序与过滤
-    # 排序后示例:
-    # 1. moc.tatsmm 0 (+.mmstat.com 黑)
-    # 2. moc.tatsmm 1 (mmstat.com 白)
-    # 3. moc.tatsmm.zznc 0 (cnzz.mmstat.com 黑)
-    
+    # 排序顺序: moc.tatsmm(0) -> moc.tatsmm(1) -> moc.tatsmm.zznc(0)
     sort "${WORK_DIR}/algo_input.txt" | awk '
     BEGIN { FS=" " }
     {
@@ -141,34 +129,33 @@ apply_advanced_whitelist_filter() {
         type = $2
         original = $3
 
-        # === 逻辑 1: Active Root (白名单父域名 杀 黑名单子域名) ===
-        # 场景：Active="moc.tatsmm"(白), Current="moc.tatsmm.zznc"(黑)
+        # === 逻辑 1: 父杀子 (Active Root) ===
+        # 如果当前 Key 是 active_white_root 的子域名 -> 删除
         if (active_white_root != "" && index(key, active_white_root ".") == 1) {
-            # 这是一个被白名单覆盖的子域名，删除。
             next
         }
 
-        # === 逻辑 2: Buffer (白名单子域名/同名 杀 黑名单父域名) ===
-        # 场景：Buffer="moc.tatsmm"(黑), Current="moc.tatsmm"(白) -> Buffer死
-        # 场景：Buffer="moc.tatsmm"(黑), Current="moc.tatsmm.ogw"(白) -> Buffer死
+        # === 逻辑 2: 子杀父 (Buffer) ===
+        # 检查当前 Key 是否是 Buffer (黑名单父域名) 的子域名或相等
         is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
 
         if (is_child_or_equal) {
             if (type == 1) {
-                # 白名单出现！反杀黑名单 Buffer
+                # 白名单出现 (wgo.mmstat.com)!
+                # Buffer (黑名单 +.mmstat.com) 必须死
                 buffered_key = ""
                 buffered_line = ""
                 
-                # 【关键】将当前白名单设为 Active Root，继续保护后续子域名
+                # 并将自己设为 Active Root，保护后续子域名
                 active_white_root = key
             } else {
-                # 黑名单子域名。Buffer (黑父) 覆盖了 Current (黑子)。
-                # 自身去重优化：丢弃黑子，保留黑父。
-                # (如果不想合并黑名单，可以把这里改为 print original)
+                # 黑名单子域名 (cnzz.mmstat.com)，被黑名单父域名覆盖
+                # 自身去重策略：保留父域名 Buffer，忽略子域名
+                # (如果需要保留子域名，可在此处做特殊处理，但通常不需要)
             }
         } else {
             # === 新的分支 ===
-            # 输出之前安全的黑名单 Buffer
+            # 输出之前的安全黑名单
             if (buffered_line != "") print buffered_line
 
             if (type == 1) {
@@ -180,7 +167,7 @@ apply_advanced_whitelist_filter() {
                 # 新的黑名单根
                 buffered_key = key
                 buffered_line = original
-                # 进入黑名单领地，之前的白名单保护失效
+                # 黑名单阻断了之前的白名单范围
                 active_white_root = "" 
             }
         }
@@ -196,7 +183,6 @@ finalize_output() {
     local dst=$2
     local mode=$3
 
-    # 最终兜底去重
     sort -u "$src" -o "$src"
 
     if [ "$mode" == "add_prefix" ]; then
@@ -247,13 +233,9 @@ generate_ads() {
     download_files_parallel "${WORK_DIR}/raw_ads.txt" "${BLOCK_URLS[@]}"
     download_files_parallel "${WORK_DIR}/raw_allow.txt" "${ALLOW_URLS[@]}"
 
-    # 清洗：去除 @@ 行，标准化域名 (normalize_domain 已修复)
     grep -vE '^\s*@@' "${WORK_DIR}/raw_ads.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_ads.txt"
-    
-    # 关键词过滤
     apply_keyword_filter "${WORK_DIR}/clean_ads.txt" "${WORK_DIR}/filter_ads.txt"
 
-    # 处理白名单 (在线 + 本地 keyword 强转白名单)
     echo "📥 合并本地白名单 (scripts/exclude-keyword.txt)..."
     local_allow="scripts/exclude-keyword.txt"
     if [ -f "$local_allow" ]; then
@@ -264,14 +246,11 @@ generate_ads() {
     fi
     cat "${WORK_DIR}/merged_allow_raw.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_allow.txt"
 
-    # 简单去重
     optimize_self "${WORK_DIR}/filter_ads.txt" "${WORK_DIR}/opt_ads.txt"
     optimize_self "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/opt_allow.txt"
 
-    # 核心：双向白名单过滤
     apply_advanced_whitelist_filter "${WORK_DIR}/opt_ads.txt" "${WORK_DIR}/opt_allow.txt" "${WORK_DIR}/final_ads.txt"
 
-    # 输出 (mode=add_prefix)
     finalize_output "${WORK_DIR}/final_ads.txt" "ADs_merged.mrs" "add_prefix"
     mv "${WORK_DIR}/final_ads.txt" "ADs_merged.txt"
 }
@@ -302,7 +281,7 @@ generate_fakeip() {
     download_files_parallel "${WORK_DIR}/raw_fakeip.txt" "${FAKE_IP_URLS[@]}"
     
     echo "🧹 清洗与冲突解决..."
-    # 逻辑：保留原始格式，优先保留 +.
+    # FakeIP 逻辑：保留原始格式
     cat "${WORK_DIR}/raw_fakeip.txt" \
     | tr -d '\r' | grep -vE '^\s*($|#|!)' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
     | awk '{
@@ -325,11 +304,13 @@ generate_reject() {
     download_files_parallel "${WORK_DIR}/raw_rd.txt" "${BLOCK_URLS[@]}"
 
     echo "🧹 SED 清洗..."
-    # 模块4特殊处理：先转成 +. 格式进行处理，保留 sed 逻辑
+    # 模块4 使用 sed 转换为 +. 格式，再去除以进行比较
     cat "${WORK_DIR}/raw_rd.txt" \
-    | tr -d '\r' | sed '/^[[:space:]]*#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' \
-    | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
-    | sort -u > "${WORK_DIR}/clean_rd.txt"
+    | tr -d '\r' | sed -E '
+        /^[[:space:]]*#/d; /skk\.moe/d; /^$/d;
+        s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//;
+        /^\+\.$/d; s/^[[:space:]]*//; s/[[:space:]]*$//
+    ' | sort -u > "${WORK_DIR}/clean_rd.txt"
 
     # 处理白名单
     echo "📥 准备白名单..."
@@ -350,7 +331,7 @@ generate_reject() {
 
     apply_advanced_whitelist_filter "${WORK_DIR}/clean_rd.txt" "${WORK_DIR}/clean_rd_allow.txt" "${WORK_DIR}/final_rd.txt"
 
-    # 输出 (mode=none, 保持 SED 处理后的格式)
+    # 输出 (mode=none)
     finalize_output "${WORK_DIR}/final_rd.txt" "Reject_Drop_merged.mrs" "none"
     mv "${WORK_DIR}/final_rd.txt" "Reject_Drop_merged.txt"
 }
