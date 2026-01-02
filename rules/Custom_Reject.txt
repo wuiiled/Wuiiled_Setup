@@ -11,3 +11,6 @@ stun.syncthing.net
 d.mentuan.net
 upotv.cn
 edge.mountaintoys.cn
+route-stats.d.meituan.net
+dnspod.meituan.httpdns.start.qcloud.com
+dnspod.meituan.httpdns.qcloud.com
