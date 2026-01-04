@@ -1,0 +1,104 @@
+# 自用
++.gitmirror.com
++.sharepoint.cn
++.steamserver.net
++.bonjourr.fr
++.tailscale.com
++.tailscale.io
++.ts.net
++.jiaomu.eu.org
+
+# ImmortalWrt 相关
++.immortalwrt.org
++.kyarucloud.moe
+
+# GitHub 反代 CDN
++.ghfast.top
++.imee.me
++.ihtw.moe
++.gh-proxy.com
++.gh.con.sh
++.gh.ddlc.top
++.gh.llkk.cc
++.ghp.ci
++.ghproxy.cc
++.ghproxy.cfd
++.ghps.cc
++.git.886.be
++.github.abskoop.workers.dev
++.github.boki.moe
++.github.moeyy.xyz
++.github.site
++.github.store
++.hub.gitmirror.com
++.jsdelivr.net
++.kgithub.com
+
+# Docker 反代 CDN
++.docker.1panel.live
++.docker.kejilion.pro
++.docker.unsee.tech
++.dockerpull.pw
++.dockerpull.org
++.dhub.kubesre.xyz
++.hub.crdz.gq
++.hub.rat.dev
++.hub.xdark.top
++.registry.dockermirror.com
+
+# Hugging Face 镜像
++.hf-mirror.com
+
+# 猫眼浏览器
++.catsxp.com
+
+# DDNS
++.checkip.dyndns.org
++.checkipv6.dyndns.org
++.ifconfig.co
++.api.myip.com
+# +.ip-api.com 会影响某些 DNS 泄露检测网站的结果，暂时屏蔽
++.ipapi.co
++.ip6.seeip.org
++.kit327.com
++.members.3322.org
+
+# Windows 网络连接探测
++.msftconnecttest.com
++.msftncsi.com
+
+# Akamai CDN
++.akamaihd.net
+
+# UniGetUI
++.powershellgallery.com
+
+# NTP Pool Project
++.pool.ntp.org
+
+# Dell
++.dell.com
+
+# FLiNG Trainer
++.flingtrainer.com
+
+# 媒体类规则
+# Emby 小雅 相关
++.ddsrem.com
++.ipinfo.io
++.ggbond.org
++.nn.ci
++.wwwh.eu.org
++.1996999.xyz
+# Emby 直连
+# MeFun VIP Porn 资源
++.sptv.ii00.cc
+# MeFun VIP General 资源
++.sgtv.ii00.cc
+# MeFun VIP Music 资源
++.cn-music.mefun.vip
+# IPTV 相关
++.112114.xyz
++.epg.v1.mk
++.epg.aptv.app
++.gdcucc.v1.mk
