@@ -1,0 +1,16 @@
+ccdace.hupu.com
+shence.hupu.com
+tylogin4.lamyu.com
+al-log.d.meituan.net
+metrics-picture.d.meituan.net
+maplocatesdksnapshot.d.meituan.net
+lf0-webcast-sourcecdn-tos.bytegecko.com
+dev.g.alicdn.com
+jddebug.com
+stun.syncthing.net
+d.mentuan.net
+upotv.cn
+edge.mountaintoys.cn
+route-stats.d.meituan.net
+dnspod.meituan.httpdns.start.qcloud.com
+dnspod.meituan.httpdns.qcloud.com
