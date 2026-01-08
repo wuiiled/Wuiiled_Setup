@@ -257,7 +257,7 @@ generate_ads() {
     echo "=== 🚀 模块 1: ADs 规则 ==="
     local BLOCK_URLS=(
         "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt"
-        "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Reject.txt"
+        "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/scripts/Reject-addon.txt"
         "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"
         "https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt"
         "https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt"
