@@ -8,3 +8,4 @@
 +.feiniu.lol
 +.liminalnet.com
 +.megadl.boats
++.dnscf.dpdns.org
