@@ -71,6 +71,7 @@ jobs:
             "Custom_Emby|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Emby.txt"
             "Custom_Proxy|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Proxy.txt"
             "Fake_ip_filter_addon|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Fake_ip_filter_addon.txt"
+            "LocationDKS|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/LocationDKS.txt"
         )
 
         # --- ADG 专用源 ---
@@ -100,7 +101,7 @@ jobs:
             curl -skL "$2" | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > "temp_ws/$1.txt"
         }
         func_mihomo_raw() {
-            curl -skL "$2" -o "temp_ws/$1.txt"
+            curl -skL "$2" | sed '/^#/d' | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,/+./g' | grep -v PROCESS-NAME | grep -v '^$' > "temp_ws/$1.txt"
         }
 
         # 3.1 下载
