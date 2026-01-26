@@ -61,6 +61,7 @@ jobs:
             "baidu|https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/baidu.txt"
             "qihoo360|https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/qihoo360.txt"
             "download|https://ruleset.skk.moe/Clash/domainset/download.txt"
+            "domestic|https://ruleset.skk.moe/Clash/non_ip/domestic.txt"
         )
 
         LIST_RAW=(
@@ -98,7 +99,7 @@ jobs:
             curl -skL "$2" | sed '/^#/d' | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,/+./g' | grep -v PROCESS-NAME | grep -v '^$' > "temp_ws/$1.txt"
         }
         func_mihomo_skk() {
-            curl -skL "$2" | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > "temp_ws/$1.txt"
+            curl -skL "$2" | sed '/^#/d; /skk\.moe/d; /^DOMAIN-WILDCARD,/d; /^$/d; s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//; /^\+\.$/d; /^[[:space:]]*$/d' > "temp_ws/$1.txt"
         }
         func_mihomo_raw() {
             curl -skL "$2" | sed '/^#/d' | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,/+./g' | grep -v PROCESS-NAME | grep -v '^$' > "temp_ws/$1.txt"
