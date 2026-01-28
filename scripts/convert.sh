@@ -261,7 +261,7 @@ generate_ads() {
         "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"
         "https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt"
         "https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt"
-        "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Surge-RULE-SET.list"
+        #"https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Surge-RULE-SET.list"
         "https://raw.githubusercontent.com/ForestL18/rules-dat/mihomo/geo/classical/pcdn.list"
         "https://raw.githubusercontent.com/ForestL18/rules-dat/refs/heads/mihomo/geo/classical/reject.list"
         "https://a.dove.isdumb.one/pihole.txt"
