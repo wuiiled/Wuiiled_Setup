@@ -2,11 +2,14 @@
 
 # ================= 全局配置 =================
 
+# 强制使用 C 语言区域设置，确保 ASCII 排序一致性
 export LC_ALL=C
+
+# 使用 mktemp 创建全局工作目录，并确保脚本退出时自动清理
 WORK_DIR=$(mktemp -d)
 trap "rm -rf ${WORK_DIR}" EXIT
 
-# 检查工具
+# 检查 mihomo 工具是否存在
 CHECK_MIHOMO() {
     if ! command -v mihomo &> /dev/null; then
         echo "⚠️  未检测到 mihomo 命令，跳过 .mrs 转换。"
@@ -18,11 +21,13 @@ CHECK_MIHOMO() {
 # ================= 核心工具函数 =================
 
 # 1. 并行下载
+# 优化：使用 -A 模拟浏览器 UA，防止 403；使用通用 mktemp 写法
 download_files_parallel() {
     local output_file=$1
     shift
     local urls=("$@")
-    # 兼容性修复：使用最通用的 mktemp 写法
+    
+    # 兼容性修复：使用最通用的 mktemp 模板写法
     local temp_map_dir
     temp_map_dir=$(mktemp -d "${WORK_DIR}/dl_map.XXXXXX")
 
@@ -32,11 +37,12 @@ download_files_parallel() {
     for url in "${urls[@]}"; do
         local temp_out="${temp_map_dir}/${i}.txt"
         (
-            # 增加 -A 参数模拟浏览器，防止 403
+            # 增加 -A 参数模拟浏览器，防止被拦截
             if curl -sLf --connect-timeout 20 --retry 3 -A "Mozilla/5.0 (compatible; MihomoRuleConverter/1.0)" "$url" > "$temp_out"; then
+                # 确保文件最后一行有换行符
                 [ -n "$(tail -c1 "$temp_out")" ] && echo "" >> "$temp_out"
             else
-                # 下载失败时不报错退出，但会删除空文件
+                # 下载失败时不报错退出，但删除空文件
                 rm -f "$temp_out"
             fi
         ) &
@@ -57,6 +63,7 @@ download_files_parallel() {
 }
 
 # 2. 域名标准化
+# 优化：合并 sed/grep/awk 管道，提升性能
 normalize_domain() {
     tr -d '\r' \
     | sed -E '
@@ -76,6 +83,7 @@ normalize_domain() {
 }
 
 # 3. 关键词过滤
+# 优化：使用 mktemp 防止并行冲突
 apply_keyword_filter() {
     local input=$1
     local output=$2
@@ -92,12 +100,14 @@ apply_keyword_filter() {
     fi
 }
 
-# 4. 智能覆盖去重 (修复重点)
+# 4. 智能覆盖去重 (Python 版)
+# 逻辑：+.domain 覆盖 domain/sub.domain
+# 优化：动态生成 Python 脚本，利用列表比较实现完美层级去重
 optimize_smart_self() {
     local input=$1
     local output=$2
     
-    # 【修复】使用通用 mktemp 格式，确保在所有 Linux/macOS 上都能正确创建文件
+    # 使用通用 mktemp 格式创建 Python 脚本
     local dedup_script
     dedup_script=$(mktemp "${WORK_DIR}/dedup_script.XXXXXX.py")
 
@@ -146,6 +156,7 @@ def main():
         current_parts = item['parts']
         is_covered = False
         if last_wildcard_parts:
+            # 判断是否是上一个通配符域名的子域名
             if len(current_parts) >= len(last_wildcard_parts):
                 if current_parts[:len(last_wildcard_parts)] == last_wildcard_parts:
                     is_covered = True
@@ -172,6 +183,7 @@ EOF
 }
 
 # 5. 双向白名单过滤
+# 优化：使用 mktemp 防止并行冲突
 apply_advanced_whitelist_filter() {
     local block_in=$1
     local allow_in=$2
@@ -326,10 +338,11 @@ generate_fakeip() {
     )
     download_files_parallel "${mod_dir}/raw_fakeip_dl.txt" "${FAKE_IP_URLS[@]}"
     
+    # 【修复】使用 4 个反斜杠正确转义，消除 tr warning
     tr 'A-Z' 'a-z' < "${mod_dir}/raw_fakeip_dl.txt" \
     | grep -vE '^\s*(dns:|fake-ip-filter:)' \
     | sed 's/^\s*-\s*//' \
-    | tr -d "\"'\\" \
+    | tr -d "\"'\\\\" \
     | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
     | grep -vE '^\s*($|#)' \
     | sort -u > "${mod_dir}/clean_fakeip.txt"
