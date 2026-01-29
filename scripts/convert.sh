@@ -83,7 +83,7 @@ apply_keyword_filter() {
     fi
 }
 
-# 4. 【通用算法】智能覆盖去重 (Module 2 & 3 专用)
+# 4. 【通用算法】智能覆盖去重 (Module 2 & 3 & 5 专用)
 # 逻辑：+.domain (Priority 0) 覆盖 domain/sub.domain (Priority 1)
 optimize_smart_self() {
     local input=$1
@@ -246,14 +246,13 @@ finalize_output() {
 
 ALLOW_URLS=(
     "https://raw.githubusercontent.com/Cats-Team/AdRules/refs/heads/script/script/allowlist.txt"
-    #"https://raw.githubusercontent.com/mawenjian/china-cdn-domain-whitelist/refs/heads/master/china-cdn-domain-whitelist.txt"
     "https://raw.githubusercontent.com/zoonderkins/blahdns/refs/heads/master/hosts/whitelist.txt"
     "https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exceptions.txt"
 )
 
 # ================= 模块定义 =================
 
-generate_ads() {
+generate_ads-reject() {
     echo "=== 🚀 模块 1: ADs 规则 ==="
     local BLOCK_URLS=(
         "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt"
@@ -261,7 +260,6 @@ generate_ads() {
         "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"
         "https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt"
         "https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt"
-        #"https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Surge-RULE-SET.list"
         "https://raw.githubusercontent.com/ForestL18/rules-dat/mihomo/geo/classical/pcdn.list"
         "https://raw.githubusercontent.com/ForestL18/rules-dat/refs/heads/mihomo/geo/classical/reject.list"
         "https://a.dove.isdumb.one/pihole.txt"
@@ -343,7 +341,7 @@ generate_fakeip() {
     mv "${WORK_DIR}/final_fakeip.txt" "Fake_IP_Filter_merged.txt"
 }
 
-generate_reject() {
+generate_ads-drop() {
     echo "=== 🚀 模块 4: Reject Drop ==="
     local BLOCK_URLS=(
         "https://ruleset.skk.moe/Clash/non_ip/reject-drop.txt"
@@ -381,6 +379,52 @@ generate_reject() {
     mv "${WORK_DIR}/final_rd.txt" "Reject_Drop_merged.txt"
 }
 
+# ================= 🚀 模块 5: CN 规则 (新增) =================
+generate_cn() {
+    echo "=== 🚀 模块 5: CN 规则 ==="
+    
+    # 列表 1: 纯域名列表 (需要加 +.)
+    local CN_URLS_1=(
+        "https://static-file-global.353355.xyz/rules/cn-additional-list.txt"
+    )
+    # 列表 2: Clash 格式列表 (需要转换 DOMAIN-SUFFIX -> +.)
+    local CN_URLS_2=(
+        "https://ruleset.skk.moe/Clash/non_ip/domestic.txt"
+    )
+
+    download_files_parallel "${WORK_DIR}/raw_cn_1.txt" "${CN_URLS_1[@]}"
+    download_files_parallel "${WORK_DIR}/raw_cn_2.txt" "${CN_URLS_2[@]}"
+
+    echo "🧹 清洗 List 1 (纯域名 -> +.)..."
+    # 逻辑：去除注释、空行 -> 去除空格 -> 加 +.
+    cat "${WORK_DIR}/raw_cn_1.txt" \
+    | tr -d '\r' \
+    | sed '/^[[:space:]]*#/d; /^$/d; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^/+./' \
+    > "${WORK_DIR}/clean_cn_1.txt"
+
+    echo "🧹 清洗 List 2 (Clash格式 -> 混合)..."
+    # 逻辑：去除 skk.moe, 注释, 空行 -> 只保留 DOMAIN/DOMAIN-SUFFIX -> 转换 -> 清理
+    cat "${WORK_DIR}/raw_cn_2.txt" \
+    | tr -d '\r' \
+    | grep -v "skk\.moe" \
+    | sed '/^[[:space:]]*#/d; /^$/d' \
+    | grep -E '^(DOMAIN-SUFFIX|DOMAIN),' \
+    | sed 's/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' \
+    | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+    > "${WORK_DIR}/clean_cn_2.txt"
+
+    # 合并
+    cat "${WORK_DIR}/clean_cn_1.txt" "${WORK_DIR}/clean_cn_2.txt" > "${WORK_DIR}/merged_cn_raw.txt"
+
+    # 智能去重 (+.domain 覆盖 domain/sub.domain)
+    # 复用 optimize_smart_self 确保逻辑一致
+    optimize_smart_self "${WORK_DIR}/merged_cn_raw.txt" "${WORK_DIR}/final_cn.txt"
+
+    # 输出 (mode="none" 因为前缀已经在清洗步骤处理好了)
+    finalize_output "${WORK_DIR}/final_cn.txt" "CN_merged.mrs" "none"
+    mv "${WORK_DIR}/final_cn.txt" "CN_merged.txt"
+}
+
 # ================= 主程序入口 =================
 
 main() {
@@ -390,14 +434,16 @@ main() {
         ais) generate_ai ;;
         fakeip) generate_fakeip ;;
         reject) generate_reject ;;
+        cn) generate_cn ;;
         all)
-            generate_ads
+            generate_ads-reject
             generate_ai
             generate_fakeip
-            generate_reject
+            generate_ads-drop
+            generate_cn
             ;;
         *)
-            echo "用法: $0 [ads|ais|fakeip|reject|all]"
+            echo "用法: $0 [ads-reject|ais|fakeip|ads-drop|cn|all]"
             exit 1
             ;;
     esac
