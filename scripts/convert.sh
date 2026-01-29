@@ -430,10 +430,10 @@ generate_cn() {
 main() {
     local target=${1:-all}
     case "$target" in
-        ads) generate_ads ;;
+        ads-reject) generate_ads-reject ;;
         ais) generate_ai ;;
         fakeip) generate_fakeip ;;
-        reject) generate_reject ;;
+        ads-drop) generate_ads-drop ;;
         cn) generate_cn ;;
         all)
             generate_ads-reject
