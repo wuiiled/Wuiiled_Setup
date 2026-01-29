@@ -9,6 +9,9 @@ export LC_ALL=C
 WORK_DIR=$(mktemp -d)
 trap "rm -rf ${WORK_DIR}" EXIT
 
+# 定义 Tab 变量，避免 shell 兼容性问题
+TAB=$(printf '\t')
+
 # 检查工具
 CHECK_MIHOMO() {
     if ! command -v mihomo &> /dev/null; then
@@ -90,7 +93,7 @@ optimize_smart_self() {
     echo "🧠 执行智能覆盖去重 (+. 覆盖子域名)..."
 
     # 准备数据：[反转] \t [优先级] \t [原始]
-    awk -v OFS="\t" '{ 
+    awk -v OFS="$TAB" '{ 
         original=$0; pure=original; priority=1;
         # 移除行首空格
         sub(/^[[:space:]]+/, "", pure);
@@ -106,7 +109,7 @@ optimize_smart_self() {
     }' "$input" > "${WORK_DIR}/self_algo.txt"
 
     # 排序与去重 (Tab排序确保父在前)
-    sort -t $'\t' "${WORK_DIR}/self_algo.txt" | awk -F "\t" '
+    sort -t "$TAB" "${WORK_DIR}/self_algo.txt" | awk -F "$TAB" '
     {
         key = $1
         prio = $2
@@ -148,14 +151,14 @@ apply_advanced_whitelist_filter() {
     echo "🛡️  应用双向白名单过滤..."
 
     # 步骤 A: 准备白名单
-    awk -v OFS="\t" '{ 
+    awk -v OFS="$TAB" '{ 
         key=$0; reversed=""; len=length(key);
         for(i=len;i>=1;i--) reversed=reversed substr(key,i,1);
         print reversed, 1 
     }' "$allow_in" > "${WORK_DIR}/algo_input.txt"
 
     # 步骤 B: 准备黑名单
-    awk -v OFS="\t" '{ 
+    awk -v OFS="$TAB" '{ 
         original=$0; pure=original;
         sub(/^\+\./,"",pure); sub(/^\./,"",pure);
         reversed=""; len=length(pure);
@@ -164,7 +167,7 @@ apply_advanced_whitelist_filter() {
     }' "$block_in" >> "${WORK_DIR}/algo_input.txt"
 
     # 步骤 C: 排序与过滤
-    sort -t $'\t' "${WORK_DIR}/algo_input.txt" | awk -F "\t" '
+    sort -t "$TAB" "${WORK_DIR}/algo_input.txt" | awk -F "$TAB" '
     {
         key = $1
         type = $2
@@ -377,8 +380,15 @@ generate_cn() {
     echo "📊 List 1 原始行数: $(wc -l < "${WORK_DIR}/raw_cn_1.txt")"
     echo "📊 List 2 原始行数: $(wc -l < "${WORK_DIR}/raw_cn_2.txt")"
 
-    echo "🧹 清洗 List 1 (纯域名)..."
-    # 严格清洗流水线：转小写 -> 去注释 -> 去空格 -> 去空行 -> 去IP -> 排序去重
+    echo "🧹 清洗 List 1 (纯域名 -> +.)..."
+    # 严格清洗流水线:
+    # 1. 强制小写
+    # 2. 去除行内注释和 # 开头的行
+    # 3. 去除首尾空格
+    # 4. 去除空行
+    # 5. 去除 IP 地址
+    # 6. 排序去重
+    # 7. 添加 +. 前缀
     cat "${WORK_DIR}/raw_cn_1.txt" \
     | tr 'A-Z' 'a-z' \
     | tr -d '\r' \
@@ -387,14 +397,12 @@ generate_cn() {
     | sed '/^$/d' \
     | grep -vE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' \
     | sort -u \
-    > "${WORK_DIR}/clean_cn_1_base.txt"
+    | sed 's/^/+./' \
+    > "${WORK_DIR}/clean_cn_1.txt"
     
-    echo "📊 List 1 纯净去重后行数: $(wc -l < "${WORK_DIR}/clean_cn_1_base.txt")"
-    
-    # 统一加前缀
-    sed 's/^/+./' "${WORK_DIR}/clean_cn_1_base.txt" > "${WORK_DIR}/clean_cn_1.txt"
+    echo "📊 List 1 清洗后有效行数: $(wc -l < "${WORK_DIR}/clean_cn_1.txt")"
 
-    echo "🧹 清洗 List 2 (Clash格式)..."
+    echo "🧹 清洗 List 2 (Clash格式 -> 混合)..."
     cat "${WORK_DIR}/raw_cn_2.txt" \
     | tr 'A-Z' 'a-z' \
     | tr -d '\r' \
@@ -406,9 +414,10 @@ generate_cn() {
     | sed '/^$/d' \
     > "${WORK_DIR}/clean_cn_2.txt"
     
-    echo "📊 List 2 清洗后行数: $(wc -l < "${WORK_DIR}/clean_cn_2.txt")"
+    echo "📊 List 2 清洗后有效行数: $(wc -l < "${WORK_DIR}/clean_cn_2.txt")"
 
     cat "${WORK_DIR}/clean_cn_1.txt" "${WORK_DIR}/clean_cn_2.txt" > "${WORK_DIR}/merged_cn_raw.txt"
+    
     echo "📊 合并后总行数: $(wc -l < "${WORK_DIR}/merged_cn_raw.txt")"
 
     optimize_smart_self "${WORK_DIR}/merged_cn_raw.txt" "${WORK_DIR}/final_cn.txt"
