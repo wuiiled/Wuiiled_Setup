@@ -4,7 +4,6 @@
 
 # 【核心】强制使用 C 语言区域设置
 # 确保 ASCII 排序顺序：Tab(9) < Space(32) < * (42) < . (46) < 0 (48) < 1 (49)
-# 这一顺序是所有“父子覆盖算法”的物理基石
 export LC_ALL=C
 
 WORK_DIR=$(mktemp -d)
@@ -54,7 +53,7 @@ download_files_parallel() {
 }
 
 # 2. 域名标准化
-# 功能：去注释、去修饰符、去前后缀(+. / .)、支持下划线
+# 功能：统一小写、去注释、去修饰符、去前后缀(+. / .)、支持下划线
 normalize_domain() {
     tr 'A-Z' 'a-z' | tr -d '\r' \
     | sed -E '
@@ -77,7 +76,10 @@ apply_keyword_filter() {
     local keyword_file="scripts/exclude-keyword.txt"
     if [ -f "$keyword_file" ] && [ -s "$keyword_file" ]; then
         echo "🔍 应用关键词排除..."
-        grep -v -f "$keyword_file" "$1" > "$2"
+        # 确保关键词文件也统一小写，防止匹配失败
+        local clean_keyword_file="${WORK_DIR}/clean_keyword.txt"
+        tr 'A-Z' 'a-z' < "$keyword_file" > "$clean_keyword_file"
+        grep -v -f "$clean_keyword_file" "$1" > "$2"
     else
         cp "$1" "$2"
     fi
@@ -92,7 +94,6 @@ optimize_smart_self() {
     echo "🧠 执行智能覆盖去重 (+. 覆盖子域名)..."
 
     # 准备数据：[反转] \t [优先级] \t [原始]
-    # 使用 Tab 分隔符，确保排序正确 (Tab < .)
     awk -v OFS="\t" '{ 
         original=$0; pure=original; priority=1;
         # 如果以 +. 或 . 开头，优先级设为 0 (最强)
@@ -144,7 +145,6 @@ optimize_smart_self() {
 }
 
 # 5. 【ADs/Reject 算法】双向智能白名单过滤
-# 使用 Tab 分隔符，确保排序绝对正确
 apply_advanced_whitelist_filter() {
     local block_in=$1
     local allow_in=$2
@@ -169,7 +169,6 @@ apply_advanced_whitelist_filter() {
     }' "$block_in" >> "${WORK_DIR}/algo_input.txt"
 
     # 步骤 C: 排序与过滤
-    # 排序顺序: moc.tatsmm(0) -> moc.tatsmm(1) -> moc.tatsmm.zznc(0)
     sort -t $'\t' "${WORK_DIR}/algo_input.txt" | awk -F "\t" '
     {
         key = $1
@@ -177,29 +176,23 @@ apply_advanced_whitelist_filter() {
         original = $3
 
         # 逻辑 1: 父杀子 (Active Root)
-        # 白名单父域名 (mmstat.com) 杀 黑名单子域名 (cnzz.mmstat.com)
         if (active_white_root != "" && index(key, active_white_root ".") == 1) {
             next
         }
 
         # 逻辑 2: 子杀父 (Buffer)
-        # 白名单子域名 (wgo.mmstat.com) 杀 黑名单父域名 (+.mmstat.com)
         is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
 
         if (is_child_or_equal) {
             if (type == 1) {
-                # 白名单出现 -> 杀死 Buffer (黑名单父域名)
+                # 白名单出现 -> 杀死 Buffer
                 buffered_key = ""
                 buffered_line = ""
-                
-                # 设为 Active Root，保护后续子域名
                 active_white_root = key
             } else {
-                # 黑名单子域名 (cnzz.mmstat.com)，被黑名单父域名 (+.mmstat.com) 覆盖
-                # 内部去重：丢弃冗余子域名
+                # 黑名单子域名被黑名单父域名覆盖
             }
         } else {
-            # === 新的分支 ===
             if (buffered_line != "") print buffered_line
 
             if (type == 1) {
@@ -278,7 +271,7 @@ generate_ads-reject() {
     echo "📥 合并本地白名单..."
     local_allow="scripts/exclude-keyword.txt"
     if [ -f "$local_allow" ]; then
-        grep -vE '^\s*($|#)' "$local_allow" > "${WORK_DIR}/local_allow_clean.txt"
+        grep -vE '^\s*($|#)' "$local_allow" | tr 'A-Z' 'a-z' > "${WORK_DIR}/local_allow_clean.txt"
         cat "${WORK_DIR}/raw_allow.txt" "${WORK_DIR}/local_allow_clean.txt" > "${WORK_DIR}/merged_allow_raw.txt"
     else
         cp "${WORK_DIR}/raw_allow.txt" "${WORK_DIR}/merged_allow_raw.txt"
@@ -287,7 +280,6 @@ generate_ads-reject() {
 
     # 执行智能去重 (+. 覆盖子域名)
     optimize_smart_self "${WORK_DIR}/filter_ads.txt" "${WORK_DIR}/opt_ads.txt"
-    # 白名单也可以智能去重
     optimize_smart_self "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/opt_allow.txt"
 
     apply_advanced_whitelist_filter "${WORK_DIR}/opt_ads.txt" "${WORK_DIR}/opt_allow.txt" "${WORK_DIR}/final_ads.txt"
@@ -307,7 +299,6 @@ generate_ai() {
     download_files_parallel "${WORK_DIR}/raw_ai.txt" "${AI_URLS[@]}"
     cat "${WORK_DIR}/raw_ai.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_ai.txt"
     
-    # 升级：AI 模块也使用智能去重
     optimize_smart_self "${WORK_DIR}/clean_ai.txt" "${WORK_DIR}/opt_ai.txt"
     
     finalize_output "${WORK_DIR}/opt_ai.txt" "AIs_merged.mrs" "add_prefix"
@@ -326,7 +317,9 @@ generate_fakeip() {
     download_files_parallel "${WORK_DIR}/raw_fakeip_dl.txt" "${FAKE_IP_URLS[@]}"
     
     echo "🧹 清洗..."
+    # 增加 tr 'A-Z' 'a-z' 进行小写标准化
     cat "${WORK_DIR}/raw_fakeip_dl.txt" \
+    | tr 'A-Z' 'a-z' \
     | grep -vE '^\s*(dns:|fake-ip-filter:)' \
     | sed 's/^\s*-\s*//' \
     | tr -d "\"'\\" \
@@ -334,7 +327,6 @@ generate_fakeip() {
     | grep -vE '^\s*($|#)' \
     | sort -u > "${WORK_DIR}/clean_fakeip.txt"
 
-    # 智能去重 (修复了 Tab 排序问题)
     optimize_smart_self "${WORK_DIR}/clean_fakeip.txt" "${WORK_DIR}/final_fakeip.txt"
 
     finalize_output "${WORK_DIR}/final_fakeip.txt" "Fake_IP_Filter_merged.mrs" "none"
@@ -350,10 +342,11 @@ generate_ads-drop() {
     download_files_parallel "${WORK_DIR}/raw_rd.txt" "${BLOCK_URLS[@]}"
 
     echo "🧹 SED 清洗..."
+    # 增加 tr 'A-Z' 'a-z'
     cat "${WORK_DIR}/raw_rd.txt" \
-    | tr -d '\r' | sed -E '
+    | tr -d '\r' | tr 'A-Z' 'a-z' | sed -E '
         /^[[:space:]]*#/d; /skk\.moe/d; /^$/d;
-        s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//;
+        s/^domain-suffix,/+./; s/^domain,//;
         /^\+\.$/d; s/^[[:space:]]*//; s/[[:space:]]*$//
     ' | sort -u > "${WORK_DIR}/clean_rd.txt"
 
@@ -364,7 +357,7 @@ generate_ads-drop() {
     else
         download_files_parallel "${WORK_DIR}/raw_allow_temp.txt" "${ALLOW_URLS[@]}"
         if [ -f "$local_allow" ]; then
-            grep -vE '^\s*($|#)' "$local_allow" > "${WORK_DIR}/local_allow_clean.txt"
+            grep -vE '^\s*($|#)' "$local_allow" | tr 'A-Z' 'a-z' > "${WORK_DIR}/local_allow_clean.txt"
             cat "${WORK_DIR}/raw_allow_temp.txt" "${WORK_DIR}/local_allow_clean.txt" > "${WORK_DIR}/merged_allow_raw.txt"
         else
             cp "${WORK_DIR}/raw_allow_temp.txt" "${WORK_DIR}/merged_allow_raw.txt"
@@ -372,22 +365,19 @@ generate_ads-drop() {
         cat "${WORK_DIR}/merged_allow_raw.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_rd_allow.txt"
     fi
 
-    # 双向白名单过滤
     apply_advanced_whitelist_filter "${WORK_DIR}/clean_rd.txt" "${WORK_DIR}/clean_rd_allow.txt" "${WORK_DIR}/final_rd.txt"
 
     finalize_output "${WORK_DIR}/final_rd.txt" "Reject_Drop_merged.mrs" "none"
     mv "${WORK_DIR}/final_rd.txt" "Reject_Drop_merged.txt"
 }
 
-# ================= 🚀 模块 5: CN 规则 (新增) =================
+# ================= 🚀 模块 5: CN 规则 (优化版) =================
 generate_cn() {
     echo "=== 🚀 模块 5: CN 规则 ==="
     
-    # 列表 1: 纯域名列表 (需要加 +.)
     local CN_URLS_1=(
         "https://static-file-global.353355.xyz/rules/cn-additional-list.txt"
     )
-    # 列表 2: Clash 格式列表 (需要转换 DOMAIN-SUFFIX -> +.)
     local CN_URLS_2=(
         "https://ruleset.skk.moe/Clash/non_ip/domestic.txt"
     )
@@ -396,20 +386,22 @@ generate_cn() {
     download_files_parallel "${WORK_DIR}/raw_cn_2.txt" "${CN_URLS_2[@]}"
 
     echo "🧹 清洗 List 1 (纯域名 -> +.)..."
-    # 逻辑：去除注释、空行 -> 去除空格 -> 加 +.
+    # 增加 tr 'A-Z' 'a-z' 确保小写，防止因大小写导致去重失效
     cat "${WORK_DIR}/raw_cn_1.txt" \
     | tr -d '\r' \
+    | tr 'A-Z' 'a-z' \
     | sed '/^[[:space:]]*#/d; /^$/d; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^/+./' \
     > "${WORK_DIR}/clean_cn_1.txt"
 
     echo "🧹 清洗 List 2 (Clash格式 -> 混合)..."
-    # 逻辑：去除 skk.moe, 注释, 空行 -> 只保留 DOMAIN/DOMAIN-SUFFIX -> 转换 -> 清理
+    # 增加 tr 'A-Z' 'a-z'，并匹配小写的 domain-suffix
     cat "${WORK_DIR}/raw_cn_2.txt" \
     | tr -d '\r' \
+    | tr 'A-Z' 'a-z' \
     | grep -v "skk\.moe" \
     | sed '/^[[:space:]]*#/d; /^$/d' \
-    | grep -E '^(DOMAIN-SUFFIX|DOMAIN),' \
-    | sed 's/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' \
+    | grep -E '^(domain-suffix|domain),' \
+    | sed 's/^domain-suffix,/+./; s/^domain,//' \
     | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
     > "${WORK_DIR}/clean_cn_2.txt"
 
@@ -417,10 +409,9 @@ generate_cn() {
     cat "${WORK_DIR}/clean_cn_1.txt" "${WORK_DIR}/clean_cn_2.txt" > "${WORK_DIR}/merged_cn_raw.txt"
 
     # 智能去重 (+.domain 覆盖 domain/sub.domain)
-    # 复用 optimize_smart_self 确保逻辑一致
+    # 因为已经全部转为小写，awk 中的 index() 函数现在能正确匹配父子关系
     optimize_smart_self "${WORK_DIR}/merged_cn_raw.txt" "${WORK_DIR}/final_cn.txt"
 
-    # 输出 (mode="none" 因为前缀已经在清洗步骤处理好了)
     finalize_output "${WORK_DIR}/final_cn.txt" "CN_merged.mrs" "none"
     mv "${WORK_DIR}/final_cn.txt" "CN_merged.txt"
 }
