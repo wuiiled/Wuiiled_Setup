@@ -4,7 +4,6 @@
 
 # 【核心】强制使用 C 语言区域设置
 # 确保 ASCII 排序顺序：Tab(9) < Space(32) < * (42) < . (46) < 0 (48) < 1 (49)
-# 这一顺序是所有“父子覆盖算法”的物理基石
 export LC_ALL=C
 
 WORK_DIR=$(mktemp -d)
@@ -53,19 +52,18 @@ download_files_parallel() {
     rm -rf "$temp_map_dir"
 }
 
-# 2. 域名标准化
-# 功能：去注释、去修饰符、去前后缀(+. / .)、支持下划线
+# 2. 域名标准化 (通用)
 normalize_domain() {
     tr 'A-Z' 'a-z' | tr -d '\r' \
     | sed -E '
-        s/^[[:space:]]*//; s/[[:space:]]*$//;    # 去首尾空格
-        s/[\$#].*//g;                            # 去注释
-        s/^(0\.0\.0\.0|127\.0\.0\.1)[[:space:]]+//g; # 去HOSTS IP
-        s/^!.*//; s/^@@//;                       # 去AdGuard修饰符
-        s/\|\|//; s/\^//; s/\|//;                # 去AdGuard符号
-        s/^domain-keyword,//; s/^domain-suffix,//; s/^domain,//; # 去Clash修饰符
-        s/^([^,]+).*/\1/;                        # 提取逗号前内容
-        s/^\+\.//; s/^\.//; s/\.$//              # 去除前缀 +. 或 . 以及后缀 .
+        s/^[[:space:]]*//; s/[[:space:]]*$//;    
+        s/[\$#].*//g;                            
+        s/^(0\.0\.0\.0|127\.0\.0\.1)[[:space:]]+//g; 
+        s/^!.*//; s/^@@//;                       
+        s/\|\|//; s/\^//; s/\|//;                
+        s/^domain-keyword,//; s/^domain-suffix,//; s/^domain,//; 
+        s/^([^,]+).*/\1/;                        
+        s/^\+\.//; s/^\.//; s/\.$//              
     ' \
     | grep -vE '(\*|[^a-z0-9._ -]|^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$)' \
     | grep -E '^[a-z0-9_]' \
@@ -83,7 +81,7 @@ apply_keyword_filter() {
     fi
 }
 
-# 4. 【通用算法】智能覆盖去重 (Module 2 & 3 & 5 专用)
+# 4. 【通用算法】智能覆盖去重 (Tab分隔符版)
 # 逻辑：+.domain (Priority 0) 覆盖 domain/sub.domain (Priority 1)
 optimize_smart_self() {
     local input=$1
@@ -92,10 +90,12 @@ optimize_smart_self() {
     echo "🧠 执行智能覆盖去重 (+. 覆盖子域名)..."
 
     # 准备数据：[反转] \t [优先级] \t [原始]
-    # 使用 Tab 分隔符，确保排序正确 (Tab < .)
     awk -v OFS="\t" '{ 
         original=$0; pure=original; priority=1;
-        # 如果以 +. 或 . 开头，优先级设为 0 (最强)
+        # 移除行首空格
+        sub(/^[[:space:]]+/, "", pure);
+        
+        # 识别通配前缀 (+. 或 .)
         if (sub(/^\+\./, "", pure) || sub(/^\./, "", pure)) { 
             priority=0; 
         } 
@@ -105,7 +105,7 @@ optimize_smart_self() {
         print reversed, priority, original 
     }' "$input" > "${WORK_DIR}/self_algo.txt"
 
-    # 排序与去重
+    # 排序与去重 (Tab排序确保父在前)
     sort -t $'\t' "${WORK_DIR}/self_algo.txt" | awk -F "\t" '
     {
         key = $1
@@ -113,10 +113,8 @@ optimize_smart_self() {
         original = $3
 
         # 检查是否被 Buffer (Priority 0 的 +.) 覆盖
-        # 覆盖条件：是 Buffer 的子域名 或 相等
         is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
 
-        # 只有当 Buffer 是 Priority 0 (通配前缀) 时，才有资格清除子集
         if (is_child_or_equal && buffered_prio == 0) {
             # 被覆盖，丢弃
             next
@@ -126,12 +124,10 @@ optimize_smart_self() {
 
             # 更新 Buffer
             if (prio == 0) {
-                # 只有 Prio 0 才有资格进 Buffer 杀别人
                 buffered_key = key
                 buffered_prio = prio
                 buffered_line = original
             } else {
-                # 普通规则直接输出
                 print original
                 buffered_key = ""
                 buffered_line = ""
@@ -144,7 +140,6 @@ optimize_smart_self() {
 }
 
 # 5. 【ADs/Reject 算法】双向智能白名单过滤
-# 使用 Tab 分隔符，确保排序绝对正确
 apply_advanced_whitelist_filter() {
     local block_in=$1
     local allow_in=$2
@@ -152,14 +147,14 @@ apply_advanced_whitelist_filter() {
 
     echo "🛡️  应用双向白名单过滤..."
 
-    # 步骤 A: 准备白名单 [反转]\t[1]
+    # 步骤 A: 准备白名单
     awk -v OFS="\t" '{ 
         key=$0; reversed=""; len=length(key);
         for(i=len;i>=1;i--) reversed=reversed substr(key,i,1);
         print reversed, 1 
     }' "$allow_in" > "${WORK_DIR}/algo_input.txt"
 
-    # 步骤 B: 准备黑名单 [反转]\t[0]\t[原始]
+    # 步骤 B: 准备黑名单
     awk -v OFS="\t" '{ 
         original=$0; pure=original;
         sub(/^\+\./,"",pure); sub(/^\./,"",pure);
@@ -169,7 +164,6 @@ apply_advanced_whitelist_filter() {
     }' "$block_in" >> "${WORK_DIR}/algo_input.txt"
 
     # 步骤 C: 排序与过滤
-    # 排序顺序: moc.tatsmm(0) -> moc.tatsmm(1) -> moc.tatsmm.zznc(0)
     sort -t $'\t' "${WORK_DIR}/algo_input.txt" | awk -F "\t" '
     {
         key = $1
@@ -177,29 +171,21 @@ apply_advanced_whitelist_filter() {
         original = $3
 
         # 逻辑 1: 父杀子 (Active Root)
-        # 白名单父域名 (mmstat.com) 杀 黑名单子域名 (cnzz.mmstat.com)
         if (active_white_root != "" && index(key, active_white_root ".") == 1) {
             next
         }
 
         # 逻辑 2: 子杀父 (Buffer)
-        # 白名单子域名 (wgo.mmstat.com) 杀 黑名单父域名 (+.mmstat.com)
         is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
 
         if (is_child_or_equal) {
             if (type == 1) {
-                # 白名单出现 -> 杀死 Buffer (黑名单父域名)
+                # 白名单出现 -> 杀死 Buffer
                 buffered_key = ""
                 buffered_line = ""
-                
-                # 设为 Active Root，保护后续子域名
                 active_white_root = key
-            } else {
-                # 黑名单子域名 (cnzz.mmstat.com)，被黑名单父域名 (+.mmstat.com) 覆盖
-                # 内部去重：丢弃冗余子域名
             }
         } else {
-            # === 新的分支 ===
             if (buffered_line != "") print buffered_line
 
             if (type == 1) {
@@ -252,8 +238,8 @@ ALLOW_URLS=(
 
 # ================= 模块定义 =================
 
-generate_ads-reject() {
-    echo "=== 🚀 模块 1: ADs 规则 ==="
+generate_ads() {
+    echo "=== 🚀 模块 1: ADs 规则 (ads-reject) ==="
     local BLOCK_URLS=(
         "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt"
         "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/scripts/Reject-addon.txt"
@@ -285,9 +271,7 @@ generate_ads-reject() {
     fi
     cat "${WORK_DIR}/merged_allow_raw.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_allow.txt"
 
-    # 执行智能去重 (+. 覆盖子域名)
     optimize_smart_self "${WORK_DIR}/filter_ads.txt" "${WORK_DIR}/opt_ads.txt"
-    # 白名单也可以智能去重
     optimize_smart_self "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/opt_allow.txt"
 
     apply_advanced_whitelist_filter "${WORK_DIR}/opt_ads.txt" "${WORK_DIR}/opt_allow.txt" "${WORK_DIR}/final_ads.txt"
@@ -297,7 +281,7 @@ generate_ads-reject() {
 }
 
 generate_ai() {
-    echo "=== 🚀 模块 2: AI 规则 ==="
+    echo "=== 🚀 模块 2: AI 规则 (ais) ==="
     local AI_URLS=(
         "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/category-ai-!cn.list"
         "https://ruleset.skk.moe/List/non_ip/ai.conf"
@@ -307,7 +291,6 @@ generate_ai() {
     download_files_parallel "${WORK_DIR}/raw_ai.txt" "${AI_URLS[@]}"
     cat "${WORK_DIR}/raw_ai.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_ai.txt"
     
-    # 升级：AI 模块也使用智能去重
     optimize_smart_self "${WORK_DIR}/clean_ai.txt" "${WORK_DIR}/opt_ai.txt"
     
     finalize_output "${WORK_DIR}/opt_ai.txt" "AIs_merged.mrs" "add_prefix"
@@ -315,7 +298,7 @@ generate_ai() {
 }
 
 generate_fakeip() {
-    echo "=== 🚀 模块 3: Fake IP ==="
+    echo "=== 🚀 模块 3: Fake IP (fakeip) ==="
     local FAKE_IP_URLS=(
         "https://raw.githubusercontent.com/vernesong/OpenClash/refs/heads/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list"
         "https://raw.githubusercontent.com/juewuy/ShellCrash/dev/public/fake_ip_filter.list"
@@ -334,15 +317,14 @@ generate_fakeip() {
     | grep -vE '^\s*($|#)' \
     | sort -u > "${WORK_DIR}/clean_fakeip.txt"
 
-    # 智能去重 (修复了 Tab 排序问题)
     optimize_smart_self "${WORK_DIR}/clean_fakeip.txt" "${WORK_DIR}/final_fakeip.txt"
 
     finalize_output "${WORK_DIR}/final_fakeip.txt" "Fake_IP_Filter_merged.mrs" "none"
     mv "${WORK_DIR}/final_fakeip.txt" "Fake_IP_Filter_merged.txt"
 }
 
-generate_ads-drop() {
-    echo "=== 🚀 模块 4: Reject Drop ==="
+generate_reject() {
+    echo "=== 🚀 模块 4: Reject Drop (ads-drop) ==="
     local BLOCK_URLS=(
         "https://ruleset.skk.moe/Clash/non_ip/reject-drop.txt"
         "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Reject-drop.txt"
@@ -351,7 +333,8 @@ generate_ads-drop() {
 
     echo "🧹 SED 清洗..."
     cat "${WORK_DIR}/raw_rd.txt" \
-    | tr -d '\r' | sed -E '
+    | tr -d '\r' \
+    | sed -E '
         /^[[:space:]]*#/d; /skk\.moe/d; /^$/d;
         s/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//;
         /^\+\.$/d; s/^[[:space:]]*//; s/[[:space:]]*$//
@@ -372,22 +355,18 @@ generate_ads-drop() {
         cat "${WORK_DIR}/merged_allow_raw.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_rd_allow.txt"
     fi
 
-    # 双向白名单过滤
     apply_advanced_whitelist_filter "${WORK_DIR}/clean_rd.txt" "${WORK_DIR}/clean_rd_allow.txt" "${WORK_DIR}/final_rd.txt"
 
     finalize_output "${WORK_DIR}/final_rd.txt" "Reject_Drop_merged.mrs" "none"
     mv "${WORK_DIR}/final_rd.txt" "Reject_Drop_merged.txt"
 }
 
-# ================= 🚀 模块 5: CN 规则 (新增) =================
 generate_cn() {
-    echo "=== 🚀 模块 5: CN 规则 ==="
+    echo "=== 🚀 模块 5: CN 规则 (cn) ==="
     
-    # 列表 1: 纯域名列表 (需要加 +.)
     local CN_URLS_1=(
         "https://static-file-global.353355.xyz/rules/cn-additional-list.txt"
     )
-    # 列表 2: Clash 格式列表 (需要转换 DOMAIN-SUFFIX -> +.)
     local CN_URLS_2=(
         "https://ruleset.skk.moe/Clash/non_ip/domestic.txt"
     )
@@ -395,32 +374,46 @@ generate_cn() {
     download_files_parallel "${WORK_DIR}/raw_cn_1.txt" "${CN_URLS_1[@]}"
     download_files_parallel "${WORK_DIR}/raw_cn_2.txt" "${CN_URLS_2[@]}"
 
-    echo "🧹 清洗 List 1 (纯域名 -> +.)..."
-    # 逻辑：去除注释、空行 -> 去除空格 -> 加 +.
-    cat "${WORK_DIR}/raw_cn_1.txt" \
-    | tr -d '\r' \
-    | sed '/^[[:space:]]*#/d; /^$/d; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^/+./' \
-    > "${WORK_DIR}/clean_cn_1.txt"
+    echo "📊 List 1 原始行数: $(wc -l < "${WORK_DIR}/raw_cn_1.txt")"
+    echo "📊 List 2 原始行数: $(wc -l < "${WORK_DIR}/raw_cn_2.txt")"
 
-    echo "🧹 清洗 List 2 (Clash格式 -> 混合)..."
-    # 逻辑：去除 skk.moe, 注释, 空行 -> 只保留 DOMAIN/DOMAIN-SUFFIX -> 转换 -> 清理
+    echo "🧹 清洗 List 1 (纯域名)..."
+    # 严格清洗流水线：转小写 -> 去注释 -> 去空格 -> 去空行 -> 去IP -> 排序去重
+    cat "${WORK_DIR}/raw_cn_1.txt" \
+    | tr 'A-Z' 'a-z' \
+    | tr -d '\r' \
+    | sed 's/#.*//g' \
+    | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+    | sed '/^$/d' \
+    | grep -vE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' \
+    | sort -u \
+    > "${WORK_DIR}/clean_cn_1_base.txt"
+    
+    echo "📊 List 1 纯净去重后行数: $(wc -l < "${WORK_DIR}/clean_cn_1_base.txt")"
+    
+    # 统一加前缀
+    sed 's/^/+./' "${WORK_DIR}/clean_cn_1_base.txt" > "${WORK_DIR}/clean_cn_1.txt"
+
+    echo "🧹 清洗 List 2 (Clash格式)..."
     cat "${WORK_DIR}/raw_cn_2.txt" \
+    | tr 'A-Z' 'a-z' \
     | tr -d '\r' \
     | grep -v "skk\.moe" \
     | sed '/^[[:space:]]*#/d; /^$/d' \
-    | grep -E '^(DOMAIN-SUFFIX|DOMAIN),' \
-    | sed 's/^DOMAIN-SUFFIX,/+./; s/^DOMAIN,//' \
+    | grep -E '^(domain-suffix|domain),' \
+    | sed -E 's/^domain-suffix,[[:space:]]*/+./; s/^domain,[[:space:]]*//' \
     | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+    | sed '/^$/d' \
     > "${WORK_DIR}/clean_cn_2.txt"
+    
+    echo "📊 List 2 清洗后行数: $(wc -l < "${WORK_DIR}/clean_cn_2.txt")"
 
-    # 合并
     cat "${WORK_DIR}/clean_cn_1.txt" "${WORK_DIR}/clean_cn_2.txt" > "${WORK_DIR}/merged_cn_raw.txt"
+    echo "📊 合并后总行数: $(wc -l < "${WORK_DIR}/merged_cn_raw.txt")"
 
-    # 智能去重 (+.domain 覆盖 domain/sub.domain)
-    # 复用 optimize_smart_self 确保逻辑一致
     optimize_smart_self "${WORK_DIR}/merged_cn_raw.txt" "${WORK_DIR}/final_cn.txt"
+    echo "📊 智能去重后最终行数: $(wc -l < "${WORK_DIR}/final_cn.txt")"
 
-    # 输出 (mode="none" 因为前缀已经在清洗步骤处理好了)
     finalize_output "${WORK_DIR}/final_cn.txt" "CN_merged.mrs" "none"
     mv "${WORK_DIR}/final_cn.txt" "CN_merged.txt"
 }
@@ -430,16 +423,16 @@ generate_cn() {
 main() {
     local target=${1:-all}
     case "$target" in
-        ads-reject) generate_ads-reject ;;
-        ais) generate_ai ;;
-        fakeip) generate_fakeip ;;
-        ads-drop) generate_ads-drop ;;
-        cn) generate_cn ;;
+        ads-reject) generate_ads ;;    
+        ais)        generate_ai ;;
+        fakeip)     generate_fakeip ;;
+        ads-drop)   generate_reject ;; 
+        cn)         generate_cn ;;
         all)
-            generate_ads-reject
+            generate_ads
             generate_ai
             generate_fakeip
-            generate_ads-drop
+            generate_reject
             generate_cn
             ;;
         *)
