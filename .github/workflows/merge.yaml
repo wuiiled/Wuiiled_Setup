@@ -32,10 +32,11 @@ jobs:
 
     - name: Run Existing Conversion Scripts
       run: |
-        bash scripts/convert.sh ads
+        bash scripts/convert.sh ads-reject
         bash scripts/convert.sh ais
         bash scripts/convert.sh fakeip
-        bash scripts/convert.sh reject
+        bash scripts/convert.sh ads-drop
+        bash scripts/convert.sh cn
 
     - name: Process All Rules
       shell: bash
