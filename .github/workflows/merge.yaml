@@ -30,20 +30,18 @@ jobs:
         curl -skLo mihomo.deb "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/mihomo-linux-amd64-$version.deb"
         sudo dpkg -i mihomo.deb
 
-    - name: Run Existing Conversion Scripts
-      run: |
-        bash scripts/convert.sh ads-reject
-        bash scripts/convert.sh ais
-        bash scripts/convert.sh fakeip
-        bash scripts/convert.sh ads-drop
-        bash scripts/convert.sh cn
+    # 【优化】调用脚本的并行模式 (all)，大幅缩短耗时
+    - name: Run Conversion Scripts (Parallel)
+      run: bash scripts/convert.sh all
 
-    - name: Process All Rules
+    - name: Process Extra Rules
       shell: bash
       run: |
         # =======================================================
         #                 1. 配置区域
         # =======================================================
+        # 确保排序行为一致 (Tab < Space < * < . < 0-9)
+        export LC_ALL=C
         
         # --- Mihomo & 通用源 ---
         LIST_GENERIC=(
@@ -86,6 +84,7 @@ jobs:
         
         mkdir -p temp_ws output/mihomo output/adg output/mosdns-x
 
+        # 检查上一步生成的文件，如果不存在则下载（作为保底）
         if [ ! -f "ADs_merged.txt" ]; then
             echo "Local ADs_merged.txt not found, downloading..."
             curl -skLo "ADs_merged.txt" "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/mihomo/rules/ADs_merged.txt"
@@ -94,7 +93,7 @@ jobs:
         # =======================================================
         #                 3. 处理逻辑 - Mihomo
         # =======================================================
-        echo ">>> Processing Mihomo Rules..."
+        echo ">>> Processing Extra Rules (Mihomo)..."
         
         func_mihomo_generic() {
             curl -skL "$2" | sed '/^#/d' | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,/+./g' | grep -v PROCESS-NAME | grep -v '^$' > "temp_ws/$1.txt"
@@ -106,7 +105,7 @@ jobs:
             curl -skL "$2" | sed '/^#/d' | sed 's/^DOMAIN,//g' | sed 's/^DOMAIN-SUFFIX,/+./g' | grep -v PROCESS-NAME | grep -v '^$' > "temp_ws/$1.txt"
         }
 
-        # 3.1 下载
+        # 3.1 并行下载
         for i in "${LIST_GENERIC[@]}"; do IFS='|' read -r n u <<< "$i"; func_mihomo_generic "$n" "$u" & done
         for i in "${LIST_SKK[@]}"; do IFS='|' read -r n u <<< "$i"; func_mihomo_skk "$n" "$u" & done
         for i in "${LIST_RAW[@]}"; do IFS='|' read -r n u <<< "$i"; func_mihomo_raw "$n" "$u" & done
@@ -126,6 +125,7 @@ jobs:
         # 3.3 归档 Mihomo
         mv temp_ws/*.mrs output/mihomo/
         mv temp_ws/*.txt output/mihomo/
+        # 将 convert.sh 生成的文件也归档
         mv *.mrs output/mihomo/ 2>/dev/null || true
         cp *_merged.txt output/mihomo/ 2>/dev/null || true
 
@@ -134,14 +134,14 @@ jobs:
         # =======================================================
         echo ">>> Processing ADG Rules..."
         
-        # 4.1 ADs_merged
+        # 4.1 ADs_merged (转为 ADG 格式)
         cat ADs_merged.txt | sed '
             /^$/d;                      
             s/^DOMAIN-SUFFIX,/||/g;     
             s/^DOMAIN,/||/g;            
             s/^\+\./||/g;               
             /^#/!s/$/^/                 
-        ' > output/adg/ADs_merged_adg.txt
+        ' > output/adg/ADs_merged_adg.txt &
         
         # 4.2 Httpdns
         curl -skL "$URL_HTTPDNS" | sed '/^$/d; s/^\+\./||/g; /^#/!s/$/^/' > output/adg/Httpdns_adg.txt &
@@ -163,7 +163,7 @@ jobs:
         # =======================================================
         echo ">>> Processing MosDNS-X Rules..."
 
-        # 5.1 ADs_merged
+        # 5.1 ADs_merged (转为 MosDNS 格式)
         cat ADs_merged.txt | sed '/^$/d; s/DOMAIN-SUFFIX,//g; s/^\+\.//g' > output/mosdns-x/ad_domain_list.txt
 
         # 5.2 SKK Providers
@@ -171,7 +171,7 @@ jobs:
             local name=$1
             local url=$2
             if [[ "$name" == "download" ]]; then return; fi
-            echo "MosDNS: $name"
+            # echo "MosDNS: $name"
             curl -skL "$url" | sed '/^#/d; /skk\.moe/d; /^$/d; s/^DOMAIN-SUFFIX,/domain:/; s/^DOMAIN,/full:/' > "output/mosdns-x/$name.txt"
         }
 
@@ -186,6 +186,7 @@ jobs:
         #                 6. 最终清理
         # =======================================================
         rm -rf temp_ws
+        # 清理 convert.sh 生成的根目录文件，保持环境整洁
         rm -f *_merged.txt 
         
         echo "All processing complete."
