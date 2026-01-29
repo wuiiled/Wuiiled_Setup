@@ -3,14 +3,14 @@
 # ================= 全局配置 =================
 
 # 【核心】强制使用 C 语言区域设置
-# 确保 ASCII 排序顺序：Tab(9) < Space(32) < * (42) < . (46) < 0 (48) < 1 (49)
+# 确保 ASCII 排序顺序：Space(32) < * (42) < . (46) < 0 (48) < 1 (49)
 export LC_ALL=C
 
 WORK_DIR=$(mktemp -d)
 trap "rm -rf ${WORK_DIR}" EXIT
 
-# 定义 Tab 变量
-TAB=$(printf '\t')
+# 定义分隔符为 空格 (ASCII 32)，确保排序时 父域名(Space) < 子域名(.)
+DELIM=" "
 
 # 检查工具
 CHECK_MIHOMO() {
@@ -84,50 +84,62 @@ apply_keyword_filter() {
     fi
 }
 
-# 4. 【通用算法】智能覆盖去重 (Tab分隔符版)
+# 4. 【通用算法】智能覆盖去重 (Space分隔符版)
 # 逻辑：+.domain (Priority 0) 覆盖 domain/sub.domain (Priority 1)
-# 修复：增加非域名字符过滤，防止隐形字符导致去重失败
+# 关键：使用 Space 作为分隔符，ASCII 32 < . (46)
 optimize_smart_self() {
     local input=$1
     local output=$2
 
     echo "🧠 执行智能覆盖去重 (+. 覆盖子域名)..."
 
-    # 准备数据：[反转] \t [优先级] \t [原始]
-    awk -v OFS="$TAB" '{ 
+    # 准备数据：[反转] [优先级] [原始]
+    # 使用 gsub 去除所有潜在空格
+    awk -v OFS="$DELIM" '{ 
         original=$0; 
         pure=original; 
         priority=1;
         
-        # 再次强制去除行首空格
+        # 移除行首空格
         sub(/^[[:space:]]+/, "", pure);
-        
+        # 移除行内所有空格 (防止 "+. net.cn")
+        gsub(/[[:space:]]/, "", pure);
+
         # 识别通配前缀 (+. 或 .)
         if (sub(/^\+\./, "", pure) || sub(/^\./, "", pure)) { 
             priority=0; 
         } 
         
-        # 这里的 pure 已经是纯域名了 (如 net.cn)
-        # 反转字符串
+        # 再次检查去前缀后是否为空
+        if (length(pure) == 0) next;
+
         reversed=""; len=length(pure);
         for(i=len;i>=1;i--) reversed=reversed substr(pure,i,1);
         
-        if (length(pure) > 0) {
-            print reversed, priority, original 
-        }
+        print reversed, priority, original 
     }' "$input" > "${WORK_DIR}/self_algo.txt"
 
-    # 排序与去重 (Tab排序确保父在前)
-    sort -t "$TAB" "${WORK_DIR}/self_algo.txt" | awk -F "$TAB" '
+    # 排序与去重
+    # LC_ALL=C sort -t "$DELIM" 确保使用 Space 分隔排序
+    LC_ALL=C sort -t "$DELIM" "${WORK_DIR}/self_algo.txt" > "${WORK_DIR}/self_algo_sorted.txt"
+
+    awk -F "$DELIM" '
     {
         key = $1
         prio = $2
         original = $3
 
         # 检查是否被 Buffer (Priority 0 的 +.) 覆盖
-        is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
+        # 覆盖条件：Key 是 Buffer 的子域名 (Key starts with Buffer + ".")
+        # 注意：这里不能用 index==1 简单判断，必须精确匹配边界
+        
+        # 判断 Key 是否以 Buffered_Key + "." 开头
+        is_child = (buffered_key != "" && index(key, buffered_key ".") == 1);
+        
+        # 判断 Key 是否等于 Buffered_Key
+        is_equal = (buffered_key != "" && key == buffered_key);
 
-        if (is_child_or_equal && buffered_prio == 0) {
+        if ((is_child || is_equal) && buffered_prio == 0) {
             # 被覆盖，丢弃
             next
         } else {
@@ -148,7 +160,7 @@ optimize_smart_self() {
     }
     END {
         if (buffered_line != "") print buffered_line
-    }' > "$output"
+    }' "${WORK_DIR}/self_algo_sorted.txt" > "$output"
 }
 
 # 5. 【ADs/Reject 算法】双向智能白名单过滤
@@ -160,14 +172,14 @@ apply_advanced_whitelist_filter() {
     echo "🛡️  应用双向白名单过滤..."
 
     # 步骤 A: 准备白名单
-    awk -v OFS="$TAB" '{ 
+    awk -v OFS="$DELIM" '{ 
         key=$0; reversed=""; len=length(key);
         for(i=len;i>=1;i--) reversed=reversed substr(key,i,1);
         print reversed, 1 
     }' "$allow_in" > "${WORK_DIR}/algo_input.txt"
 
     # 步骤 B: 准备黑名单
-    awk -v OFS="$TAB" '{ 
+    awk -v OFS="$DELIM" '{ 
         original=$0; pure=original;
         sub(/^\+\./,"",pure); sub(/^\./,"",pure);
         reversed=""; len=length(pure);
@@ -176,7 +188,7 @@ apply_advanced_whitelist_filter() {
     }' "$block_in" >> "${WORK_DIR}/algo_input.txt"
 
     # 步骤 C: 排序与过滤
-    sort -t "$TAB" "${WORK_DIR}/algo_input.txt" | awk -F "$TAB" '
+    LC_ALL=C sort -t "$DELIM" "${WORK_DIR}/algo_input.txt" | awk -F "$DELIM" '
     {
         key = $1
         type = $2
@@ -219,7 +231,7 @@ finalize_output() {
     local dst=$2
     local mode=$3
 
-    sort -u "$src" -o "$src"
+    LC_ALL=C sort -u "$src" -o "$src"
 
     if [ "$mode" == "add_prefix" ]; then
         echo "✨ 添加统一前缀 (+.)..."
@@ -387,11 +399,10 @@ generate_cn() {
     echo "📊 List 2 原始行数: $(wc -l < "${WORK_DIR}/raw_cn_2.txt")"
 
     echo "🧹 清洗 List 1 (纯域名 -> +.)..."
-    # 彻底的字符级清洗
-    # tr -cd '[:print:]\n' : 移除所有不可见字符（如零宽空格、BOM头）
+    # 清洗：转小写 -> 去非打印字符 -> 去注释 -> 去空 -> 去IP
     cat "${WORK_DIR}/raw_cn_1.txt" \
-    | tr -cd '[:print:]\n' \
     | tr 'A-Z' 'a-z' \
+    | tr -cd '[:print:]\n' \
     | sed 's/#.*//g' \
     | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
     | sed '/^$/d' \
@@ -403,18 +414,18 @@ generate_cn() {
     echo "📊 List 1 清洗后有效行数: $(wc -l < "${WORK_DIR}/clean_cn_1.txt")"
 
     echo "🧹 清洗 List 2 (Clash格式 -> 混合)..."
-    # 使用 awk 进行健壮的字段解析
+    # 使用 awk -F, 精准清洗，并强制去除 $2 中的所有空格
     cat "${WORK_DIR}/raw_cn_2.txt" \
-    | tr -cd '[:print:]\n' \
     | tr 'A-Z' 'a-z' \
+    | tr -cd '[:print:]\n' \
     | grep -v "skk\.moe" \
     | awk -F, '
         /domain-suffix/ {
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2);
+            gsub(/[[:space:]]/, "", $2);
             if (length($2) > 0) print "+." $2
         }
         /^domain,/ {
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2);
+            gsub(/[[:space:]]/, "", $2);
             if (length($2) > 0) print $2
         }
     ' \
@@ -423,6 +434,7 @@ generate_cn() {
     
     echo "📊 List 2 清洗后有效行数: $(wc -l < "${WORK_DIR}/clean_cn_2.txt")"
 
+    # 合并后先做一次 sort -u 确保完全重复的项被合并
     cat "${WORK_DIR}/clean_cn_1.txt" "${WORK_DIR}/clean_cn_2.txt" \
     | sort -u \
     > "${WORK_DIR}/merged_cn_raw.txt"
