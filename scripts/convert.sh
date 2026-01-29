@@ -2,10 +2,7 @@
 
 # ================= 全局配置 =================
 
-# 【核心】强制使用 C 语言区域设置
-# 确保 ASCII 排序顺序：Tab(9) < Space(32) < * (42) < . (46) < 0 (48) < 1 (49)
 export LC_ALL=C
-
 WORK_DIR=$(mktemp -d)
 trap "rm -rf ${WORK_DIR}" EXIT
 
@@ -20,7 +17,7 @@ CHECK_MIHOMO() {
 
 # ================= 核心工具函数 =================
 
-# 1. 并行下载
+# 1. 并行下载 (保持不变)
 download_files_parallel() {
     local output_file=$1
     shift
@@ -52,31 +49,29 @@ download_files_parallel() {
     rm -rf "$temp_map_dir"
 }
 
-# 2. 域名标准化
-# 功能：统一小写、去注释、去修饰符、去前后缀(+. / .)、支持下划线
+# 2. 域名标准化 (保持不变，增加统一小写)
 normalize_domain() {
     tr 'A-Z' 'a-z' | tr -d '\r' \
     | sed -E '
-        s/^[[:space:]]*//; s/[[:space:]]*$//;    # 去首尾空格
-        s/[\$#].*//g;                            # 去注释
-        s/^(0\.0\.0\.0|127\.0\.0\.1)[[:space:]]+//g; # 去HOSTS IP
-        s/^!.*//; s/^@@//;                       # 去AdGuard修饰符
-        s/\|\|//; s/\^//; s/\|//;                # 去AdGuard符号
-        s/^domain-keyword,//; s/^domain-suffix,//; s/^domain,//; # 去Clash修饰符
-        s/^([^,]+).*/\1/;                        # 提取逗号前内容
-        s/^\+\.//; s/^\.//; s/\.$//              # 去除前缀 +. 或 . 以及后缀 .
+        s/^[[:space:]]*//; s/[[:space:]]*$//;    
+        s/[\$#].*//g;                            
+        s/^(0\.0\.0\.0|127\.0\.0\.1)[[:space:]]+//g; 
+        s/^!.*//; s/^@@//;                       
+        s/\|\|//; s/\^//; s/\|//;                
+        s/^domain-keyword,//; s/^domain-suffix,//; s/^domain,//; 
+        s/^([^,]+).*/\1/;                        
+        s/^\+\.//; s/^\.//; s/\.$//              
     ' \
     | grep -vE '(\*|[^a-z0-9._ -]|^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$)' \
     | grep -E '^[a-z0-9_]' \
     | awk '/\./ {print $0}'
 }
 
-# 3. 关键词过滤
+# 3. 关键词过滤 (保持不变)
 apply_keyword_filter() {
     local keyword_file="scripts/exclude-keyword.txt"
     if [ -f "$keyword_file" ] && [ -s "$keyword_file" ]; then
         echo "🔍 应用关键词排除..."
-        # 确保关键词文件也统一小写，防止匹配失败
         local clean_keyword_file="${WORK_DIR}/clean_keyword.txt"
         tr 'A-Z' 'a-z' < "$keyword_file" > "$clean_keyword_file"
         grep -v -f "$clean_keyword_file" "$1" > "$2"
@@ -85,66 +80,99 @@ apply_keyword_filter() {
     fi
 }
 
-# 4. 【通用算法】智能覆盖去重 (Module 2 & 3 & 5 专用)
-# 逻辑：+.domain (Priority 0) 覆盖 domain/sub.domain (Priority 1)
+# 4. 【新算法】Python 智能树形去重
+# 逻辑：利用 Python 列表排序特性，确保 ['cn', 'net'] 必定在 ['cn', 'net', 'newtv'] 之前
+# 且优先处理 Wildcard (+.)，从而完美覆盖子域名。
 optimize_smart_self() {
     local input=$1
     local output=$2
 
-    echo "🧠 执行智能覆盖去重 (+. 覆盖子域名)..."
+    echo "🧠 执行 Python 智能覆盖去重..."
 
-    # 准备数据：[反转] \t [优先级] \t [原始]
-    awk -v OFS="\t" '{ 
-        original=$0; pure=original; priority=1;
-        # 如果以 +. 或 . 开头，优先级设为 0 (最强)
-        if (sub(/^\+\./, "", pure) || sub(/^\./, "", pure)) { 
-            priority=0; 
-        } 
+    # 生成临时 Python 脚本
+    cat << 'EOF' > "${WORK_DIR}/dedup.py"
+import sys
+
+def main():
+    # 1. 读取并解析数据
+    lines = []
+    try:
+        # 兼容不同编码读取
+        for line in sys.stdin:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            lines.append(line)
+    except Exception:
+        pass
+
+    data = []
+    for line in lines:
+        clean = line
+        is_wildcard = False
         
-        reversed=""; len=length(pure);
-        for(i=len;i>=1;i--) reversed=reversed substr(pure,i,1);
-        print reversed, priority, original 
-    }' "$input" > "${WORK_DIR}/self_algo.txt"
+        # 识别通配符标记
+        if clean.startswith("+."):
+            clean = clean[2:]
+            is_wildcard = True
+        elif clean.startswith("."):
+            clean = clean[1:]
+            is_wildcard = True
+        
+        # 核心：将域名分割并反转，例如 'news.sina.com.cn' -> ['cn', 'com', 'sina', 'news']
+        # 这样在排序时，父域名天然排在子域名前面
+        parts = clean.split(".")
+        parts.reverse()
+        
+        # 排序优先级：
+        # 1. 层级 (parts): ['cn', 'net'] 会排在 ['cn', 'net', 'newtv'] 前面
+        # 2. 类型 (is_wildcard): 如果层级相同，通配符优先 (True < False 在取反后)
+        #    我们希望 Wildcard 排在前面，这样它能成为 buffer 覆盖掉后面的 Exact
+        #    True(1), False(0). 想要 True 排前面 -> not True(0), not False(1).
+        data.append({
+            'parts': parts,
+            'is_wildcard': is_wildcard,
+            'original': line,
+            'sort_key': (parts, not is_wildcard)
+        })
 
-    # 排序与去重
-    sort -t $'\t' "${WORK_DIR}/self_algo.txt" | awk -F "\t" '
-    {
-        key = $1
-        prio = $2
-        original = $3
+    # 2. 排序
+    data.sort(key=lambda x: x['sort_key'])
 
-        # 检查是否被 Buffer (Priority 0 的 +.) 覆盖
-        # 覆盖条件：是 Buffer 的子域名 或 相等
-        is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
-
-        # 只有当 Buffer 是 Priority 0 (通配前缀) 时，才有资格清除子集
-        if (is_child_or_equal && buffered_prio == 0) {
-            # 被覆盖，丢弃
-            next
-        } else {
-            # 未被覆盖，输出上一个 Buffer
-            if (buffered_line != "") print buffered_line
-
+    # 3. 线性去重
+    last_wildcard_parts = None
+    
+    for item in data:
+        current_parts = item['parts']
+        
+        # 判断是否被覆盖
+        is_covered = False
+        if last_wildcard_parts:
+            # 检查当前域名是否以 last_wildcard_parts 开头
+            # 例如：当前=['cn','com','sina','news'], last=['cn','com','sina'] -> 匹配
+            if len(current_parts) >= len(last_wildcard_parts):
+                # Python 列表切片比较，非常高效且准确
+                if current_parts[:len(last_wildcard_parts)] == last_wildcard_parts:
+                    is_covered = True
+        
+        if not is_covered:
+            print(item['original'])
             # 更新 Buffer
-            if (prio == 0) {
-                # 只有 Prio 0 才有资格进 Buffer 杀别人
-                buffered_key = key
-                buffered_prio = prio
-                buffered_line = original
-            } else {
-                # 普通规则直接输出
-                print original
-                buffered_key = ""
-                buffered_line = ""
-            }
-        }
-    }
-    END {
-        if (buffered_line != "") print buffered_line
-    }' > "$output"
+            if item['is_wildcard']:
+                last_wildcard_parts = current_parts
+            else:
+                # 如果当前是精确域名 (Exact)，它不能覆盖后续域名，必须重置 Buffer
+                last_wildcard_parts = None
+
+if __name__ == "__main__":
+    main()
+EOF
+
+    # 调用 Python 脚本处理
+    python3 "${WORK_DIR}/dedup.py" < "$input" > "$output"
 }
 
-# 5. 【ADs/Reject 算法】双向智能白名单过滤
+# 5. 【ADs/Reject 算法】双向智能白名单过滤 (逻辑保持 Awk，配合前面的 Python 预处理效果更佳)
 apply_advanced_whitelist_filter() {
     local block_in=$1
     local allow_in=$2
@@ -152,14 +180,14 @@ apply_advanced_whitelist_filter() {
 
     echo "🛡️  应用双向白名单过滤..."
 
-    # 步骤 A: 准备白名单 [反转]\t[1]
+    # 步骤 A: 准备白名单
     awk -v OFS="\t" '{ 
         key=$0; reversed=""; len=length(key);
         for(i=len;i>=1;i--) reversed=reversed substr(key,i,1);
         print reversed, 1 
     }' "$allow_in" > "${WORK_DIR}/algo_input.txt"
 
-    # 步骤 B: 准备黑名单 [反转]\t[0]\t[原始]
+    # 步骤 B: 准备黑名单
     awk -v OFS="\t" '{ 
         original=$0; pure=original;
         sub(/^\+\./,"",pure); sub(/^\./,"",pure);
@@ -175,22 +203,19 @@ apply_advanced_whitelist_filter() {
         type = $2
         original = $3
 
-        # 逻辑 1: 父杀子 (Active Root)
+        # 父杀子
         if (active_white_root != "" && index(key, active_white_root ".") == 1) {
             next
         }
 
-        # 逻辑 2: 子杀父 (Buffer)
+        # 子杀父
         is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
 
         if (is_child_or_equal) {
             if (type == 1) {
-                # 白名单出现 -> 杀死 Buffer
                 buffered_key = ""
                 buffered_line = ""
                 active_white_root = key
-            } else {
-                # 黑名单子域名被黑名单父域名覆盖
             }
         } else {
             if (buffered_line != "") print buffered_line
@@ -217,6 +242,8 @@ finalize_output() {
     local dst=$2
     local mode=$3
 
+    # Python 已经排好序了，这里只需去重即可，避免破坏顺序 (虽然 Python 输出的顺序就是最优的)
+    # 这里的 sort -u 主要是为了防止输入源本身有完全重复行
     sort -u "$src" -o "$src"
 
     if [ "$mode" == "add_prefix" ]; then
@@ -278,7 +305,7 @@ generate_ads-reject() {
     fi
     cat "${WORK_DIR}/merged_allow_raw.txt" | normalize_domain | sort -u > "${WORK_DIR}/clean_allow.txt"
 
-    # 执行智能去重 (+. 覆盖子域名)
+    # 使用新的 Python 算法
     optimize_smart_self "${WORK_DIR}/filter_ads.txt" "${WORK_DIR}/opt_ads.txt"
     optimize_smart_self "${WORK_DIR}/clean_allow.txt" "${WORK_DIR}/opt_allow.txt"
 
@@ -317,7 +344,6 @@ generate_fakeip() {
     download_files_parallel "${WORK_DIR}/raw_fakeip_dl.txt" "${FAKE_IP_URLS[@]}"
     
     echo "🧹 清洗..."
-    # 增加 tr 'A-Z' 'a-z' 进行小写标准化
     cat "${WORK_DIR}/raw_fakeip_dl.txt" \
     | tr 'A-Z' 'a-z' \
     | grep -vE '^\s*(dns:|fake-ip-filter:)' \
@@ -342,7 +368,6 @@ generate_ads-drop() {
     download_files_parallel "${WORK_DIR}/raw_rd.txt" "${BLOCK_URLS[@]}"
 
     echo "🧹 SED 清洗..."
-    # 增加 tr 'A-Z' 'a-z'
     cat "${WORK_DIR}/raw_rd.txt" \
     | tr -d '\r' | tr 'A-Z' 'a-z' | sed -E '
         /^[[:space:]]*#/d; /skk\.moe/d; /^$/d;
@@ -371,7 +396,6 @@ generate_ads-drop() {
     mv "${WORK_DIR}/final_rd.txt" "Reject_Drop_merged.txt"
 }
 
-# ================= 🚀 模块 5: CN 规则 (优化版) =================
 generate_cn() {
     echo "=== 🚀 模块 5: CN 规则 ==="
     
@@ -385,16 +409,14 @@ generate_cn() {
     download_files_parallel "${WORK_DIR}/raw_cn_1.txt" "${CN_URLS_1[@]}"
     download_files_parallel "${WORK_DIR}/raw_cn_2.txt" "${CN_URLS_2[@]}"
 
-    echo "🧹 清洗 List 1 (纯域名 -> +.)..."
-    # 增加 tr 'A-Z' 'a-z' 确保小写，防止因大小写导致去重失效
+    echo "🧹 清洗 List 1..."
     cat "${WORK_DIR}/raw_cn_1.txt" \
     | tr -d '\r' \
     | tr 'A-Z' 'a-z' \
     | sed '/^[[:space:]]*#/d; /^$/d; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^/+./' \
     > "${WORK_DIR}/clean_cn_1.txt"
 
-    echo "🧹 清洗 List 2 (Clash格式 -> 混合)..."
-    # 增加 tr 'A-Z' 'a-z'，并匹配小写的 domain-suffix
+    echo "🧹 清洗 List 2..."
     cat "${WORK_DIR}/raw_cn_2.txt" \
     | tr -d '\r' \
     | tr 'A-Z' 'a-z' \
@@ -408,8 +430,7 @@ generate_cn() {
     # 合并
     cat "${WORK_DIR}/clean_cn_1.txt" "${WORK_DIR}/clean_cn_2.txt" > "${WORK_DIR}/merged_cn_raw.txt"
 
-    # 智能去重 (+.domain 覆盖 domain/sub.domain)
-    # 因为已经全部转为小写，awk 中的 index() 函数现在能正确匹配父子关系
+    # 使用新的 Python 算法去重
     optimize_smart_self "${WORK_DIR}/merged_cn_raw.txt" "${WORK_DIR}/final_cn.txt"
 
     finalize_output "${WORK_DIR}/final_cn.txt" "CN_merged.mrs" "none"
