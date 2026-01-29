@@ -242,6 +242,7 @@ ALLOW_URLS=(
     "https://raw.githubusercontent.com/Cats-Team/AdRules/refs/heads/script/script/allowlist.txt"
     "https://raw.githubusercontent.com/zoonderkins/blahdns/refs/heads/master/hosts/whitelist.txt"
     "https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exceptions.txt"
+    "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/refs/heads/hidden/direct-need-to-remove.txt"
 )
 
 # ================= 模块定义 =================
