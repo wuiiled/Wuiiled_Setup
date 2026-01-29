@@ -3,7 +3,6 @@
 # ================= 全局配置 =================
 
 export LC_ALL=C
-# 使用 mktemp 创建全局工作目录
 WORK_DIR=$(mktemp -d)
 trap "rm -rf ${WORK_DIR}" EXIT
 
@@ -18,28 +17,26 @@ CHECK_MIHOMO() {
 
 # ================= 核心工具函数 =================
 
-# 1. 并行下载 (优化：添加 User-Agent 防止被拦截)
+# 1. 并行下载
 download_files_parallel() {
     local output_file=$1
     shift
     local urls=("$@")
-    # 使用 $BASHPID 确保在子 Shell 中也是唯一的
-    local temp_map_dir="${WORK_DIR}/dl_map_${BASHPID:-$$}_$RANDOM"
-    mkdir -p "$temp_map_dir"
+    # 兼容性修复：使用最通用的 mktemp 写法
+    local temp_map_dir
+    temp_map_dir=$(mktemp -d "${WORK_DIR}/dl_map.XXXXXX")
 
-    # echo "⬇️  [${BASHPID:-$$}] 启动并行下载 [${#urls[@]} 个源]..." 
     local pids=()
     local i=0
     
     for url in "${urls[@]}"; do
         local temp_out="${temp_map_dir}/${i}.txt"
         (
-            # 优化：添加 UA，防止部分站点返回 403
-            if curl -sLf --connect-timeout 15 --retry 3 -A "Mozilla/5.0 (compatible; MihomoRuleConverter/1.0)" "$url" > "$temp_out"; then
-                # 确保最后一行有换行符
+            # 增加 -A 参数模拟浏览器，防止 403
+            if curl -sLf --connect-timeout 20 --retry 3 -A "Mozilla/5.0 (compatible; MihomoRuleConverter/1.0)" "$url" > "$temp_out"; then
                 [ -n "$(tail -c1 "$temp_out")" ] && echo "" >> "$temp_out"
             else
-                echo "   ❌ 下载失败: $url"
+                # 下载失败时不报错退出，但会删除空文件
                 rm -f "$temp_out"
             fi
         ) &
@@ -48,19 +45,19 @@ download_files_parallel() {
     done
 
     wait "${pids[@]}"
-    # 仅合并存在的文件
-    if ls "${temp_map_dir}"/*.txt 1> /dev/null 2>&1; then
+    
+    # 检查是否有成功下载的文件
+    if compgen -G "${temp_map_dir}/*.txt" > /dev/null; then
         cat "${temp_map_dir}"/*.txt > "$output_file"
     else
+        # 如果全部失败，创建一个空文件防止报错
         touch "$output_file"
     fi
     rm -rf "$temp_map_dir"
 }
 
-# 2. 域名标准化 (优化：合并 grep/awk，减少管道 fork 开销)
+# 2. 域名标准化
 normalize_domain() {
-    # 假设此时输入已经由上游统一转为小写 (tr 'A-Z' 'a-z')
-    # 这里的优化在于减少不必要的管道切换
     tr -d '\r' \
     | sed -E '
         s/^[[:space:]]*//; s/[[:space:]]*$//;    
@@ -73,24 +70,20 @@ normalize_domain() {
         s/^\+\.//; s/^\.//; s/\.$//              
     ' \
     | awk '
-    # 合并 grep 逻辑到 awk：
-    # 1. 必须包含点 (.)
-    # 2. 不能包含 * (通配符)
-    # 3. 必须以字母、数字或下划线开头
-    # 4. 不能是纯 IP 地址
     /\./ && !/\*/ && /^[a-z0-9_]/ && !/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ {
         print $0
     }'
 }
 
-# 3. 关键词过滤 (优化：使用 mktemp 防止并行冲突)
+# 3. 关键词过滤
 apply_keyword_filter() {
     local input=$1
     local output=$2
     local keyword_file="scripts/exclude-keyword.txt"
     
     if [ -f "$keyword_file" ] && [ -s "$keyword_file" ]; then
-        local tmp_kw=$(mktemp -p "$WORK_DIR")
+        local tmp_kw
+        tmp_kw=$(mktemp "${WORK_DIR}/kw.XXXXXX")
         tr 'A-Z' 'a-z' < "$keyword_file" > "$tmp_kw"
         grep -v -f "$tmp_kw" "$input" > "$output"
         rm -f "$tmp_kw"
@@ -99,30 +92,32 @@ apply_keyword_filter() {
     fi
 }
 
-# 4. 智能覆盖去重 (优化：使用 mktemp 防止并行冲突)
+# 4. 智能覆盖去重 (修复重点)
 optimize_smart_self() {
     local input=$1
     local output=$2
-    # 【关键】使用 mktemp 生成唯一临时文件，允许不同模块并行执行此函数
-    local dedup_script=$(mktemp -p "$WORK_DIR" suffix=".py")
+    
+    # 【修复】使用通用 mktemp 格式，确保在所有 Linux/macOS 上都能正确创建文件
+    local dedup_script
+    dedup_script=$(mktemp "${WORK_DIR}/dedup_script.XXXXXX.py")
 
-    # 注意：逻辑完全未改动，仅封装进独立脚本文件
     cat << 'EOF' > "$dedup_script"
 import sys
 
 def main():
     lines = []
     try:
-        for line in sys.stdin:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            lines.append(line)
+        # 稳健地读取所有行
+        lines = sys.stdin.read().splitlines()
     except Exception:
         pass
 
     data = []
     for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+            
         clean = line
         is_wildcard = False
         if clean.startswith("+."):
@@ -135,12 +130,14 @@ def main():
         parts = clean.split(".")
         parts.reverse()
         
-        data.append({
-            'parts': parts,
-            'is_wildcard': is_wildcard,
-            'original': line,
-            'sort_key': (parts, not is_wildcard)
-        })
+        # 只有有效的域名才处理
+        if len(parts) > 0:
+            data.append({
+                'parts': parts,
+                'is_wildcard': is_wildcard,
+                'original': line,
+                'sort_key': (parts, not is_wildcard)
+            })
 
     data.sort(key=lambda x: x['sort_key'])
 
@@ -164,18 +161,24 @@ if __name__ == "__main__":
     main()
 EOF
 
-    python3 "$dedup_script" < "$input" > "$output"
+    # 检查输入文件是否存在且不为空
+    if [ -s "$input" ]; then
+        python3 "$dedup_script" < "$input" > "$output"
+    else
+        touch "$output"
+    fi
+    
     rm -f "$dedup_script"
 }
 
-# 5. 双向白名单过滤 (优化：使用 mktemp 防止并行冲突)
+# 5. 双向白名单过滤
 apply_advanced_whitelist_filter() {
     local block_in=$1
     local allow_in=$2
     local final_out=$3
     
-    # 【关键】临时文件隔离
-    local tmp_algo_input=$(mktemp -p "$WORK_DIR")
+    local tmp_algo_input
+    tmp_algo_input=$(mktemp "${WORK_DIR}/algo_input.XXXXXX")
 
     awk -v OFS="\t" '{ 
         key=$0; reversed=""; len=length(key);
@@ -209,27 +212,30 @@ apply_advanced_whitelist_filter() {
     rm -f "$tmp_algo_input"
 }
 
-# 6. 输出封装 (逻辑未变)
+# 6. 输出封装
 finalize_output() {
     local src=$1
     local dst=$2
     local mode=$3
 
-    sort -u "$src" -o "$src"
-
-    if [ "$mode" == "add_prefix" ]; then
-        sed 's/^/+./' "$src" > "${src}.tmp" && mv "${src}.tmp" "$src"
+    if [ -s "$src" ]; then
+        sort -u "$src" -o "$src"
+        if [ "$mode" == "add_prefix" ]; then
+            sed 's/^/+./' "$src" > "${src}.tmp" && mv "${src}.tmp" "$src"
+        fi
+        
+        local count=$(wc -l < "$src")
+        local date=$(date +"%Y-%m-%d %H:%M:%S")
+        sed -i "1i # Count: $count\n# Updated: $date" "$src"
+        
+        if [ -n "$dst" ] && CHECK_MIHOMO; then
+            echo "🔄 [${BASHPID:-$$}] 转换 $dst..."
+            mihomo convert-ruleset domain text "$src" "$dst"
+        fi
+        echo "📊 [${BASHPID:-$$}] 完成: $dst (行数: $count)"
+    else
+        echo "⚠️  [${BASHPID:-$$}] 警告: $dst 源文件为空，跳过生成。"
     fi
-
-    local count=$(wc -l < "$src")
-    local date=$(date +"%Y-%m-%d %H:%M:%S")
-    sed -i "1i # Count: $count\n# Updated: $date" "$src"
-    
-    if [ -n "$dst" ] && CHECK_MIHOMO; then
-        echo "🔄 [${BASHPID:-$$}] 转换 $dst..."
-        mihomo convert-ruleset domain text "$src" "$dst"
-    fi
-    echo "📊 [${BASHPID:-$$}] 完成: $dst (行数: $count)"
 }
 
 # ================= 资源配置 =================
@@ -240,10 +246,9 @@ ALLOW_URLS=(
     "https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exceptions.txt"
 )
 
-# ================= 模块定义 (增加独立的工作子目录) =================
+# ================= 模块定义 =================
 
 generate_ads-reject() {
-    # 创建模块专属临时目录，防止并行冲突
     local mod_dir="${WORK_DIR}/ads"
     mkdir -p "$mod_dir"
     echo "=== 🚀 [ADS] 启动 ==="
@@ -353,10 +358,10 @@ generate_ads-drop() {
         /^\+\.$/d; s/^[[:space:]]*//; s/[[:space:]]*$//
     ' | sort -u > "${mod_dir}/clean_rd.txt"
 
-    local_allow="scripts/exclude-keyword.txt"
-    # 注意：这里需要重新下载或复用，为简单起见并行模式下通常各自下载或由 download_files_parallel 缓存
+    # 复用或下载白名单
     download_files_parallel "${mod_dir}/raw_allow_temp.txt" "${ALLOW_URLS[@]}"
     
+    local_allow="scripts/exclude-keyword.txt"
     if [ -f "$local_allow" ]; then
         grep -vE '^\s*($|#)' "$local_allow" | tr 'A-Z' 'a-z' > "${mod_dir}/local_allow_clean.txt"
         cat "${mod_dir}/raw_allow_temp.txt" "${mod_dir}/local_allow_clean.txt" > "${mod_dir}/merged_allow_raw.txt"
@@ -412,16 +417,12 @@ main() {
         cn) generate_cn ;;
         all)
             echo "⚡️ 启动全局并行处理..."
-            # 【优化】并行执行所有任务，大幅缩短总时间
-            # 这里的关键是前面所有函数都已经改造为使用独立目录/临时文件，
-            # 否则并行运行时文件会相互覆盖。
             generate_ads-reject &
             generate_ai &
             generate_fakeip &
             generate_ads-drop &
             generate_cn &
             
-            # 等待所有后台任务完成
             wait
             echo "🎉 所有任务执行完毕！"
             ;;
