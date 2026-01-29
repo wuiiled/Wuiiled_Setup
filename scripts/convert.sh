@@ -9,7 +9,7 @@ export LC_ALL=C
 WORK_DIR=$(mktemp -d)
 trap "rm -rf ${WORK_DIR}" EXIT
 
-# 定义 Tab 变量 (使用 printf 确保跨平台兼容)
+# 定义 Tab 变量
 TAB=$(printf '\t')
 
 # 检查工具
@@ -39,7 +39,6 @@ download_files_parallel() {
         local temp_out="${temp_map_dir}/${i}.txt"
         (
             if curl -sLf --connect-timeout 15 --retry 3 "$url" > "$temp_out"; then
-                # 确保文件末尾有换行
                 [ -n "$(tail -c1 "$temp_out")" ] && echo "" >> "$temp_out"
                 echo "   ✅ 完成: $(basename "$url")"
             else
@@ -100,18 +99,19 @@ optimize_smart_self() {
         pure=original; 
         priority=1;
         
-        # 识别通配前缀 (+. 或 .) 并移除
+        # 再次强制去除行首空格
+        sub(/^[[:space:]]+/, "", pure);
+        
+        # 识别通配前缀 (+. 或 .)
         if (sub(/^\+\./, "", pure) || sub(/^\./, "", pure)) { 
             priority=0; 
         } 
         
-        # 【关键修复】只保留字母数字点和横杠，剔除所有其他字符(包括空格、不可见字符)
-        gsub(/[^a-z0-9.-]/, "", pure);
-
+        # 这里的 pure 已经是纯域名了 (如 net.cn)
+        # 反转字符串
         reversed=""; len=length(pure);
         for(i=len;i>=1;i--) reversed=reversed substr(pure,i,1);
         
-        # 只有有效的纯域名才参与计算
         if (length(pure) > 0) {
             print reversed, priority, original 
         }
@@ -125,7 +125,6 @@ optimize_smart_self() {
         original = $3
 
         # 检查是否被 Buffer (Priority 0 的 +.) 覆盖
-        # 覆盖条件：Key 是 Buffer 的子域名 (以 Buffer + "." 开头) 或者 Key 等于 Buffer
         is_child_or_equal = (buffered_key != "" && (index(key, buffered_key ".") == 1 || key == buffered_key));
 
         if (is_child_or_equal && buffered_prio == 0) {
@@ -388,7 +387,8 @@ generate_cn() {
     echo "📊 List 2 原始行数: $(wc -l < "${WORK_DIR}/raw_cn_2.txt")"
 
     echo "🧹 清洗 List 1 (纯域名 -> +.)..."
-    # 强制去除非打印字符，转小写，去空去注
+    # 彻底的字符级清洗
+    # tr -cd '[:print:]\n' : 移除所有不可见字符（如零宽空格、BOM头）
     cat "${WORK_DIR}/raw_cn_1.txt" \
     | tr -cd '[:print:]\n' \
     | tr 'A-Z' 'a-z' \
@@ -403,22 +403,19 @@ generate_cn() {
     echo "📊 List 1 清洗后有效行数: $(wc -l < "${WORK_DIR}/clean_cn_1.txt")"
 
     echo "🧹 清洗 List 2 (Clash格式 -> 混合)..."
-    # 使用 awk 精准提取，防止 sed 正则遗漏
-    # -F, : 以逗号分隔
-    # $1 ~ /DOMAIN/ : 只处理 DOMAIN 或 DOMAIN-SUFFIX 开头的行
-    # $2 : 提取域名部分
+    # 使用 awk 进行健壮的字段解析
     cat "${WORK_DIR}/raw_cn_2.txt" \
     | tr -cd '[:print:]\n' \
     | tr 'A-Z' 'a-z' \
     | grep -v "skk\.moe" \
     | awk -F, '
-        $1 ~ /domain-suffix/ { 
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); 
-            if(length($2)>0) print "+." $2 
+        /domain-suffix/ {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2);
+            if (length($2) > 0) print "+." $2
         }
-        $1 ~ /^domain$/ { 
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); 
-            if(length($2)>0) print $2 
+        /^domain,/ {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2);
+            if (length($2) > 0) print $2
         }
     ' \
     | sort -u \
@@ -426,7 +423,10 @@ generate_cn() {
     
     echo "📊 List 2 清洗后有效行数: $(wc -l < "${WORK_DIR}/clean_cn_2.txt")"
 
-    cat "${WORK_DIR}/clean_cn_1.txt" "${WORK_DIR}/clean_cn_2.txt" > "${WORK_DIR}/merged_cn_raw.txt"
+    cat "${WORK_DIR}/clean_cn_1.txt" "${WORK_DIR}/clean_cn_2.txt" \
+    | sort -u \
+    > "${WORK_DIR}/merged_cn_raw.txt"
+    
     echo "📊 合并后总行数: $(wc -l < "${WORK_DIR}/merged_cn_raw.txt")"
 
     optimize_smart_self "${WORK_DIR}/merged_cn_raw.txt" "${WORK_DIR}/final_cn.txt"
