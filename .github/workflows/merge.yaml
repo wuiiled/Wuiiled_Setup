@@ -30,9 +30,9 @@ jobs:
         curl -skLo mihomo.deb "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/mihomo-linux-amd64-$version.deb"
         sudo dpkg -i mihomo.deb
 
-    # 【优化】调用脚本的并行模式 (all)，大幅缩短耗时
+    # 【修改点】将 bash 改为 python3 调用新脚本
     - name: Run Conversion Scripts (Parallel)
-      run: bash scripts/convert.sh all
+      run: python3 scripts/convert.py all
 
     - name: Process Extra Rules
       shell: bash
@@ -42,6 +42,9 @@ jobs:
         # =======================================================
         # 确保排序行为一致 (Tab < Space < * < . < 0-9)
         export LC_ALL=C
+        
+        # ... (后续脚本逻辑保持不变，因为 convert.py 已经生成了后续步骤需要的 ADs_merged.txt) ...
+        # (保留原本的 Process Extra Rules 下的所有代码)
         
         # --- Mihomo & 通用源 ---
         LIST_GENERIC=(
@@ -85,6 +88,7 @@ jobs:
         mkdir -p temp_ws output/mihomo output/adg output/mosdns-x
 
         # 检查上一步生成的文件，如果不存在则下载（作为保底）
+        # 【注意】convert.py 执行完后，ADs_merged.txt 应该已经存在于根目录
         if [ ! -f "ADs_merged.txt" ]; then
             echo "Local ADs_merged.txt not found, downloading..."
             curl -skLo "ADs_merged.txt" "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/mihomo/rules/ADs_merged.txt"
@@ -125,7 +129,7 @@ jobs:
         # 3.3 归档 Mihomo
         mv temp_ws/*.mrs output/mihomo/
         mv temp_ws/*.txt output/mihomo/
-        # 将 convert.sh 生成的文件也归档
+        # 将 convert.py 生成的文件也归档
         mv *.mrs output/mihomo/ 2>/dev/null || true
         cp *_merged.txt output/mihomo/ 2>/dev/null || true
 
@@ -186,12 +190,12 @@ jobs:
         #                 6. 最终清理
         # =======================================================
         rm -rf temp_ws
-        # 清理 convert.sh 生成的根目录文件，保持环境整洁
+        # 清理 convert.py 生成的根目录文件，保持环境整洁
         rm -f *_merged.txt 
         
         echo "All processing complete."
 
-    # --- 推送 Mihomo ---
+    # --- 后续推送步骤保持不变 ---
     - name: Push to Mihomo branch
       run: |
         git config user.name 'github-actions[bot]'
@@ -204,7 +208,6 @@ jobs:
         git commit -m "Auto Update Mihomo $(date +"%Y-%m-%d %H:%M")"
         git push -f origin mihomo
 
-    # --- 推送 ADG ---
     - name: Push to ADG branch
       run: |
         git checkout --orphan adg
@@ -215,7 +218,6 @@ jobs:
         git commit -m "Auto Update ADG $(date +"%Y-%m-%d %H:%M")"
         git push -f origin adg
 
-    # --- 推送 MosDNS-X ---
     - name: Push to MosDNS-X branch
       run: |
         git checkout --orphan mosdns-x
