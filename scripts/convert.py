@@ -16,6 +16,8 @@ from datetime import datetime
 # ================= 全局配置 =================
 
 WORK_DIR = tempfile.mkdtemp(prefix="wuiiled_convert_")
+DEAD_DOMAINS_FILE = os.path.join(WORK_DIR, "dead_domains.txt")
+DEAD_DOMAINS_SET = set() # 内存缓存
 
 def cleanup():
     if os.path.exists(WORK_DIR):
@@ -40,6 +42,9 @@ ALLOW_URLS = [
     "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/refs/heads/hidden/reject-need-to-remove.txt"
 ]
 
+# 217heidai 的死域名列表
+DEAD_DOMAIN_URL = "https://raw.githubusercontent.com/217heidai/adblockfilters/main/rules/black.txt"
+
 # ================= 核心工具函数 =================
 
 def download_file(url, timeout=20, retries=3):
@@ -60,7 +65,6 @@ def download_file(url, timeout=20, retries=3):
 def download_files_parallel(output_file, urls):
     """并行下载并合并文件"""
     content_list = []
-    # 使用列表保持下载任务的顺序，虽然是并行的
     with ThreadPoolExecutor(max_workers=min(len(urls) + 1, 10)) as executor:
         futures = [executor.submit(download_file, url) for url in urls]
         for f in futures:
@@ -76,69 +80,84 @@ def download_files_parallel(output_file, urls):
         else:
             pass
 
+def prepare_dead_domain_list():
+    """预加载死域名列表到内存"""
+    print("💀 正在下载并加载死域名列表 (217heidai)...")
+    content = download_file(DEAD_DOMAIN_URL)
+    if content:
+        for line in content.splitlines():
+            line = line.strip().lower()
+            if line and not line.startswith("#"):
+                DEAD_DOMAINS_SET.add(line)
+        print(f"💀 已加载 {len(DEAD_DOMAINS_SET)} 条死域名记录")
+    else:
+        print("⚠️ 警告: 死域名列表下载失败，将跳过死域名剔除步骤。")
+
+def apply_dead_domain_filter(input_file, output_file):
+    """剔除死域名"""
+    if not DEAD_DOMAINS_SET:
+        shutil.copyfile(input_file, output_file)
+        return
+
+    removed_count = 0
+    with open(input_file, 'r', encoding='utf-8') as infile, \
+         open(output_file, 'w', encoding='utf-8') as outfile:
+        for line in infile:
+            original_line = line
+            line = line.strip().lower()
+            
+            # 提取纯域名进行比对
+            # 例如: +.example.com -> example.com
+            check_domain = line
+            if check_domain.startswith("+."):
+                check_domain = check_domain[2:]
+            elif check_domain.startswith("."):
+                check_domain = check_domain[1:]
+            
+            # 只有当域名完全匹配黑名单时才剔除
+            # (不进行后缀匹配，以免误杀子域名)
+            if check_domain in DEAD_DOMAINS_SET:
+                removed_count += 1
+                continue
+            
+            outfile.write(original_line)
+    
+    print(f"🧹 已剔除 {removed_count} 条死域名")
+
 def normalize_domain_line(line):
-    """
-    单行域名清洗与提取 (借鉴 217heidai 逻辑)
-    核心策略：
-    1. 优先保留 Clash/Mihomo 特有语法 (+.xxx, .xxx)
-    2. 严格丢弃任何包含路径(/)的 AdBlock 规则，防止误杀
-    3. 转换 ||domain^ 为 domain
-    """
+    """单行域名清洗与提取 (借鉴 217heidai 逻辑)"""
     line = line.strip().lower()
     
-    # 0. 基础过滤
-    if not line or line.startswith("!") or line.startswith("["): 
-        return None
-    if line.startswith("#"):
-        return None
+    if not line or line.startswith("!") or line.startswith("["): return None
+    if line.startswith("#"): return None
 
-    # 1. 【直通车】Clash/Mihomo 语法 (最高优先级)
-    # 如果用户明确写了 +.com.cn 或 .google.com，直接保留
+    # 1. 【直通车】Clash/Mihomo 语法
     if line.startswith("+.") or line.startswith("."):
         check_part = line.lstrip("+.")
         if re.match(r'^[a-z0-9._-]+$', check_part):
             return line
 
-    # 2. 移除 IP 地址 (Clash domain-set 不应包含 IP)
-    if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', line):
-        return None
+    # 2. 移除 IP
+    if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', line): return None
 
     # 3. AdBlock 语法清洗
-    
-    # 3.1 丢弃元素隐藏规则
-    if "##" in line or "#?#" in line or "#$#" in line or "#@#" in line:
-        return None
+    if "##" in line or "#?#" in line or "#$#" in line or "#@#" in line: return None
 
-    # 3.2 【关键借鉴】丢弃包含路径的规则
-    # 217heidai 将含路径的规则归为 "filter" 类，不用于 Mihomo "block" 类。
-    # 比如 ||example.com/banner.jpg -> 丢弃
-    # 比如 ||example.com^ -> 保留
-    # 逻辑：去除开头可能的 || 后，如果 ^ 或 $ 之前出现了 /，则丢弃。
-    
     check_pattern = line
     if check_pattern.startswith("@@"): check_pattern = check_pattern[2:]
     if check_pattern.startswith("||"): check_pattern = check_pattern[2:]
+    if '$' in check_pattern: check_pattern = check_pattern.split('$')[0]
     
-    # 获取纯规则部分（去除选项 $...）
-    if '$' in check_pattern:
-        check_pattern = check_pattern.split('$')[0]
-    
-    # 如果此时还包含 /，说明是路径规则，直接丢弃
-    # 例: example.com/ad^ -> 丢弃
-    # 例: example.com^ -> 保留
-    if '/' in check_pattern:
-        return None
+    # 丢弃路径规则
+    if '/' in check_pattern: return None
+    # 丢弃通配符
+    if "*" in check_pattern: return None
 
-    # 3.3 丢弃通配符 * (Mihomo 不支持中间通配符)
-    if "*" in check_pattern:
-        return None
-
-    # 3.4 提取域名
+    # 提取域名
     pattern = line
     if pattern.startswith("@@"): pattern = pattern[2:]
     if pattern.startswith("||"): pattern = pattern[2:]
     
-    # 截断后缀 ^ 或 $
     end_chars = ['^', '$']
     min_idx = len(pattern)
     found = False
@@ -148,21 +167,16 @@ def normalize_domain_line(line):
             min_idx = idx
             found = True
     
-    if found:
-        pattern = pattern[:min_idx]
+    if found: pattern = pattern[:min_idx]
     
-    # 3.5 最终清理
     pattern = re.sub(r'[^a-z0-9.-]', '', pattern)
     pattern = pattern.strip('.')
     
-    # 验证有效性
-    if '.' not in pattern or len(pattern) < 3:
-        return None
+    if '.' not in pattern or len(pattern) < 3: return None
     
     return pattern
 
 def process_normalize_domain(input_file, output_file):
-    """读取文件，标准化，去重排序"""
     if not os.path.exists(input_file):
         open(output_file, 'w').close()
         return
@@ -197,7 +211,7 @@ def apply_keyword_filter(input_file, output_file):
                 outfile.write(line)
 
 def optimize_smart_self(input_file, output_file):
-    """智能覆盖去重 (保留 Wuiiled 核心算法，它比 217heidai 更适合 Clash)"""
+    """智能覆盖去重"""
     if not os.path.exists(input_file) or os.path.getsize(input_file) == 0:
         open(output_file, 'w').close()
         return
@@ -332,12 +346,16 @@ def finalize_output(src, dst, mode):
         print(f"⚠️  警告: {dst} 源文件为空，跳过生成。")
         return
 
+    # 【新步骤】在生成最终文件前，应用死域名过滤
+    temp_dead_filtered = src + ".dead_filtered"
+    apply_dead_domain_filter(src, temp_dead_filtered)
+    shutil.move(temp_dead_filtered, src)
+
     lines = []
     with open(src, 'r', encoding='utf-8') as f:
         lines = list(set(f.read().splitlines()))
     lines.sort()
 
-    # 借鉴点：Mihomo 规则通常建议全加上 +. 前缀以匹配子域名
     if mode == "add_prefix":
         lines = ["+." + line if not line.startswith("+.") else line for line in lines]
 
@@ -570,6 +588,9 @@ def main():
     target = "all"
     if len(sys.argv) > 1:
         target = sys.argv[1]
+
+    # 【初始化】优先下载死域名列表，供后续任务共享
+    prepare_dead_domain_list()
 
     tasks = {
         "ads-reject": generate_ads_reject,
