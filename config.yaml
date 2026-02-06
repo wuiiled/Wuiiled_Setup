@@ -2,15 +2,22 @@
 settings:
   output_dir: "output"      # 构建产物目录
   mihomo_bin: "mihomo"      # Mihomo 二进制路径
-  dns_check: true           # [关键] 全局开关：是否开启死链检测
-  dns_server: "223.5.5.5:53" # 改用阿里DNS，国内环境解析更稳
-  concurrency: 2000         # 提高并发数，Go能轻松扛住
+  dns_check: true           # 全局 DNS 检测开关 (仅对 type=reject 生效)
+  concurrency: 600          # 并发数 (安全范围，防止被 Ban)
+  # DNS 轮询池：混合使用国际大厂和国内 DNS，提高在 Github Actions 环境下的成功率
+  dns_servers:
+    - "8.8.8.8:53"        # Google
+    - "1.1.1.1:53"        # Cloudflare
+    - "208.67.222.222:53" # OpenDNS
+    - "9.9.9.9:53"        # Quad9
+    - "223.5.5.5:53"      # AliDNS (备用)
 
 # 规则集合
 rule_sets:
-  # 1. 核心广告规则
+  # 1. 广告拦截 (ADS)
   - name: "ADs_merged"
-    type: "reject"          # 只有 type 为 reject 时才会触发 DNS 检测
+    type: "reject"
+    output_prefix: "+."
     targets: ["mihomo", "adguard", "mosdns"]
     sources:
       - "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt"
@@ -36,6 +43,7 @@ rule_sets:
   # 2. AI 服务
   - name: "AIs_merged"
     type: "other"
+    output_prefix: "+."
     targets: ["mihomo"]
     sources:
       - "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/category-ai-!cn.list"
@@ -46,6 +54,7 @@ rule_sets:
   # 3. FakeIP 过滤
   - name: "Fake_IP_Filter_merged"
     type: "fakeip"
+    output_prefix: ""
     targets: ["mihomo"]
     sources:
       - "https://raw.githubusercontent.com/vernesong/OpenClash/refs/heads/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list"
@@ -57,6 +66,7 @@ rule_sets:
   # 4. 拒绝并丢弃
   - name: "Reject_Drop_merged"
     type: "other"
+    output_prefix: ""
     targets: ["mihomo"]
     sources:
       - "https://ruleset.skk.moe/Clash/non_ip/reject-drop.txt"
@@ -69,6 +79,7 @@ rule_sets:
   # 5. 国内域名
   - name: "CN_merged"
     type: "other"
+    output_prefix: ""
     targets: ["mihomo"]
     sources:
       - "https://static-file-global.353355.xyz/rules/cn-additional-list.txt"
