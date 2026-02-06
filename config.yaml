@@ -14,7 +14,7 @@ settings:
 rule_sets:
   # 1. ADS: 强制通配 (force_wildcard) -> 这样 baidu.com 才能杀掉 ad.baidu.com
   - name: "ADs_merged"
-    type: "reject"
+    type: "other"
     output_policy: "force_wildcard" 
     targets: ["mihomo", "adguard", "mosdns"]
     sources:
