@@ -1,0 +1,74 @@
+# 全局设置
+settings:
+  output_dir: "output"      # 临时构建目录
+  mihomo_bin: "mihomo"      # Mihomo 二进制路径
+  dns_server: "8.8.8.8:53"  # DNS 检测服务器
+  concurrency: 1000         # DNS 检测并发数
+
+# 规则集合
+rule_sets:
+  # 1. 核心广告规则 (同时输出到 Mihomo, AdGuard, MosDNS)
+  - name: "ADs_merged"
+    type: "reject" # 开启 DNS 死链检测
+    targets: ["mihomo", "adguard", "mosdns"]
+    sources:
+      - "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt"
+      - "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/scripts/Reject-addon.txt"
+      - "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"
+      - "https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt"
+      - "https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt"
+      - "https://raw.githubusercontent.com/ForestL18/rules-dat/mihomo/geo/classical/pcdn.list"
+      - "https://raw.githubusercontent.com/ForestL18/rules-dat/refs/heads/mihomo/geo/classical/reject.list"
+      - "https://a.dove.isdumb.one/pihole.txt"
+      - "https://raw.githubusercontent.com/limbopro/Adblock4limbo/main/rule/Surge/Adblock4limbo_surge.list"
+      - "https://raw.githubusercontent.com/Cats-Team/AdRules/main/adrules_domainset.txt"
+      - "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/refs/heads/release/reject-list.txt"
+      - "https://ruleset.skk.moe/Clash/domainset/reject.txt"
+    allowlists:
+      - "https://raw.githubusercontent.com/Cats-Team/AdRules/refs/heads/script/script/allowlist.txt"
+      - "https://raw.githubusercontent.com/zoonderkins/blahdns/refs/heads/master/hosts/whitelist.txt"
+      - "https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exceptions.txt"
+      - "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/refs/heads/hidden/reject-need-to-remove.txt"
+    local_allowlists:
+      - "scripts/exclude-keyword.txt"
+
+  # 2. AI 服务 (仅 Mihomo)
+  - name: "AIs_merged"
+    type: "other"
+    targets: ["mihomo"]
+    sources:
+      - "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/category-ai-!cn.list"
+      - "https://ruleset.skk.moe/List/non_ip/ai.conf"
+      - "https://github.com/DustinWin/ruleset_geodata/raw/mihomo-ruleset/ai.list"
+      - "https://raw.githubusercontent.com/ConnersHua/RuleGo/refs/heads/master/Surge/Ruleset/Extra/AI.list"
+
+  # 3. FakeIP 过滤 (仅 Mihomo)
+  - name: "Fake_IP_Filter_merged"
+    type: "fakeip"
+    targets: ["mihomo"]
+    sources:
+      - "https://raw.githubusercontent.com/vernesong/OpenClash/refs/heads/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list"
+      - "https://raw.githubusercontent.com/juewuy/ShellCrash/dev/public/fake_ip_filter.list"
+      - "https://raw.githubusercontent.com/DustinWin/ruleset_geodata/refs/heads/mihomo-ruleset/fakeip-filter.list"
+      - "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/scripts/fake-ip-addon.txt"
+      - "https://ruleset.skk.moe/Internal/clash_fake_ip_filter.yaml"
+
+  # 4. 拒绝并丢弃 (仅 Mihomo)
+  - name: "Reject_Drop_merged"
+    type: "other"
+    targets: ["mihomo"]
+    sources:
+      - "https://ruleset.skk.moe/Clash/non_ip/reject-drop.txt"
+      - "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Reject-drop.txt"
+    allowlists:
+      - "https://raw.githubusercontent.com/Cats-Team/AdRules/refs/heads/script/script/allowlist.txt"
+    local_allowlists:
+      - "scripts/exclude-keyword.txt"
+
+  # 5. 国内域名 (仅 Mihomo)
+  - name: "CN_merged"
+    type: "other"
+    targets: ["mihomo"]
+    sources:
+      - "https://static-file-global.353355.xyz/rules/cn-additional-list.txt"
+      - "https://ruleset.skk.moe/Clash/non_ip/domestic.txt"
