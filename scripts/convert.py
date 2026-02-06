@@ -30,7 +30,6 @@ import atexit
 atexit.register(cleanup)
 
 def check_mihomo():
-    """检查 mihomo 命令是否存在"""
     return shutil.which("mihomo") is not None
 
 # ================= 资源配置 =================
@@ -47,7 +46,6 @@ DEAD_DOMAIN_URL = "https://raw.githubusercontent.com/217heidai/adblockfilters/ma
 # ================= 核心工具函数 =================
 
 def download_file(url, timeout=20, retries=3):
-    """单个文件下载逻辑"""
     ua = "Mozilla/5.0 (compatible; MihomoRuleConverter/1.0)"
     req = urllib.request.Request(url, headers={'User-Agent': ua})
     
@@ -62,7 +60,6 @@ def download_file(url, timeout=20, retries=3):
     return ""
 
 def download_files_parallel(output_file, urls):
-    """并行下载并合并文件"""
     content_list = []
     with ThreadPoolExecutor(max_workers=min(len(urls) + 1, 10)) as executor:
         futures = [executor.submit(download_file, url) for url in urls]
@@ -80,7 +77,6 @@ def download_files_parallel(output_file, urls):
             pass
 
 def prepare_dead_domain_list():
-    """预加载死域名列表"""
     print("💀 正在下载并加载死域名列表 (217heidai)...")
     content = download_file(DEAD_DOMAIN_URL)
     if content:
@@ -93,7 +89,6 @@ def prepare_dead_domain_list():
         print("⚠️ 警告: 死域名列表下载失败。")
 
 def apply_dead_domain_filter(input_file, output_file):
-    """剔除死域名"""
     if not DEAD_DOMAINS_SET:
         shutil.copyfile(input_file, output_file)
         return
@@ -120,65 +115,48 @@ def apply_dead_domain_filter(input_file, output_file):
     print(f"🧹 已剔除 {removed_count} 条死域名")
 
 def normalize_domain_line(line):
-    """
-    单行域名清洗 (严格复刻 Bash 逻辑)
-    """
-    # 1. tr -d '\r' (Python read 自动处理换行，但为了保险 strip)
+    # 严格复刻 Bash 逻辑顺序
     line = line.strip()
     
-    # Bash: s/[\$#].*//g  (删除行内注释 # 和 AdBlock 选项 $)
-    # 这步必须很早做，否则后面的逗号分割可能不准确
+    # 1. 移除行内注释(#)和AdBlock选项($) - 必须最先执行
     line = re.sub(r'[\$#].*', '', line)
     
-    # Bash: s/^(0\.0\.0\.0|127\.0\.0\.1)[[:space:]]+//g
+    # 2. 移除IP前缀 (Hosts格式)
     line = re.sub(r'^(0\.0\.0\.0|127\.0\.0\.1)\s+', '', line)
 
-    # Bash: s/^!.*// (行首感叹号注释)
+    # 3. 移除 ! 注释
     if line.startswith("!"): return None
 
-    # Bash: s/^@@// (注意：Bash 在处理 ADS 时是 grep -v @@，这里我们只负责清洗。
-    # 如果是 AllowList 调用此函数，需要去掉 @@；如果是 ADS 调用，调用前已被 grep -v 过滤)
+    # 4. 移除 @@ (在 ADS 处理时已被 grep -v 过滤，但在 Allow 处理时需要剥离)
     if line.startswith("@@"):
         line = line[2:]
 
-    # Bash: s/\|\|//; s/\^//; s/\|//
+    # 5. 移除修饰符 || ^ |
     line = line.replace("||", "").replace("^", "").replace("|", "")
 
-    # Bash: s/^domain-keyword,//; s/^domain-suffix,//; s/^domain,//
-    # 必须在逗号截断前处理
+    # 6. 移除 domain-suffix 等前缀 (必须在逗号分割前)
     line = re.sub(r'^(domain-keyword|domain-suffix|domain),', '', line)
 
-    # Bash: s/^([^,]+).*/\1/ (只保留第一个逗号前的内容)
+    # 7. 逗号截断 (保留逗号前部分)
     if ',' in line:
         line = line.split(',')[0]
 
-    # Bash: s/^\+\.//; s/^\.//; s/\.$// (移除前缀后缀点)
+    # 8. 移除前后点
     line = re.sub(r'^(\+\.|\.)', '', line)
     line = line.rstrip('.')
 
-    # Bash: awk 过滤逻辑
-    # /\./ (必须包含点)
+    # 9. AWK 过滤逻辑
     if '.' not in line: return None
-    # !/\*/ (不能包含 *)
     if '*' in line: return None
-    # /^[a-z0-9_]/ (必须以字母数字下划线开头) - Bash sed 之后通常已经是小写
-    if not re.match(r'^[a-z0-9_]', line): return None
-    # !/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ (不能是纯 IP)
-    if re.match(r'^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$', line): return None
+    if not re.match(r'^[a-z0-9_]', line): return None # 必须以字母数字下划线开头
+    if re.match(r'^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$', line): return None # 不能是纯IP
 
-    # Bash 未显式删除路径，但 awk /^[a-z0-9_]/ 会隐式过滤掉以 / 开头的路径
-    # 但如果规则是 example.com/ads，Bash sed 并没有删除 /。
-    # 实际上 AdBlock 域名规则不应包含 /。
-    # 217heidai 逻辑建议丢弃含 / 的。为了安全，这里加一条 Python 特有的增强清洗
+    # 额外安全检查：丢弃含路径规则 (Bash sed 隐式保留但通常不应存在)
     if '/' in line: return None
 
     return line
 
 def process_normalize_domain(input_file, output_file, skip_allow_rules=False):
-    """
-    读取文件，标准化，去重排序
-    skip_allow_rules: 如果为 True (处理 ADS 时)，遇到 @@ 开头的行直接丢弃 (模拟 grep -v @@)
-    """
     if not os.path.exists(input_file):
         open(output_file, 'w').close()
         return
@@ -189,7 +167,7 @@ def process_normalize_domain(input_file, output_file, skip_allow_rules=False):
             line = line.strip().lower()
             if not line: continue
             
-            # 【核心差异修复】Bash 在处理 ADS 时用了 grep -vE '^\s*@@'
+            # 模拟 grep -vE '^\s*@@'
             if skip_allow_rules and line.startswith("@@"):
                 continue
 
@@ -202,7 +180,6 @@ def process_normalize_domain(input_file, output_file, skip_allow_rules=False):
             f.write(d + '\n')
 
 def apply_keyword_filter(input_file, output_file):
-    """关键词过滤"""
     keyword_file = "scripts/exclude-keyword.txt"
     keywords = []
     if os.path.exists(keyword_file) and os.path.getsize(keyword_file) > 0:
@@ -220,7 +197,6 @@ def apply_keyword_filter(input_file, output_file):
                 outfile.write(line)
 
 def optimize_smart_self(input_file, output_file):
-    """智能覆盖去重 (完全复刻原 Python 嵌入脚本逻辑)"""
     if not os.path.exists(input_file) or os.path.getsize(input_file) == 0:
         open(output_file, 'w').close()
         return
@@ -253,7 +229,6 @@ def optimize_smart_self(input_file, output_file):
                 'original': line
             })
 
-    # 排序：parts (列表内容), not is_wildcard (True 在前, False 在后)
     data.sort(key=lambda x: (x['parts'], not x['is_wildcard']))
 
     result_lines = []
@@ -279,21 +254,22 @@ def optimize_smart_self(input_file, output_file):
         f.write('\n'.join(result_lines) + '\n')
 
 def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
-    """双向白名单过滤 (AWK 逻辑复刻)"""
+    """
+    双向白名单过滤 - 逻辑修正版
+    确保 Block (0) 排在 Allow (1) 之前，以正确触发 'buffered' 逻辑
+    """
     combined_data = []
 
-    # Process Allow (Type 1)
-    # AWK: reverse string
+    # Type 1: Allow
     if os.path.exists(allow_in):
         with open(allow_in, 'r', encoding='utf-8') as f:
             for line in f:
-                key = line.strip() # AWK key=$0
+                key = line.strip()
                 if not key: continue
                 reversed_key = key[::-1]
                 combined_data.append({'key': reversed_key, 'type': 1, 'original': None})
 
-    # Process Block (Type 0)
-    # AWK: sub(/^\+\./,"",pure); sub(/^\./,"",pure); reverse
+    # Type 0: Block
     if os.path.exists(block_in):
         with open(block_in, 'r', encoding='utf-8') as f:
             for line in f:
@@ -305,8 +281,10 @@ def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
                 reversed_key = pure[::-1]
                 combined_data.append({'key': reversed_key, 'type': 0, 'original': original})
 
-    # Sort by key (reversed domain)
-    combined_data.sort(key=lambda x: x['key'])
+    # 【关键修正】同时按 key 和 type 排序
+    # 这样对于相同的域名，Type 0 (Block) 会排在 Type 1 (Allow) 前面
+    # 这完全复刻了 Bash 'sort' 的行为 (0 < 1)
+    combined_data.sort(key=lambda x: (x['key'], x['type']))
 
     active_white_root = ""
     buffered_key = ""
@@ -318,14 +296,14 @@ def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
         typ = item['type']
         original = item['original']
 
-        # AWK: if (active_white_root != "" && index(key, active_white_root ".") == 1)
+        # 检查是否被之前的白名单树覆盖
         if active_white_root:
-             # index==1 means startswith. active_white_root + "."
              target = active_white_root + "."
+             # 如果 key 是 active_white_root 的子域，或者完全相等 (index == 1)
              if key.startswith(target):
                  continue
         
-        # AWK: is_child_or_equal
+        # 检查是否在 Block 缓冲树内
         is_child_or_equal = False
         if buffered_key:
             if key == buffered_key or key.startswith(buffered_key + "."):
@@ -333,10 +311,12 @@ def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
         
         if is_child_or_equal:
             if typ == 1:
+                # 遇到白名单，抵消之前的 Block 缓冲
                 buffered_key = ""
                 buffered_line = ""
                 active_white_root = key
         else:
+            # 移出了之前的缓冲树，提交之前的 Block
             if buffered_line:
                 final_lines.append(buffered_line)
             
@@ -356,7 +336,6 @@ def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
         f.write('\n'.join(final_lines) + '\n')
 
 def finalize_output(src, dst, mode):
-    """输出封装"""
     if not os.path.exists(src) or os.path.getsize(src) == 0:
         print(f"⚠️  警告: {dst} 源文件为空，跳过生成。")
         return
@@ -366,13 +345,11 @@ def finalize_output(src, dst, mode):
     apply_dead_domain_filter(src, temp_dead_filtered)
     shutil.move(temp_dead_filtered, src)
 
-    # Bash: sort -u
     lines = []
     with open(src, 'r', encoding='utf-8') as f:
         lines = list(set(f.read().splitlines()))
     lines.sort()
 
-    # Bash: add prefix +.
     if mode == "add_prefix":
         lines = ["+." + line if not line.startswith("+.") else line for line in lines]
 
@@ -421,8 +398,7 @@ def generate_ads_reject():
     download_files_parallel(raw_allow, ALLOW_URLS)
 
     clean_ads = os.path.join(mod_dir, "clean_ads.txt")
-    # Bash: grep -vE '^\s*@@' | normalize_domain | sort -u
-    # 这里的 True 参数开启了 skip_allow_rules，即丢弃 @@ 开头的行
+    # Bash: grep -vE '^\s*@@' -> skip_allow_rules=True
     process_normalize_domain(raw_ads, clean_ads, skip_allow_rules=True)
 
     filter_ads = os.path.join(mod_dir, "filter_ads.txt")
@@ -437,7 +413,6 @@ def generate_ads_reject():
     local_allow = "scripts/exclude-keyword.txt"
     if os.path.exists(local_allow):
         with open(local_allow, 'r', encoding='utf-8') as f:
-            # Bash: grep -vE '^\s*($|#)' | tr 'A-Z' 'a-z'
             for line in f:
                 line = line.strip().lower()
                 if line and not line.startswith('#'):
@@ -447,7 +422,7 @@ def generate_ads_reject():
         f.write("".join(allow_content))
 
     clean_allow = os.path.join(mod_dir, "clean_allow.txt")
-    # Bash: normalize_domain (不跳过 @@, 只剥离)
+    # Bash: normalize_domain (不跳过@@) -> skip_allow_rules=False
     process_normalize_domain(merged_allow_raw, clean_allow, skip_allow_rules=False)
 
     opt_ads = os.path.join(mod_dir, "opt_ads.txt")
@@ -485,9 +460,6 @@ def generate_ai():
         shutil.move(opt_ai, "AIs_merged.txt")
 
 def generate_fakeip():
-    """
-    FakeIP 处理逻辑 (严格遵照 Bash 逻辑)
-    """
     mod_dir = os.path.join(WORK_DIR, "fakeip")
     os.makedirs(mod_dir, exist_ok=True)
     print("=== 🚀 [FakeIP] 启动 ===")
@@ -539,8 +511,6 @@ def generate_ads_drop():
     download_files_parallel(raw_rd, BLOCK_URLS)
 
     clean_rd = os.path.join(mod_dir, "clean_rd.txt")
-    # 这里我们不用 normalize_domain_line，因为 Bash 对 drop 有特殊的 sed 逻辑
-    # Bash: tr -d '\r' | tr 'A-Z' 'a-z' | sed ... | sort -u
     rd_lines = set()
     if os.path.exists(raw_rd):
         with open(raw_rd, 'r', encoding='utf-8') as f:
@@ -548,13 +518,11 @@ def generate_ads_drop():
                 line = line.strip().lower()
                 if not line or line.startswith('#') or "skk.moe" in line: continue
                 
-                # s/^domain-suffix,/+./; s/^domain,//
                 if line.startswith("domain-suffix,"):
                     line = "+." + line.split(',')[1].strip()
                 elif line.startswith("domain,"):
                     line = line.split(',')[1].strip()
                 
-                # /^\+\.$/d
                 if line == "+.": continue
                 
                 rd_lines.add(line)
@@ -562,7 +530,6 @@ def generate_ads_drop():
     with open(clean_rd, 'w', encoding='utf-8') as f:
         f.write('\n'.join(sorted(rd_lines)) + '\n')
 
-    # Process Allow
     raw_allow_temp = os.path.join(mod_dir, "raw_allow_temp.txt")
     download_files_parallel(raw_allow_temp, ALLOW_URLS)
     
@@ -582,7 +549,6 @@ def generate_ads_drop():
         f.write("".join(allow_content))
     
     clean_rd_allow = os.path.join(mod_dir, "clean_rd_allow.txt")
-    # Bash: normalize_domain (Skip Allow=False)
     process_normalize_domain(merged_allow_raw, clean_rd_allow, skip_allow_rules=False)
 
     final_rd = os.path.join(mod_dir, "final_rd.txt")
@@ -606,7 +572,6 @@ def generate_cn():
 
     merged_cn = os.path.join(mod_dir, "merged_cn_raw.txt")
     with open(merged_cn, 'w', encoding='utf-8') as f:
-        # CN 1: s/^/+./
         if os.path.exists(raw_cn_1):
             with open(raw_cn_1, 'r', encoding='utf-8') as f1:
                 for line in f1:
@@ -614,7 +579,6 @@ def generate_cn():
                     if not line or line.startswith('#'): continue
                     f.write("+." + line + "\n")
         
-        # CN 2: logic
         if os.path.exists(raw_cn_2):
             with open(raw_cn_2, 'r', encoding='utf-8') as f2:
                 for line in f2:
@@ -626,7 +590,7 @@ def generate_cn():
                     elif line.startswith("domain,"):
                         line = line.split(',')[1].strip()
                     else:
-                        continue # Bash grep -E filtered out other lines
+                        continue 
                     
                     f.write(line + "\n")
 
