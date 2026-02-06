@@ -3,8 +3,8 @@ settings:
   output_dir: "output"      # 构建产物目录
   mihomo_bin: "mihomo"      # Mihomo 二进制路径
   dns_check: true           # 全局 DNS 检测开关 (仅对 type=reject 生效)
-  concurrency: 600          # 并发数 (安全范围，防止被 Ban)
-  # DNS 轮询池：混合使用国际大厂和国内 DNS，提高在 Github Actions 环境下的成功率
+  concurrency: 600          # 并发数 (600 是 Github Actions 的安全甜点)
+  # DNS 轮询池：混合使用国际大厂和国内 DNS
   dns_servers:
     - "8.8.8.8:53"        # Google
     - "1.1.1.1:53"        # Cloudflare
@@ -16,7 +16,7 @@ settings:
 rule_sets:
   # 1. 广告拦截 (ADS)
   - name: "ADs_merged"
-    type: "reject"
+    type: "other"
     output_prefix: "+."
     targets: ["mihomo", "adguard", "mosdns"]
     sources:
