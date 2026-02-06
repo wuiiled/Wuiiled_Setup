@@ -15,7 +15,7 @@ settings:
 rule_sets:
   # 1. ADS: Shell 对应 generate_ads-reject (mode="add_prefix")
   - name: "ADs_merged"
-    type: "reject"
+    type: "other"
     output_policy: "force_wildcard" # 强制加 +.
     targets: ["mihomo", "adguard", "mosdns"]
     sources:
