@@ -131,7 +131,7 @@ def normalize_domain_line(line):
     return line
 
 def process_normalize_domain(input_file, output_file, skip_allow_rules=False):
-    """
+    r"""
     文件标准化处理
     skip_allow_rules=True 对应 Bash 的 grep -vE '^\s*@@'
     """
