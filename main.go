@@ -72,9 +72,8 @@ func main() {
 				}
 			}
 			for _, l := range rawAllows {
-				// 白名单使用最严格的通用清洗
 				d, _ := normalizeGeneric(l)
-				// 额外校验：白名单也必须是合法域名
+				// 白名单必须是合法域名
 				if d != "" && isValidDomain(d) {
 					allowMap[d] = true
 					allowList = append(allowList, d)
@@ -87,7 +86,7 @@ func main() {
 		blockLines := parallelDownload(ruleSet.Sources)
 		fmt.Printf("   ⬇️  [Download] 原始行数: %d\n", len(blockLines))
 
-		// C. 构建记录 (分流清洗 + 强校验)
+		// C. 构建记录
 		records := make([]domainRecord, 0, len(blockLines))
 		seen := make(map[string]bool, len(blockLines))
 
@@ -95,7 +94,7 @@ func main() {
 			var pure string
 			var isWildcard bool
 
-			// 1. 特定清洗
+			// 1. 分流清洗
 			switch ruleSet.Name {
 			case "Fake_IP_Filter_merged":
 				pure, isWildcard = normalizeFakeIP(line)
@@ -107,14 +106,16 @@ func main() {
 				pure, isWildcard = normalizeGeneric(line)
 			}
 
-			// 2. 强合法性校验 (复刻 Shell awk)
-			if pure == "" || !isValidDomain(pure) {
-				continue
-			}
-
+			// 2. 强校验
+			if pure == "" || !isValidDomain(pure) { continue }
+			
 			// 3. 白名单过滤
-			if allowMap[pure] {
-				continue
+			if allowMap[pure] { continue }
+
+			// 【关键修复】如果策略是强制通配，则忽略源文件属性，强制设为 True
+			// 这样在去重时，baidu.com (isWildcard=true) 就能覆盖 ad.baidu.com
+			if ruleSet.OutputPolicy == "force_wildcard" {
+				isWildcard = true
 			}
 
 			// 4. 去重
@@ -137,7 +138,7 @@ func main() {
 		finalRecords := smartDedup(records)
 		fmt.Printf("   📦 [Result] 最终数量: %d (减少 %d)\n", len(finalRecords), dedupBefore-len(finalRecords))
 
-		// F. DNS 检测
+		// F. DNS 检测 (仅对 reject 类型)
 		if cfg.Settings.DNSCheck && ruleSet.Type == "reject" {
 			fmt.Printf("   🔍 [DNS] 执行死链检测 (池: %d, 并发: %d)...\n", len(cfg.Settings.DNSServers), cfg.Settings.Concurrency)
 			checkBefore := len(finalRecords)
@@ -150,6 +151,7 @@ func main() {
 			switch target {
 			case "mihomo":
 				txtPath := fmt.Sprintf("%s/mihomo/%s.txt", cfg.Settings.OutputDir, ruleSet.Name)
+				// 传递 OutputPolicy 给保存函数
 				saveTextFile(txtPath, finalRecords, ruleSet.OutputPolicy, "")
 				
 				mrsPath := fmt.Sprintf("%s/mihomo/%s.mrs", cfg.Settings.OutputDir, ruleSet.Name)
@@ -166,43 +168,27 @@ func main() {
 	}
 }
 
-// ---------------- 强校验 (对应 Shell awk) ----------------
-
-// 翻译 Shell: /\./ && !/\*/ && /^[a-z0-9_]/ && !/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/
-var validDomainRegex = regexp.MustCompile(`^[a-z0-9_].*\..*$`) // 必须以数字/字母/下划线开头，且包含点
+// ---------------- 强校验 ----------------
+// 允许数字开头的域名(如163.com)，但不允许纯IP
+var validDomainRegex = regexp.MustCompile(`^([a-zA-Z0-9_]([a-zA-Z0-9-_]{0,61}[a-zA-Z0-9_])?\.)+[a-zA-Z]{2,63}$`)
 
 func isValidDomain(domain string) bool {
-	// 1. 包含 * 则非法 (Mihomo 不支持通配符规则，只支持前缀)
-	if strings.Contains(domain, "*") {
-		return false
-	}
-	// 2. 必须包含点，且开头合法
-	if !validDomainRegex.MatchString(domain) {
-		return false
-	}
-	// 3. 不能是 IP (Shell awk 逻辑)
-	if net.ParseIP(domain) != nil {
-		return false
-	}
-	// 4. 不能包含非法字符 (Shell awk 隐含逻辑)
-	// 比如包含 %, /, :, 等
-	if strings.ContainsAny(domain, "/%:\\") {
-		return false
-	}
+	if strings.Contains(domain, "*") { return false } // Mihomo不支持*
+	// 简单的长度和字符检查
+	if len(domain) > 253 { return false }
+	if net.ParseIP(domain) != nil { return false } // 剔除IP
+	if strings.ContainsAny(domain, "/%:\\") { return false }
 	return true
 }
 
-// ---------------- 定制清洗逻辑 ----------------
+// ---------------- 定制清洗 ----------------
 
-// 1. ADS/AI 清洗
+// 1. Generic (ADS/AI)
 func normalizeGeneric(line string) (string, bool) {
 	line = strings.TrimSpace(line)
-	// 去注释
+	if strings.HasPrefix(line, "#") || line == "" { return "", false }
 	if idx := strings.IndexAny(line, "#$"); idx != -1 { line = line[:idx] }
-	line = strings.TrimSpace(line)
-	if line == "" || strings.HasPrefix(line, "!") || strings.HasPrefix(line, "@@") { return "", false }
-
-	// hosts
+	
 	if strings.HasPrefix(line, "0.0.0.0") || strings.HasPrefix(line, "127.0.0.1") {
 		f := strings.Fields(line)
 		if len(f) >= 2 { line = f[1] } else { return "", false }
@@ -224,33 +210,30 @@ func normalizeGeneric(line string) (string, bool) {
 	return strings.ToLower(line), isWildcard
 }
 
-// 2. FakeIP 清洗 (Shell: grep -vE ... | sed ... | tr ...)
+// 2. FakeIP: 增强解析
 func normalizeFakeIP(line string) (string, bool) {
 	line = strings.TrimSpace(line)
-	// Shell: grep -vE '^\s*(dns:|fake-ip-filter:)'
-	if strings.HasPrefix(line, "dns:") || strings.HasPrefix(line, "fake-ip-filter:") || strings.HasPrefix(line, "#") { return "", false }
+	if line == "" || strings.HasPrefix(line, "#") { return "", false }
+	if strings.HasPrefix(line, "dns:") || strings.HasPrefix(line, "fake-ip-filter:") { return "", false }
 	
-	// Shell: sed 's/^\s*-\s*//'
+	// 处理yaml列表符: "- +.lan"
 	line = strings.TrimPrefix(line, "-")
 	line = strings.TrimSpace(line)
-	
-	// Shell: tr -d "'\"\\"
+	// 去除引号
 	line = strings.ReplaceAll(line, "'", "")
 	line = strings.ReplaceAll(line, "\"", "")
-	line = strings.ReplaceAll(line, "\\", "")
-
-	// 提取 wildcard 属性
+	
 	isWildcard := false
 	if strings.HasPrefix(line, "+.") {
 		isWildcard = true; line = line[2:]
-	} else if strings.HasPrefix(line, ".") { // 兼容性处理
+	} else if strings.HasPrefix(line, ".") {
 		isWildcard = true; line = line[1:]
 	}
-
+	
 	return strings.ToLower(line), isWildcard
 }
 
-// 3. CN 清洗 (Shell: 区分 Source1/Source2)
+// 3. CN: 智能判断
 func normalizeCN(line string) (string, bool) {
 	line = strings.TrimSpace(line)
 	if line == "" || strings.HasPrefix(line, "#") { return "", false }
@@ -258,7 +241,7 @@ func normalizeCN(line string) (string, bool) {
 
 	isWildcard := false
 	if strings.Contains(line, ",") {
-		// Clash 格式
+		// Clash规则
 		lower := strings.ToLower(line)
 		if strings.HasPrefix(lower, "domain-suffix,") {
 			isWildcard = true; line = line[14:]
@@ -267,22 +250,22 @@ func normalizeCN(line string) (string, bool) {
 		}
 		if idx := strings.Index(line, ","); idx != -1 { line = line[:idx] }
 	} else {
-		// 纯列表 -> 强制 Wildcard (Shell逻辑: sed s/^/+./)
+		// 纯域名列表 -> 默认为通配符 (如Shell逻辑 s/^/+./)
 		isWildcard = true
 		if strings.HasPrefix(line, "+.") { line = line[2:] }
 	}
 	return strings.ToLower(strings.TrimSpace(line)), isWildcard
 }
 
-// 4. RejectDrop 清洗
+// 4. RejectDrop
 func normalizeRejectDrop(line string) (string, bool) {
-	// 复用 CN 的逻辑
 	return normalizeCN(line)
 }
 
 // ---------------- 辅助函数 ----------------
 
 func smartDedup(records []domainRecord) []domainRecord {
+	// 排序：先按 parts 字典序，parts 相同则 Wildcard 在前
 	sort.Slice(records, func(i, j int) bool {
 		minLen := len(records[i].parts)
 		if len(records[j].parts) < minLen { minLen = len(records[j].parts) }
@@ -294,8 +277,12 @@ func smartDedup(records []domainRecord) []domainRecord {
 		if len(records[i].parts) != len(records[j].parts) {
 			return len(records[i].parts) < len(records[j].parts)
 		}
+		// True < False? No. We want True first. 
+		// Go sort expects "Less". 
+		// If i=True, j=False. Is True < False? 
+		// Let's definte True < False for this sort.
 		if records[i].isWildcard != records[j].isWildcard {
-			return records[i].isWildcard && !records[j].isWildcard
+			return records[i].isWildcard // True(Wildcard) comes first
 		}
 		return false
 	})
@@ -303,6 +290,7 @@ func smartDedup(records []domainRecord) []domainRecord {
 	var final []domainRecord
 	if len(records) == 0 { return final }
 	var lastRoot []string
+	
 	for _, item := range records {
 		curr := item.parts
 		isCovered := false
@@ -317,6 +305,7 @@ func smartDedup(records []domainRecord) []domainRecord {
 		}
 		if !isCovered {
 			final = append(final, item)
+			// 只有 Wildcard 才能成为根，覆盖后面的子域名
 			if item.isWildcard { lastRoot = curr } else { lastRoot = nil }
 		}
 	}
@@ -427,9 +416,6 @@ func saveTextFile(path string, records []domainRecord, policy string, format str
 	w.WriteString(fmt.Sprintf("# Count: %d\n", len(records)))
 	
 	for _, rec := range records {
-		// 最后一道防线：不允许输出带 * 的域名，Mihomo 不认
-		if strings.Contains(rec.pureDomain, "*") { continue }
-
 		if format == "adguard" {
 			w.WriteString(fmt.Sprintf("||%s^\n", rec.pureDomain))
 		} else {
