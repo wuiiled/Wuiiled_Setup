@@ -1,23 +1,22 @@
 # 全局设置
 settings:
-  output_dir: "output"      # 构建产物目录
-  mihomo_bin: "mihomo"      # Mihomo 二进制路径
-  dns_check: true           # 全局 DNS 检测开关 (仅对 type=reject 生效)
-  concurrency: 600          # 并发数 (600 是 Github Actions 的安全甜点)
-  # DNS 轮询池：混合使用国际大厂和国内 DNS
+  output_dir: "output"
+  mihomo_bin: "mihomo"
+  dns_check: true
+  concurrency: 600
   dns_servers:
-    - "8.8.8.8:53"        # Google
-    - "1.1.1.1:53"        # Cloudflare
-    - "208.67.222.222:53" # OpenDNS
-    - "9.9.9.9:53"        # Quad9
-    - "223.5.5.5:53"      # AliDNS (备用)
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+    - "208.67.222.222:53"
+    - "9.9.9.9:53"
+    - "223.5.5.5:53"
 
 # 规则集合
 rule_sets:
-  # 1. 广告拦截 (ADS)
+  # 1. ADS: Shell 逻辑是 "add_prefix"，即强制所有结果加 +.
   - name: "ADs_merged"
     type: "other"
-    output_prefix: "+."
+    output_policy: "force_wildcard" # [新字段] 强制加 +.
     targets: ["mihomo", "adguard", "mosdns"]
     sources:
       - "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt"
@@ -40,10 +39,10 @@ rule_sets:
     local_allowlists:
       - "scripts/exclude-keyword.txt"
 
-  # 2. AI 服务
+  # 2. AI: Shell 逻辑是 "add_prefix"
   - name: "AIs_merged"
     type: "other"
-    output_prefix: "+."
+    output_policy: "force_wildcard"
     targets: ["mihomo"]
     sources:
       - "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/category-ai-!cn.list"
@@ -51,10 +50,10 @@ rule_sets:
       - "https://github.com/DustinWin/ruleset_geodata/raw/mihomo-ruleset/ai.list"
       - "https://raw.githubusercontent.com/ConnersHua/RuleGo/refs/heads/master/Surge/Ruleset/Extra/AI.list"
 
-  # 3. FakeIP 过滤
+  # 3. FakeIP: Shell 逻辑是 "none"，即保留源文件特征(如有+.则保留，如无则不加)
   - name: "Fake_IP_Filter_merged"
     type: "fakeip"
-    output_prefix: ""
+    output_policy: "respect_wildcard" # [新字段] 尊重清洗结果(有+.就输出+.)
     targets: ["mihomo"]
     sources:
       - "https://raw.githubusercontent.com/vernesong/OpenClash/refs/heads/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list"
@@ -63,10 +62,10 @@ rule_sets:
       - "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/scripts/fake-ip-addon.txt"
       - "https://ruleset.skk.moe/Internal/clash_fake_ip_filter.yaml"
 
-  # 4. 拒绝并丢弃
+  # 4. Drop: Shell 逻辑是 "none" (处理了 domain-suffix)
   - name: "Reject_Drop_merged"
     type: "other"
-    output_prefix: ""
+    output_policy: "respect_wildcard"
     targets: ["mihomo"]
     sources:
       - "https://ruleset.skk.moe/Clash/non_ip/reject-drop.txt"
@@ -76,10 +75,10 @@ rule_sets:
     local_allowlists:
       - "scripts/exclude-keyword.txt"
 
-  # 5. 国内域名
+  # 5. CN: Shell 逻辑是 "none" (Source1加+., Source2看情况)
   - name: "CN_merged"
     type: "other"
-    output_prefix: ""
+    output_policy: "respect_wildcard"
     targets: ["mihomo"]
     sources:
       - "https://static-file-global.353355.xyz/rules/cn-additional-list.txt"
