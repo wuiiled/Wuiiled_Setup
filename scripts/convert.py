@@ -17,7 +17,7 @@ from datetime import datetime
 
 WORK_DIR = tempfile.mkdtemp(prefix="wuiiled_convert_")
 DEAD_DOMAINS_FILE = os.path.join(WORK_DIR, "dead_domains.txt")
-DEAD_DOMAINS_SET = set() # 内存缓存
+DEAD_DOMAINS_SET = set()
 
 def cleanup():
     if os.path.exists(WORK_DIR):
@@ -106,16 +106,12 @@ def apply_dead_domain_filter(input_file, output_file):
             original_line = line
             line = line.strip().lower()
             
-            # 提取纯域名进行比对
-            # 例如: +.example.com -> example.com
             check_domain = line
             if check_domain.startswith("+."):
                 check_domain = check_domain[2:]
             elif check_domain.startswith("."):
                 check_domain = check_domain[1:]
             
-            # 只有当域名完全匹配黑名单时才剔除
-            # (不进行后缀匹配，以免误杀子域名)
             if check_domain in DEAD_DOMAINS_SET:
                 removed_count += 1
                 continue
@@ -125,39 +121,64 @@ def apply_dead_domain_filter(input_file, output_file):
     print(f"🧹 已剔除 {removed_count} 条死域名")
 
 def normalize_domain_line(line):
-    """单行域名清洗与提取 (借鉴 217heidai 逻辑)"""
+    """
+    单行域名清洗与提取 (修复版)
+    """
     line = line.strip().lower()
     
+    # 0. 基础过滤
     if not line or line.startswith("!") or line.startswith("["): return None
     if line.startswith("#"): return None
 
-    # 1. 【直通车】Clash/Mihomo 语法
+    # 【修复1】 处理 Hosts 格式 (0.0.0.0 domain.com)
+    # 必须在所有处理之前去掉 IP 前缀，防止粘连成 0.0.0.0domain.com
+    line = re.sub(r'^(0\.0\.0\.0|127\.0\.0\.1)\s+', '', line)
+    
+    # 【修复2】 处理 domain-suffix,xxxx 格式
+    # 必须在正则清洗前处理，防止逗号被删导致粘连
+    if line.startswith("domain-suffix,") or line.startswith("domain,"):
+        parts = line.split(',')
+        if len(parts) > 1:
+            line = parts[1].strip()
+
+    # 1. 【直通车】Clash/Mihomo 语法 (+.xxx, .xxx)
     if line.startswith("+.") or line.startswith("."):
         check_part = line.lstrip("+.")
         if re.match(r'^[a-z0-9._-]+$', check_part):
             return line
 
-    # 2. 移除 IP
-    if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', line): return None
+    # 2. 移除 IP (防止纯 IP 进入域名列表)
+    if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', line):
+        return None
 
     # 3. AdBlock 语法清洗
-    if "##" in line or "#?#" in line or "#$#" in line or "#@#" in line: return None
+    # 3.1 丢弃元素隐藏规则
+    if "##" in line or "#?#" in line or "#$#" in line or "#@#" in line:
+        return None
 
+    # 3.2 丢弃包含路径的规则 (严格防误杀)
     check_pattern = line
     if check_pattern.startswith("@@"): check_pattern = check_pattern[2:]
     if check_pattern.startswith("||"): check_pattern = check_pattern[2:]
-    if '$' in check_pattern: check_pattern = check_pattern.split('$')[0]
     
-    # 丢弃路径规则
-    if '/' in check_pattern: return None
-    # 丢弃通配符
-    if "*" in check_pattern: return None
+    # 去除选项部分 $script,domain=...
+    if '$' in check_pattern:
+        check_pattern = check_pattern.split('$')[0]
+    
+    # 如果此时还包含 /，说明是路径规则，直接丢弃
+    if '/' in check_pattern:
+        return None
 
-    # 提取域名
+    # 3.3 丢弃通配符 * (Mihomo 不支持中间通配符)
+    if "*" in check_pattern:
+        return None
+
+    # 3.4 提取域名
     pattern = line
     if pattern.startswith("@@"): pattern = pattern[2:]
     if pattern.startswith("||"): pattern = pattern[2:]
     
+    # 截断后缀 (分隔符)
     end_chars = ['^', '$']
     min_idx = len(pattern)
     found = False
@@ -167,12 +188,16 @@ def normalize_domain_line(line):
             min_idx = idx
             found = True
     
-    if found: pattern = pattern[:min_idx]
+    if found:
+        pattern = pattern[:min_idx]
     
+    # 3.5 最终清理 (去除非域名字符)
     pattern = re.sub(r'[^a-z0-9.-]', '', pattern)
     pattern = pattern.strip('.')
     
-    if '.' not in pattern or len(pattern) < 3: return None
+    # 验证有效性
+    if '.' not in pattern or len(pattern) < 3:
+        return None
     
     return pattern
 
@@ -211,7 +236,7 @@ def apply_keyword_filter(input_file, output_file):
                 outfile.write(line)
 
 def optimize_smart_self(input_file, output_file):
-    """智能覆盖去重"""
+    """智能覆盖去重 (反转域名排序算法)"""
     if not os.path.exists(input_file) or os.path.getsize(input_file) == 0:
         open(output_file, 'w').close()
         return
@@ -244,6 +269,7 @@ def optimize_smart_self(input_file, output_file):
                 'original': line
             })
 
+    # 排序：先按域名层级倒序，再按通配符优先
     data.sort(key=lambda x: (x['parts'], not x['is_wildcard']))
 
     result_lines = []
@@ -346,7 +372,7 @@ def finalize_output(src, dst, mode):
         print(f"⚠️  警告: {dst} 源文件为空，跳过生成。")
         return
 
-    # 【新步骤】在生成最终文件前，应用死域名过滤
+    # 应用死域名过滤
     temp_dead_filtered = src + ".dead_filtered"
     apply_dead_domain_filter(src, temp_dead_filtered)
     shutil.move(temp_dead_filtered, src)
@@ -464,6 +490,10 @@ def generate_ai():
         shutil.move(opt_ai, "AIs_merged.txt")
 
 def generate_fakeip():
+    """
+    【修复3】FakeIP 处理逻辑 (严格遵照 Bash 逻辑)
+    不使用 normalize_domain_line，而是手动实现 tr/grep/sed 逻辑
+    """
     mod_dir = os.path.join(WORK_DIR, "fakeip")
     os.makedirs(mod_dir, exist_ok=True)
     print("=== 🚀 [FakeIP] 启动 ===")
@@ -476,28 +506,54 @@ def generate_fakeip():
         "https://ruleset.skk.moe/Internal/clash_fake_ip_filter.yaml"
     ]
 
-    raw_fakeip = os.path.join(mod_dir, "raw_fakeip_dl.txt")
-    download_files_parallel(raw_fakeip, FAKE_IP_URLS)
+    raw_fakeip_dl = os.path.join(mod_dir, "raw_fakeip_dl.txt")
+    download_files_parallel(raw_fakeip_dl, FAKE_IP_URLS)
     
     clean_fakeip = os.path.join(mod_dir, "clean_fakeip.txt")
+    
+    # 模拟 Bash 管道流:
+    # tr 'A-Z' 'a-z'
+    # | grep -vE '^\s*(dns:|fake-ip-filter:)'
+    # | sed 's/^\s*-\s*//'
+    # | tr -d "\"'\\\\"
+    # | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+    # | grep -vE '^\s*($|#)'
+    # | sort -u
+    
     unique_lines = set()
-    if os.path.exists(raw_fakeip):
-        with open(raw_fakeip, 'r', encoding='utf-8') as f:
+    if os.path.exists(raw_fakeip_dl):
+        with open(raw_fakeip_dl, 'r', encoding='utf-8') as f:
             for line in f:
+                # tr 'A-Z' 'a-z'
                 line = line.lower()
-                if re.match(r'^\s*(dns:|fake-ip-filter:)', line): continue
-                line = re.sub(r'^\s*-\s*', '', line)
-                line = line.replace('"', '').replace("'", '').replace('\\', '').strip()
-                if not line or line.startswith('#'): continue
                 
-                res = normalize_domain_line(line)
-                if res: unique_lines.add(res)
+                # grep -vE '^\s*(dns:|fake-ip-filter:)'
+                if re.match(r'^\s*(dns:|fake-ip-filter:)', line):
+                    continue
+                
+                # sed 's/^\s*-\s*//' (去除 yaml 列表破折号)
+                line = re.sub(r'^\s*-\s*', '', line)
+                
+                # tr -d "\"'\\\\" (去除引号和反斜杠)
+                line = line.replace('"', '').replace("'", '').replace('\\', '')
+                
+                # sed trim (去除首尾空格)
+                line = line.strip()
+                
+                # grep -vE '^\s*($|#)' (去除空行和注释)
+                if not line or line.startswith('#'):
+                    continue
+                
+                # 收集用于 sort -u
+                unique_lines.add(line)
     
     with open(clean_fakeip, 'w', encoding='utf-8') as f:
         f.write('\n'.join(sorted(unique_lines)) + '\n')
 
     final_fakeip = os.path.join(mod_dir, "final_fakeip.txt")
     optimize_smart_self(clean_fakeip, final_fakeip)
+    
+    # FakeIP 不需要前缀，且需要生成 txt 供后续使用
     finalize_output(final_fakeip, "Fake_IP_Filter_merged.mrs", "none")
     if os.path.exists(final_fakeip):
         shutil.move(final_fakeip, "Fake_IP_Filter_merged.txt")
@@ -563,11 +619,14 @@ def generate_cn():
                 line = line.strip().lower()
                 if not line or line.startswith('#'): continue
                 
+                # 虽然 normalize_domain_line 已经修复了 domain-suffix，
+                # 但这里我们显式转换一下以保持与原 Bash 逻辑一致（转为 +.）
                 if line.startswith("domain-suffix,"):
                     line = "+." + line.split(',')[1].strip()
                 elif line.startswith("domain,"):
                     line = line.split(',')[1].strip()
                 
+                # 如果是纯域名且没带前缀，视为 +.
                 if re.match(r'^[a-z0-9.-]+$', line):
                      line = "+." + line
                 
