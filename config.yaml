@@ -1,15 +1,16 @@
 # 全局设置
 settings:
-  output_dir: "output"      # 临时构建目录
+  output_dir: "output"      # 构建产物目录
   mihomo_bin: "mihomo"      # Mihomo 二进制路径
-  dns_server: "8.8.8.8:53"  # DNS 检测服务器
-  concurrency: 1000         # DNS 检测并发数
+  dns_check: true           # [关键] 全局开关：是否开启死链检测
+  dns_server: "223.5.5.5:53" # 改用阿里DNS，国内环境解析更稳
+  concurrency: 2000         # 提高并发数，Go能轻松扛住
 
 # 规则集合
 rule_sets:
-  # 1. 核心广告规则 (同时输出到 Mihomo, AdGuard, MosDNS)
+  # 1. 核心广告规则
   - name: "ADs_merged"
-    type: "reject" # 开启 DNS 死链检测
+    type: "reject"          # 只有 type 为 reject 时才会触发 DNS 检测
     targets: ["mihomo", "adguard", "mosdns"]
     sources:
       - "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt"
@@ -32,7 +33,7 @@ rule_sets:
     local_allowlists:
       - "scripts/exclude-keyword.txt"
 
-  # 2. AI 服务 (仅 Mihomo)
+  # 2. AI 服务
   - name: "AIs_merged"
     type: "other"
     targets: ["mihomo"]
@@ -42,7 +43,7 @@ rule_sets:
       - "https://github.com/DustinWin/ruleset_geodata/raw/mihomo-ruleset/ai.list"
       - "https://raw.githubusercontent.com/ConnersHua/RuleGo/refs/heads/master/Surge/Ruleset/Extra/AI.list"
 
-  # 3. FakeIP 过滤 (仅 Mihomo)
+  # 3. FakeIP 过滤
   - name: "Fake_IP_Filter_merged"
     type: "fakeip"
     targets: ["mihomo"]
@@ -53,7 +54,7 @@ rule_sets:
       - "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/scripts/fake-ip-addon.txt"
       - "https://ruleset.skk.moe/Internal/clash_fake_ip_filter.yaml"
 
-  # 4. 拒绝并丢弃 (仅 Mihomo)
+  # 4. 拒绝并丢弃
   - name: "Reject_Drop_merged"
     type: "other"
     targets: ["mihomo"]
@@ -65,7 +66,7 @@ rule_sets:
     local_allowlists:
       - "scripts/exclude-keyword.txt"
 
-  # 5. 国内域名 (仅 Mihomo)
+  # 5. 国内域名
   - name: "CN_merged"
     type: "other"
     targets: ["mihomo"]
