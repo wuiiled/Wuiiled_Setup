@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -20,15 +21,16 @@ import (
 
 type Config struct {
 	Settings struct {
-		OutputDir   string `yaml:"output_dir"`
-		MihomoBin   string `yaml:"mihomo_bin"`
-		DNSCheck    bool   `yaml:"dns_check"`
-		DNSServer   string `yaml:"dns_server"`
-		Concurrency int    `yaml:"concurrency"`
+		OutputDir   string   `yaml:"output_dir"`
+		MihomoBin   string   `yaml:"mihomo_bin"`
+		DNSCheck    bool     `yaml:"dns_check"`
+		DNSServers  []string `yaml:"dns_servers"`
+		Concurrency int      `yaml:"concurrency"`
 	} `yaml:"settings"`
 	RuleSets []struct {
 		Name            string   `yaml:"name"`
 		Type            string   `yaml:"type"`
+		OutputPrefix    string   `yaml:"output_prefix"`
 		Targets         []string `yaml:"targets"`
 		Sources         []string `yaml:"sources"`
 		AllowLists      []string `yaml:"allowlists"`
@@ -39,58 +41,57 @@ type Config struct {
 // ---------------- 主函数 ----------------
 
 func main() {
-	// 1. 加载配置
+	// 1. 初始化
 	fmt.Println("📖 [Init] 读取配置文件 config.yaml...")
 	data, err := os.ReadFile("config.yaml")
 	if err != nil {
-		fmt.Printf("❌ 无法读取配置文件: %v\n", err)
-		os.Exit(1)
+		panic(fmt.Sprintf("读取配置失败: %v", err))
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		fmt.Printf("❌ 配置文件解析失败: %v\n", err)
-		os.Exit(1)
+		panic(fmt.Sprintf("解析配置失败: %v", err))
 	}
 
-	// 打印调试信息，确认配置生效
-	fmt.Printf("⚙️  [Config] DNS检测: %v | DNS服务器: %s | 并发: %d\n", 
-		cfg.Settings.DNSCheck, cfg.Settings.DNSServer, cfg.Settings.Concurrency)
+	rand.Seed(time.Now().UnixNano())
 
-	// 初始化目录
-	dirs := []string{"mihomo", "adg", "mosdns"}
+	// 创建输出目录结构
+	dirs := []string{"mihomo", "adg", "mosdns-x"} // mosdns-x 对应分支名
 	for _, d := range dirs {
 		os.MkdirAll(fmt.Sprintf("%s/%s", cfg.Settings.OutputDir, d), 0755)
 	}
 
 	// 2. 遍历处理规则集
 	for _, ruleSet := range cfg.RuleSets {
-		fmt.Printf("\n🚀 [Start] 正在处理: [%s] (类型: %s)\n", ruleSet.Name, ruleSet.Type)
+		fmt.Printf("\n🚀 [Processing] %s (Type: %s)\n", ruleSet.Name, ruleSet.Type)
 
-		// A. 下载
+		// A. 下载并准备白名单
+		allowMap := make(map[string]bool)
+		allowDomainsList := []string{}
+		if len(ruleSet.AllowLists) > 0 || len(ruleSet.LocalAllowLists) > 0 {
+			rawAllows := parallelDownload(ruleSet.AllowLists)
+			// 读取本地白名单
+			for _, f := range ruleSet.LocalAllowLists {
+				if c, err := os.ReadFile(f); err == nil {
+					rawAllows = append(rawAllows, strings.Split(string(c), "\n")...)
+				}
+			}
+			for _, l := range rawAllows {
+				if d := normalizeDomain(l); d != "" {
+					allowMap[d] = true
+					allowDomainsList = append(allowDomainsList, d)
+				}
+			}
+			fmt.Printf("   🛡️  [Allow] 白名单: %d\n", len(allowMap))
+		}
+
+		// B. 下载黑名单
 		blockLines := parallelDownload(ruleSet.Sources)
 		fmt.Printf("   ⬇️  [Download] 原始行数: %d\n", len(blockLines))
 
-		// B. 处理白名单
-		allowMap := make(map[string]bool)
-		if len(ruleSet.AllowLists) > 0 || len(ruleSet.LocalAllowLists) > 0 {
-			allowLines := parallelDownload(ruleSet.AllowLists)
-			for _, f := range ruleSet.LocalAllowLists {
-				if c, err := os.ReadFile(f); err == nil {
-					allowLines = append(allowLines, strings.Split(string(c), "\n")...)
-				}
-			}
-			for _, l := range allowLines {
-				if d := normalizeDomain(l); d != "" {
-					allowMap[d] = true
-				}
-			}
-			fmt.Printf("   🛡️  [Allow] 白名单域名: %d\n", len(allowMap))
-		}
-
-		// C. 基础清洗 (Set去重 + 排除白名单)
-		uniqueDomains := make(map[string]bool)
+		// C. 构建黑名单 Map
+		blockMap := make(map[string]bool)
 		for _, line := range blockLines {
-			// FakeIP 特殊处理
+			// FakeIP 特殊清洗逻辑
 			if ruleSet.Type == "fakeip" {
 				if strings.Contains(line, "fake-ip-filter:") || strings.Contains(line, "dns:") {
 					continue
@@ -98,95 +99,100 @@ func main() {
 				line = strings.TrimLeft(line, "- ")
 				line = strings.Trim(line, "\"' ")
 			}
-			
+			// 剔除 skk.moe 自身域名 (保留原有逻辑)
+			if strings.Contains(line, "skk.moe") {
+				continue
+			}
+
 			domain := normalizeDomain(line)
+			// 确保域名非空、不是IP、且不在白名单中
 			if domain != "" && !allowMap[domain] {
-				uniqueDomains[domain] = true
+				blockMap[domain] = true
 			}
 		}
 
-		// 转为切片
-		domains := make([]string, 0, len(uniqueDomains))
-		for d := range uniqueDomains {
+		// D. 双向冲突清洗 (父杀子 & 子杀父)
+		resolveConflicts(blockMap, allowMap, allowDomainsList)
+		
+		domains := make([]string, 0, len(blockMap))
+		for d := range blockMap {
 			domains = append(domains, d)
 		}
-		fmt.Printf("   🧹 [Clean] 基础清洗后: %d\n", len(domains))
+		fmt.Printf("   🧹 [Clean] 清洗后剩余: %d\n", len(domains))
 
-		// D. DNS 连通性检测 (核心修复点)
-		// 只有全局开关打开 且 当前规则集类型为 reject 时才检测
+		// E. DNS 连通性检测 (仅对 reject 类型)
 		if cfg.Settings.DNSCheck && ruleSet.Type == "reject" {
-			fmt.Printf("   🔍 [DNS] 开始执行死链检测 (服务器: %s, 并发: %d)...\n", cfg.Settings.DNSServer, cfg.Settings.Concurrency)
+			fmt.Printf("   🔍 [DNS] 执行死链检测 (服务器池: %d个, 并发: %d)...\n", len(cfg.Settings.DNSServers), cfg.Settings.Concurrency)
 			beforeCount := len(domains)
-			domains = filterDeadDomains(domains, cfg.Settings.DNSServer, cfg.Settings.Concurrency)
-			fmt.Printf("   ✅ [DNS] 检测完成: %d -> %d (移除了 %d 个失效域名)\n", beforeCount, len(domains), beforeCount-len(domains))
-		} else {
-			fmt.Printf("   ⏭️  [DNS] 跳过检测 (GlobalCheck: %v, SetType: %s)\n", cfg.Settings.DNSCheck, ruleSet.Type)
+			domains = filterDeadDomainsSafe(domains, cfg.Settings.DNSServers, cfg.Settings.Concurrency)
+			fmt.Printf("   ✅ [DNS] 检测完成: %d -> %d (移除 %d 个失效域名)\n", beforeCount, len(domains), beforeCount-len(domains))
 		}
 
-		// E. 智能层级去重 (算法升级)
-		fmt.Println("   🧠 [Dedup] 执行智能层级去重 (倒序排序法)...")
+		// F. 智能层级去重 (倒序排序法)
+		fmt.Println("   🧠 [Dedup] 执行智能层级去重...")
 		beforeCount := len(domains)
 		finalDomains := smartDedup(domains)
-		fmt.Printf("   📦 [Result] 最终数量: %d (优化掉 %d 个子域名)\n", len(finalDomains), beforeCount-len(finalDomains))
+		fmt.Printf("   📦 [Result] 最终数量: %d (减少 %d)\n", len(finalDomains), beforeCount-len(finalDomains))
 
-		// F. 输出
+		// G. 输出文件
 		for _, target := range ruleSet.Targets {
 			switch target {
 			case "mihomo":
 				txtPath := fmt.Sprintf("%s/mihomo/%s.txt", cfg.Settings.OutputDir, ruleSet.Name)
-				saveTextFile(txtPath, finalDomains, "")
+				saveTextFile(txtPath, finalDomains, ruleSet.OutputPrefix, "")
 				
 				mrsPath := fmt.Sprintf("%s/mihomo/%s.mrs", cfg.Settings.OutputDir, ruleSet.Name)
-				ruleType := "domain"
-				cmd := exec.Command(cfg.Settings.MihomoBin, "convert-ruleset", ruleType, "text", txtPath, mrsPath)
+				// 编译 .mrs
+				cmd := exec.Command(cfg.Settings.MihomoBin, "convert-ruleset", "domain", "text", txtPath, mrsPath)
 				if err := cmd.Run(); err != nil {
-					fmt.Printf("   ⚠️  Mihomo编译失败: %v\n", err)
+					fmt.Printf("   ⚠️  Mihomo 编译失败: %v\n", err)
 				}
 
 			case "adguard":
 				path := fmt.Sprintf("%s/adg/%s_adg.txt", cfg.Settings.OutputDir, ruleSet.Name)
-				saveTextFile(path, finalDomains, "adguard")
+				saveTextFile(path, finalDomains, "", "adguard")
 
 			case "mosdns":
-				path := fmt.Sprintf("%s/mosdns/ad_domain_list.txt", cfg.Settings.OutputDir)
-				saveTextFile(path, finalDomains, "")
+				// 输出到 mosdns-x 目录，保持和分支名一致
+				path := fmt.Sprintf("%s/mosdns-x/ad_domain_list.txt", cfg.Settings.OutputDir)
+				saveTextFile(path, finalDomains, "", "")
 			}
 		}
 	}
 }
 
-// ---------------- 核心算法函数 ----------------
+// ---------------- 核心算法 ----------------
 
-// 1. 域名标准化 (去除非法字符，统一小写)
+// 1. 域名标准化 (剔除IP、修饰符)
 func normalizeDomain(line string) string {
-	line = strings.Split(line, "#")[0] // 去行尾注释
+	line = strings.Split(line, "#")[0] // 去注释
 	line = strings.TrimSpace(line)
 	if line == "" { return "" }
-	
-	// 处理 hosts 格式 0.0.0.0
+
+	// hosts 格式处理
 	if strings.HasPrefix(line, "0.0.0.0 ") || strings.HasPrefix(line, "127.0.0.1 ") {
 		fields := strings.Fields(line)
-		if len(fields) >= 2 { return strings.ToLower(fields[1]) }
+		if len(fields) >= 2 { line = fields[1] }
 	}
 
-	// 移除常见修饰符
+	// 移除修饰符
 	line = strings.TrimPrefix(line, "||")
 	line = strings.TrimPrefix(line, "+.")
 	line = strings.TrimPrefix(line, ".")
 	line = strings.TrimSuffix(line, "^")
-	
-	// 处理 DOMAIN-SUFFIX,example.com,REJECT 等格式
+
+	// Clash/Surge 格式处理
 	if strings.Contains(line, ",") {
 		parts := strings.Split(line, ",")
-		if len(parts) > 1 {
-			// 通常第二个是域名
-			line = parts[1]
-		} else {
-			return ""
-		}
+		if len(parts) > 1 { line = parts[1] } else { return "" }
 	}
 
-	// 简单合法性检查: 必须包含点，且不能包含 URL 路径符号
+	// 【核心】剔除纯 IP 地址
+	if ip := net.ParseIP(line); ip != nil {
+		return ""
+	}
+
+	// 简单合法性检查
 	if !strings.Contains(line, ".") || strings.Contains(line, "/") {
 		return ""
 	}
@@ -194,157 +200,152 @@ func normalizeDomain(line string) string {
 	return strings.ToLower(line)
 }
 
-// 2. 智能去重 - 倒序排序法 (彻底解决子域名覆盖问题)
-// 输入: ["a.b.com", "b.com"]
-// 逻辑: 倒序为 ["moc.b.a", "moc.b"] -> 排序 -> ["moc.b", "moc.b.a"]
-// 遍历: "moc.b.a" 以 "moc.b" + "." 开头 -> 删除
-func smartDedup(domains []string) []string {
-	type item struct {
-		original string
-		reversed string
-	}
-	
-	list := make([]item, len(domains))
-	for i, d := range domains {
-		list[i] = item{
-			original: d,
-			reversed: reverseString(d),
+// 2. 双向冲突解决
+func resolveConflicts(blockMap map[string]bool, allowMap map[string]bool, allowList []string) {
+	// 子杀父: Allow "wgo.mmstat.com" -> Block "mmstat.com" must go
+	for _, allowed := range allowList {
+		parts := strings.Split(allowed, ".")
+		for i := 0; i < len(parts); i++ {
+			parent := strings.Join(parts[i:], ".")
+			if blockMap[parent] { delete(blockMap, parent) }
 		}
 	}
+	// 父杀子: Allow "mmstat.com" -> Block "cnzz.mmstat.com" must go
+	for blocked := range blockMap {
+		if allowMap[blocked] { delete(blockMap, blocked); continue }
+		parts := strings.Split(blocked, ".")
+		for i := 1; i < len(parts); i++ {
+			parent := strings.Join(parts[i:], ".")
+			if allowMap[parent] { delete(blockMap, blocked); break }
+		}
+	}
+}
 
-	// 排序
+// 3. 智能去重 (倒序排序法)
+// 解决 net.cn 无法覆盖 *.net.cn 的问题
+func smartDedup(domains []string) []string {
+	type item struct { original, reversed string }
+	list := make([]item, len(domains))
+	for i, d := range domains {
+		list[i] = item{original: d, reversed: reverseString(d)}
+	}
+
+	// 排序: cn.net, cn.net.cdn
 	sort.Slice(list, func(i, j int) bool {
 		return list[i].reversed < list[j].reversed
 	})
 
 	var final []string
-	if len(list) == 0 {
-		return final
-	}
+	if len(list) == 0 { return final }
 
-	// 核心去重逻辑
 	final = append(final, list[0].original)
 	lastKept := list[0].reversed
 
 	for i := 1; i < len(list); i++ {
 		curr := list[i].reversed
-		// 如果当前域名(倒序) 是以 上一个保留域名(倒序) + "." 开头
-		// 说明当前域名是上一个域名的子域名。
-		// 例如: lastKept="moc.udiab" (baidu.com), curr="moc.udiab.da" (ad.baidu.com)
+		// 如果 curr (cn.net.cdn) 以 lastKept (cn.net) + "." 开头
+		// 则是子域名，剔除
 		if strings.HasPrefix(curr, lastKept+".") {
-			continue // 是子域名，丢弃
+			continue
 		}
-		
 		final = append(final, list[i].original)
 		lastKept = curr
 	}
 	
-	// 最后再按正序排一次，方便查看
+	// 最后正序排列
 	sort.Strings(final)
 	return final
 }
 
 func reverseString(s string) string {
 	r := []rune(s)
-	for i, j := 0, len(r)-1; i < j; i, j = i+1, j-1 {
-		r[i], r[j] = r[j], r[i]
-	}
+	for i, j := 0, len(r)-1; i < j; i, j = i+1, j-1 { r[i], r[j] = r[j], r[i] }
 	return string(r)
 }
 
-// 3. DNS 存活检测 (并发版)
-func filterDeadDomains(domains []string, server string, concurrency int) []string {
+// 4. DNS 存活检测 (随机池 + 重试机制)
+func filterDeadDomainsSafe(domains []string, servers []string, concurrency int) []string {
+	if len(servers) == 0 { servers = []string{"8.8.8.8:53"} }
 	var wg sync.WaitGroup
 	aliveChan := make(chan string, len(domains))
-	sem := make(chan struct{}, concurrency) // 限制并发数
-	
-	// 自定义 Resolver，强制使用指定 DNS 且超时短
-	resolver := &net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			d := net.Dialer{Timeout: 1500 * time.Millisecond} // 1.5秒建立连接超时
-			return d.Dial("udp", server)
-		},
+	sem := make(chan struct{}, concurrency)
+
+	// 单次检测函数
+	check := func(domain, server string) bool {
+		resolver := &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				d := net.Dialer{Timeout: 2 * time.Second}
+				return d.Dial("udp", server)
+			},
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_, err := resolver.LookupHost(ctx, domain)
+		return err == nil
 	}
 
 	for _, d := range domains {
 		wg.Add(1)
 		go func(domain string) {
 			defer wg.Done()
-			sem <- struct{}{} 
+			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second) // 整体解析超时
-			defer cancel()
-			
-			// 只要有任意记录 (A, AAAA, CNAME) 就算活
-			_, err := resolver.LookupHost(ctx, domain)
-			if err == nil {
+			// 随机选一个主DNS尝试
+			s1 := servers[rand.Intn(len(servers))]
+			if check(domain, s1) {
 				aliveChan <- domain
-			} else {
-				// 调试: 打印失败原因 (可选，日志量会很大)
-				// fmt.Printf("Dead: %s (%v)\n", domain, err)
+				return
 			}
+			// 失败重试：随机选另一个DNS
+			s2 := servers[rand.Intn(len(servers))]
+			if check(domain, s2) {
+				aliveChan <- domain
+				return
+			}
+			// 两次都挂，判定为死链
 		}(d)
 	}
 
 	wg.Wait()
 	close(aliveChan)
-
 	var alive []string
-	for d := range aliveChan {
-		alive = append(alive, d)
-	}
+	for d := range aliveChan { alive = append(alive, d) }
 	sort.Strings(alive)
 	return alive
 }
 
-// 4. 并发下载
+// 5. 并发下载
 func parallelDownload(urls []string) []string {
 	var wg sync.WaitGroup
 	resultChan := make(chan []string, len(urls))
-	limitChan := make(chan struct{}, 8) // 限制下载并发，防封IP
-
+	limitChan := make(chan struct{}, 8)
 	for _, url := range urls {
 		wg.Add(1)
 		go func(u string) {
 			defer wg.Done()
 			limitChan <- struct{}{}
 			defer func() { <-limitChan }()
-
 			client := &http.Client{Timeout: 30 * time.Second}
 			resp, err := client.Get(u)
-			if err != nil {
-				fmt.Printf("   ⚠️  下载失败: %s\n", u)
-				return
-			}
+			if err != nil { return }
 			defer resp.Body.Close()
-
 			var lines []string
 			scanner := bufio.NewScanner(resp.Body)
-			for scanner.Scan() {
-				lines = append(lines, scanner.Text())
-			}
+			for scanner.Scan() { lines = append(lines, scanner.Text()) }
 			resultChan <- lines
 		}(url)
 	}
 	wg.Wait()
 	close(resultChan)
-
 	var all []string
-	for slice := range resultChan {
-		all = append(all, slice...)
-	}
+	for slice := range resultChan { all = append(all, slice...) }
 	return all
 }
 
-// 5. 保存文件
-func saveTextFile(path string, lines []string, format string) {
-	f, err := os.Create(path)
-	if err != nil {
-		fmt.Printf("❌ 创建文件失败: %v\n", err)
-		return
-	}
+func saveTextFile(path string, lines []string, prefix string, format string) {
+	f, _ := os.Create(path)
 	defer f.Close()
 	w := bufio.NewWriter(f)
 	w.WriteString(fmt.Sprintf("# Updated: %s\n", time.Now().Format("2006-01-02 15:04:05")))
@@ -353,7 +354,7 @@ func saveTextFile(path string, lines []string, format string) {
 		if format == "adguard" {
 			w.WriteString(fmt.Sprintf("||%s^\n", l))
 		} else {
-			w.WriteString(l + "\n")
+			w.WriteString(prefix + l + "\n")
 		}
 	}
 	w.Flush()
