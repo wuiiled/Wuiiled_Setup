@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -30,7 +31,7 @@ type Config struct {
 	RuleSets []struct {
 		Name            string   `yaml:"name"`
 		Type            string   `yaml:"type"`
-		OutputPolicy    string   `yaml:"output_policy"` // "force_wildcard" 或 "respect_wildcard"
+		OutputPolicy    string   `yaml:"output_policy"` // force_wildcard | respect_wildcard
 		Targets         []string `yaml:"targets"`
 		Sources         []string `yaml:"sources"`
 		AllowLists      []string `yaml:"allowlists"`
@@ -39,9 +40,9 @@ type Config struct {
 }
 
 type domainRecord struct {
-	pureDomain string   // 纯域名 (google.com)
-	isWildcard bool     // 是否通配 (true 表示需要 +.)
-	parts      []string // 倒序部分 (com, google)
+	pureDomain string
+	isWildcard bool
+	parts      []string
 }
 
 // ---------------- 主函数 ----------------
@@ -71,9 +72,10 @@ func main() {
 				}
 			}
 			for _, l := range rawAllows {
-				// 白名单一律用通用清洗提取纯域名
+				// 白名单使用最严格的通用清洗
 				d, _ := normalizeGeneric(l)
-				if d != "" {
+				// 额外校验：白名单也必须是合法域名
+				if d != "" && isValidDomain(d) {
 					allowMap[d] = true
 					allowList = append(allowList, d)
 				}
@@ -85,7 +87,7 @@ func main() {
 		blockLines := parallelDownload(ruleSet.Sources)
 		fmt.Printf("   ⬇️  [Download] 原始行数: %d\n", len(blockLines))
 
-		// C. 构建记录 (分流清洗)
+		// C. 构建记录 (分流清洗 + 强校验)
 		records := make([]domainRecord, 0, len(blockLines))
 		seen := make(map[string]bool, len(blockLines))
 
@@ -93,7 +95,7 @@ func main() {
 			var pure string
 			var isWildcard bool
 
-			// 根据模块选择特定的清洗逻辑 (完全复刻 Shell)
+			// 1. 特定清洗
 			switch ruleSet.Name {
 			case "Fake_IP_Filter_merged":
 				pure, isWildcard = normalizeFakeIP(line)
@@ -102,13 +104,20 @@ func main() {
 			case "Reject_Drop_merged":
 				pure, isWildcard = normalizeRejectDrop(line)
 			default:
-				// ADS, AI 使用通用清洗
 				pure, isWildcard = normalizeGeneric(line)
 			}
 
-			if pure == "" || allowMap[pure] { continue }
+			// 2. 强合法性校验 (复刻 Shell awk)
+			if pure == "" || !isValidDomain(pure) {
+				continue
+			}
 
-			// 唯一性去重键 (包含通配属性)
+			// 3. 白名单过滤
+			if allowMap[pure] {
+				continue
+			}
+
+			// 4. 去重
 			key := fmt.Sprintf("%s|%t", pure, isWildcard)
 			if !seen[key] {
 				seen[key] = true
@@ -141,7 +150,6 @@ func main() {
 			switch target {
 			case "mihomo":
 				txtPath := fmt.Sprintf("%s/mihomo/%s.txt", cfg.Settings.OutputDir, ruleSet.Name)
-				// 关键：根据 OutputPolicy 决定是否输出 +.
 				saveTextFile(txtPath, finalRecords, ruleSet.OutputPolicy, "")
 				
 				mrsPath := fmt.Sprintf("%s/mihomo/%s.mrs", cfg.Settings.OutputDir, ruleSet.Name)
@@ -158,14 +166,43 @@ func main() {
 	}
 }
 
-// ---------------- 定制清洗逻辑 (Strict Clone) ----------------
+// ---------------- 强校验 (对应 Shell awk) ----------------
 
-// 1. Generic (ADS/AI): 严格清洗，识别所有修饰符
+// 翻译 Shell: /\./ && !/\*/ && /^[a-z0-9_]/ && !/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/
+var validDomainRegex = regexp.MustCompile(`^[a-z0-9_].*\..*$`) // 必须以数字/字母/下划线开头，且包含点
+
+func isValidDomain(domain string) bool {
+	// 1. 包含 * 则非法 (Mihomo 不支持通配符规则，只支持前缀)
+	if strings.Contains(domain, "*") {
+		return false
+	}
+	// 2. 必须包含点，且开头合法
+	if !validDomainRegex.MatchString(domain) {
+		return false
+	}
+	// 3. 不能是 IP (Shell awk 逻辑)
+	if net.ParseIP(domain) != nil {
+		return false
+	}
+	// 4. 不能包含非法字符 (Shell awk 隐含逻辑)
+	// 比如包含 %, /, :, 等
+	if strings.ContainsAny(domain, "/%:\\") {
+		return false
+	}
+	return true
+}
+
+// ---------------- 定制清洗逻辑 ----------------
+
+// 1. ADS/AI 清洗
 func normalizeGeneric(line string) (string, bool) {
 	line = strings.TrimSpace(line)
-	if strings.HasPrefix(line, "#") || line == "" { return "", false }
+	// 去注释
 	if idx := strings.IndexAny(line, "#$"); idx != -1 { line = line[:idx] }
-	
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "!") || strings.HasPrefix(line, "@@") { return "", false }
+
+	// hosts
 	if strings.HasPrefix(line, "0.0.0.0") || strings.HasPrefix(line, "127.0.0.1") {
 		f := strings.Fields(line)
 		if len(f) >= 2 { line = f[1] } else { return "", false }
@@ -184,43 +221,44 @@ func normalizeGeneric(line string) (string, bool) {
 
 	if idx := strings.Index(line, ","); idx != -1 { line = line[:idx] }
 	line = strings.TrimSpace(line)
-	
-	if net.ParseIP(line) != nil || !strings.Contains(line, ".") { return "", false }
 	return strings.ToLower(line), isWildcard
 }
 
-// 2. FakeIP: 识别 yaml 格式，保留 +. 属性
+// 2. FakeIP 清洗 (Shell: grep -vE ... | sed ... | tr ...)
 func normalizeFakeIP(line string) (string, bool) {
 	line = strings.TrimSpace(line)
-	if line == "" || strings.HasPrefix(line, "#") { return "", false }
-	if strings.HasPrefix(line, "dns:") || strings.HasPrefix(line, "fake-ip-filter:") { return "", false }
+	// Shell: grep -vE '^\s*(dns:|fake-ip-filter:)'
+	if strings.HasPrefix(line, "dns:") || strings.HasPrefix(line, "fake-ip-filter:") || strings.HasPrefix(line, "#") { return "", false }
 	
+	// Shell: sed 's/^\s*-\s*//'
 	line = strings.TrimPrefix(line, "-")
 	line = strings.TrimSpace(line)
+	
+	// Shell: tr -d "'\"\\"
 	line = strings.ReplaceAll(line, "'", "")
 	line = strings.ReplaceAll(line, "\"", "")
-	
+	line = strings.ReplaceAll(line, "\\", "")
+
+	// 提取 wildcard 属性
 	isWildcard := false
 	if strings.HasPrefix(line, "+.") {
 		isWildcard = true; line = line[2:]
+	} else if strings.HasPrefix(line, ".") { // 兼容性处理
+		isWildcard = true; line = line[1:]
 	}
-	
-	if net.ParseIP(line) != nil || !strings.Contains(line, ".") { return "", false }
+
 	return strings.ToLower(line), isWildcard
 }
 
-// 3. CN: 区分来源 (模拟 Shell 逻辑)
+// 3. CN 清洗 (Shell: 区分 Source1/Source2)
 func normalizeCN(line string) (string, bool) {
 	line = strings.TrimSpace(line)
 	if line == "" || strings.HasPrefix(line, "#") { return "", false }
 	if strings.Contains(line, "skk.moe") { return "", false }
 
 	isWildcard := false
-	
-	// 判断逻辑：Shell 中 raw_cn_1 (无逗号纯列表) 被强制 s/^/+./
-	// 而 raw_cn_2 (Clash格式) 只有 domain-suffix 变 +.
 	if strings.Contains(line, ",") {
-		// 认为是 Clash 格式 (Source 2)
+		// Clash 格式
 		lower := strings.ToLower(line)
 		if strings.HasPrefix(lower, "domain-suffix,") {
 			isWildcard = true; line = line[14:]
@@ -229,41 +267,21 @@ func normalizeCN(line string) (string, bool) {
 		}
 		if idx := strings.Index(line, ","); idx != -1 { line = line[:idx] }
 	} else {
-		// 认为是纯列表 (Source 1) -> 强制 Wildcard
+		// 纯列表 -> 强制 Wildcard (Shell逻辑: sed s/^/+./)
 		isWildcard = true
-		// 如果原文件已经有 +.，去掉它但保持 isWildcard=true
 		if strings.HasPrefix(line, "+.") { line = line[2:] }
 	}
-
-	line = strings.TrimSpace(line)
-	if net.ParseIP(line) != nil || !strings.Contains(line, ".") { return "", false }
-	return strings.ToLower(line), isWildcard
+	return strings.ToLower(strings.TrimSpace(line)), isWildcard
 }
 
-// 4. RejectDrop: Clash 格式清洗
+// 4. RejectDrop 清洗
 func normalizeRejectDrop(line string) (string, bool) {
-	line = strings.TrimSpace(line)
-	if line == "" || strings.HasPrefix(line, "#") { return "", false }
-	if strings.Contains(line, "skk.moe") { return "", false }
-
-	isWildcard := false
-	lower := strings.ToLower(line)
-	if strings.HasPrefix(lower, "domain-suffix,") {
-		isWildcard = true; line = line[14:]
-	} else if strings.HasPrefix(lower, "domain,") {
-		line = line[7:]
-	}
-	
-	if idx := strings.Index(line, ","); idx != -1 { line = line[:idx] }
-	line = strings.TrimSpace(line)
-	
-	if net.ParseIP(line) != nil || !strings.Contains(line, ".") { return "", false }
-	return strings.ToLower(line), isWildcard
+	// 复用 CN 的逻辑
+	return normalizeCN(line)
 }
 
-// ---------------- 通用辅助函数 ----------------
+// ---------------- 辅助函数 ----------------
 
-// 智能去重：现在返回 []domainRecord 以便保存时知道谁是 Wildcard
 func smartDedup(records []domainRecord) []domainRecord {
 	sort.Slice(records, func(i, j int) bool {
 		minLen := len(records[i].parts)
@@ -276,7 +294,6 @@ func smartDedup(records []domainRecord) []domainRecord {
 		if len(records[i].parts) != len(records[j].parts) {
 			return len(records[i].parts) < len(records[j].parts)
 		}
-		// parts相同，Wildcard优先
 		if records[i].isWildcard != records[j].isWildcard {
 			return records[i].isWildcard && !records[j].isWildcard
 		}
@@ -286,7 +303,6 @@ func smartDedup(records []domainRecord) []domainRecord {
 	var final []domainRecord
 	if len(records) == 0 { return final }
 	var lastRoot []string
-	
 	for _, item := range records {
 		curr := item.parts
 		isCovered := false
@@ -301,85 +317,11 @@ func smartDedup(records []domainRecord) []domainRecord {
 		}
 		if !isCovered {
 			final = append(final, item)
-			// 只有 Wildcard 才能覆盖子域名
 			if item.isWildcard { lastRoot = curr } else { lastRoot = nil }
 		}
 	}
-	// 恢复字母序 (Mihomo要求)
-	sort.Slice(final, func(i, j int) bool {
-		return final[i].pureDomain < final[j].pureDomain
-	})
+	sort.Slice(final, func(i, j int) bool { return final[i].pureDomain < final[j].pureDomain })
 	return final
-}
-
-func filterDeadDomainsSafe(records []domainRecord, servers []string, concurrency int) []domainRecord {
-	if len(servers) == 0 { servers = []string{"8.8.8.8:53"} }
-	var wg sync.WaitGroup
-	aliveChan := make(chan domainRecord, len(records))
-	sem := make(chan struct{}, concurrency)
-
-	check := func(domain, server string) bool {
-		resolver := &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{Timeout: 2 * time.Second}
-				return d.Dial("udp", server)
-			},
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		_, err := resolver.LookupHost(ctx, domain)
-		return err == nil
-	}
-
-	for _, rec := range records {
-		wg.Add(1)
-		go func(r domainRecord) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			// 随机重试2次
-			for i := 0; i < 2; i++ {
-				srv := servers[rand.Intn(len(servers))]
-				if check(r.pureDomain, srv) { aliveChan <- r; return }
-			}
-		}(rec)
-	}
-	wg.Wait()
-	close(aliveChan)
-	var alive []domainRecord
-	for r := range aliveChan { alive = append(alive, r) }
-	sort.Slice(alive, func(i, j int) bool { return alive[i].pureDomain < alive[j].pureDomain })
-	return alive
-}
-
-// 保存逻辑修正：支持 policy
-func saveTextFile(path string, records []domainRecord, policy string, format string) {
-	f, _ := os.Create(path)
-	defer f.Close()
-	w := bufio.NewWriter(f)
-	w.WriteString(fmt.Sprintf("# Updated: %s\n", time.Now().Format("2006-01-02 15:04:05")))
-	w.WriteString(fmt.Sprintf("# Count: %d\n", len(records)))
-	
-	for _, rec := range records {
-		if format == "adguard" {
-			w.WriteString(fmt.Sprintf("||%s^\n", rec.pureDomain))
-		} else {
-			// Mihomo 格式处理
-			if policy == "force_wildcard" {
-				w.WriteString("+." + rec.pureDomain + "\n")
-			} else if policy == "respect_wildcard" {
-				if rec.isWildcard {
-					w.WriteString("+." + rec.pureDomain + "\n")
-				} else {
-					w.WriteString(rec.pureDomain + "\n")
-				}
-			} else {
-				w.WriteString(rec.pureDomain + "\n")
-			}
-		}
-	}
-	w.Flush()
 }
 
 func resolveConflicts(records []domainRecord, allowMap map[string]bool, allowList []string) []domainRecord {
@@ -406,6 +348,44 @@ func resolveConflicts(records []domainRecord, allowMap map[string]bool, allowLis
 	return cleaned
 }
 
+func filterDeadDomainsSafe(records []domainRecord, servers []string, concurrency int) []domainRecord {
+	if len(servers) == 0 { servers = []string{"8.8.8.8:53"} }
+	var wg sync.WaitGroup
+	aliveChan := make(chan domainRecord, len(records))
+	sem := make(chan struct{}, concurrency)
+	check := func(domain, server string) bool {
+		resolver := &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				d := net.Dialer{Timeout: 2 * time.Second}
+				return d.Dial("udp", server)
+			},
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_, err := resolver.LookupHost(ctx, domain)
+		return err == nil
+	}
+	for _, rec := range records {
+		wg.Add(1)
+		go func(r domainRecord) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			for i := 0; i < 2; i++ {
+				srv := servers[rand.Intn(len(servers))]
+				if check(r.pureDomain, srv) { aliveChan <- r; return }
+			}
+		}(rec)
+	}
+	wg.Wait()
+	close(aliveChan)
+	var alive []domainRecord
+	for r := range aliveChan { alive = append(alive, r) }
+	sort.Slice(alive, func(i, j int) bool { return alive[i].pureDomain < alive[j].pureDomain })
+	return alive
+}
+
 func parallelDownload(urls []string) []string {
 	var wg sync.WaitGroup
 	resultChan := make(chan []string, len(urls))
@@ -416,8 +396,10 @@ func parallelDownload(urls []string) []string {
 			defer wg.Done()
 			limitChan <- struct{}{}
 			defer func() { <-limitChan }()
+			req, _ := http.NewRequest("GET", url, nil)
+			req.Header.Set("User-Agent", "Mozilla/5.0")
 			client := &http.Client{Timeout: 30 * time.Second}
-			resp, err := client.Get(u)
+			resp, err := client.Do(req)
 			if err != nil { return }
 			defer resp.Body.Close()
 			var lines []string
@@ -435,4 +417,34 @@ func parallelDownload(urls []string) []string {
 
 func reverseSlice(s []string) {
 	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 { s[i], s[j] = s[j], s[i] }
+}
+
+func saveTextFile(path string, records []domainRecord, policy string, format string) {
+	f, _ := os.Create(path)
+	defer f.Close()
+	w := bufio.NewWriter(f)
+	w.WriteString(fmt.Sprintf("# Updated: %s\n", time.Now().Format("2006-01-02 15:04:05")))
+	w.WriteString(fmt.Sprintf("# Count: %d\n", len(records)))
+	
+	for _, rec := range records {
+		// 最后一道防线：不允许输出带 * 的域名，Mihomo 不认
+		if strings.Contains(rec.pureDomain, "*") { continue }
+
+		if format == "adguard" {
+			w.WriteString(fmt.Sprintf("||%s^\n", rec.pureDomain))
+		} else {
+			if policy == "force_wildcard" {
+				w.WriteString("+." + rec.pureDomain + "\n")
+			} else if policy == "respect_wildcard" {
+				if rec.isWildcard {
+					w.WriteString("+." + rec.pureDomain + "\n")
+				} else {
+					w.WriteString(rec.pureDomain + "\n")
+				}
+			} else {
+				w.WriteString(rec.pureDomain + "\n")
+			}
+		}
+	}
+	w.Flush()
 }
