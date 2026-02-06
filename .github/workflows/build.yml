@@ -1,0 +1,101 @@
+name: Rule Builder (Go)
+
+on:
+  schedule:
+    - cron: '0 0,12 * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        cache: true
+
+    - name: Install mihomo
+      run: |
+        version=$(curl -skL https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt)
+        curl -skL -o mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/mihomo-linux-amd64-$version.gz"
+        gunzip mihomo.gz
+        chmod +x mihomo
+        sudo mv mihomo /usr/local/bin/
+
+    - name: Run Builder
+      run: |
+        go mod tidy
+        go run main.go
+
+    # --- 1. 推送 Mihomo 分支 ---
+    - name: Push to Mihomo branch
+      run: |
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+        
+        # 1. 暂存构建产物
+        mkdir -p temp_deploy
+        cp -r output/mihomo/* temp_deploy/
+        
+        # 2. 切换孤儿分支
+        git checkout --orphan mihomo
+        git rm -rf .
+        
+        # 3. 恢复文件到 rules/ 目录 (满足您的要求)
+        mkdir -p rules
+        cp -r temp_deploy/* rules/
+        rm -rf temp_deploy
+        
+        # 4. 提交
+        git add rules/
+        git commit -m "Auto Update $(date +'%Y-%m-%d %H:%M')"
+        git push -f origin mihomo
+
+    # --- 2. 推送 ADG 分支 ---
+    - name: Push to ADG branch
+      run: |
+        mkdir -p temp_deploy
+        cp -r output/adg/* temp_deploy/
+        
+        git checkout --orphan adg
+        git rm -rf .
+        
+        mkdir -p rules
+        cp -r temp_deploy/* rules/
+        rm -rf temp_deploy
+        
+        git add rules/
+        git commit -m "Auto Update $(date +'%Y-%m-%d %H:%M')"
+        git push -f origin adg
+
+    # --- 3. 推送 MosDNS 分支 ---
+    - name: Push to MosDNS-X branch
+      run: |
+        mkdir -p temp_deploy
+        cp -r output/mosdns/* temp_deploy/
+        
+        git checkout --orphan mosdns-x
+        git rm -rf .
+        
+        mkdir -p rules
+        cp -r temp_deploy/* rules/
+        rm -rf temp_deploy
+        
+        git add rules/
+        git commit -m "Auto Update $(date +'%Y-%m-%d %H:%M')"
+        git push -f origin mosdns-x
+
+    - name: Delete workflow runs
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        repository: ${{ github.repository }}
+        retain_days: 0
+        keep_minimum_runs: 2
