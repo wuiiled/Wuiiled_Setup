@@ -37,9 +37,9 @@ def check_mihomo():
 
 ALLOW_URLS = [
     "https://raw.githubusercontent.com/Cats-Team/AdRules/refs/heads/script/script/allowlist.txt",
-    "https://raw.githubusercontent.com/zoonderkins/blahdns/refs/heads/master/hosts/whitelist.txt",
+    #"https://raw.githubusercontent.com/zoonderkins/blahdns/refs/heads/master/hosts/whitelist.txt",
     "https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exceptions.txt",
-    "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/refs/heads/hidden/reject-need-to-remove.txt"
+    #"https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/refs/heads/hidden/reject-need-to-remove.txt"
 ]
 
 # ================= 核心工具函数 =================
@@ -352,12 +352,12 @@ def generate_ads_reject():
         "https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt",
         "https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt",
         "https://raw.githubusercontent.com/ForestL18/rules-dat/mihomo/geo/classical/pcdn.list",
-        "https://raw.githubusercontent.com/ForestL18/rules-dat/refs/heads/mihomo/geo/classical/reject.list",
+        #"https://raw.githubusercontent.com/ForestL18/rules-dat/refs/heads/mihomo/geo/classical/reject.list",
         "https://a.dove.isdumb.one/pihole.txt",
-        "https://raw.githubusercontent.com/limbopro/Adblock4limbo/main/rule/Surge/Adblock4limbo_surge.list",
+        #"https://raw.githubusercontent.com/limbopro/Adblock4limbo/main/rule/Surge/Adblock4limbo_surge.list",
         "https://raw.githubusercontent.com/Cats-Team/AdRules/main/adrules_domainset.txt",
-        "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/refs/heads/release/reject-list.txt",
-        "https://ruleset.skk.moe/Clash/domainset/reject.txt"
+        #"https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/refs/heads/release/reject-list.txt",
+        #"https://ruleset.skk.moe/Clash/domainset/reject.txt"
     ]
 
     raw_ads = os.path.join(mod_dir, "raw_ads.txt")

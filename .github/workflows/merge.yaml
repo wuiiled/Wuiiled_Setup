@@ -73,7 +73,6 @@ jobs:
             "Custom_Direct_IP|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Direct_IP.txt"
             "Custom_Emby|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Emby.txt"
             "Custom_Proxy|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Custom_Proxy.txt"
-            "Fake_ip_filter_addon|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/Fake_ip_filter_addon.txt"
             "LocationDKS|https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/refs/heads/master/rules/LocationDKS.txt"
         )
 

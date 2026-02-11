@@ -10,6 +10,6 @@
 +.volceapplog.com
 +.mssdk.volces.com
 #+.collect.alipay.com
-+.spider-tracker.xiaohongshu.com
-+.apm-native.xiaohongshu.com
+#+.spider-tracker.xiaohongshu.com
+#+.apm-native.xiaohongshu.com
 #+.mum.alibabachengdun.com
