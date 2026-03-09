@@ -67,17 +67,58 @@ jobs:
           echo "## 💡 如何使用" >> README.md
           echo "请在下方表格中，**右键点击** \`[👉 获取直链]\`，选择 **“复制链接地址”**，贴入配置文件即可。" >> README.md
           echo "" >> README.md
-          echo "| 🗂️ 规则名称 (Rule) | 📌 格式 | 🔗 订阅链接 (右键复制) |" >> README.md
-          echo "| :--- | :---: | :---: |" >> README.md
           
-          for file in rules/*; do
-            if [ -f "$file" ]; then
-              filename=$(basename "$file")
-              rule_name="${filename%.*}"
-              ext="${filename##*.}"
-              url="https://raw.githubusercontent.com/${{ github.repository }}/$TARGET/rules/$filename"
-              echo "| **$rule_name** | \`.$ext\` | [👉 获取直链]($url) |" >> README.md
-            fi
+          # 获取 rules 目录下所有的文件后缀扩展名并去重
+          extensions=$(ls rules -1 | awk -F. '{if (NF>1) print $NF}' | sort -u)
+          
+          # 根据后缀遍历生成多个独立表格
+          for ext in $extensions; do
+            echo "### 📌 格式：\`.$ext\`" >> README.md
+            # 增加了一列【🔢 规则数量】
+            echo "| 🗂️ 规则名称 (Rule) | 🔢 规则数量 | 🔗 订阅链接 (右键复制) |" >> README.md
+            echo "| :--- | :---: | :---: |" >> README.md
+            
+            for file in rules/*.$ext; do
+              if [ -f "$file" ]; then
+                filename=$(basename "$file")
+                rule_name="${filename%.*}"
+                
+                # ==========================================
+                # 📊 核心：动态统计规则条数
+                # ==========================================
+                count="-"
+                if [ "$ext" == "txt" ]; then
+                  # 统计纯文本规则：忽略空行和带 # 的注释行
+                  count=$(grep -cvE '^\s*(#|$)' "$file")
+                elif [ "$ext" == "json" ]; then
+                  # 统计 sing-box json 规则：使用 jq 深度解析数组长度
+                  count=$(jq '[.rules[] | to_entries[] | .value | if type=="array" then length elif type=="string" then 1 else 0 end] | add' "$file" 2>/dev/null || echo "0")
+                elif [ "$ext" == "srs" ]; then
+                  # 针对 srs 二进制，回溯读取其同名的 json 文件获取数量
+                  local json_file="rules/${rule_name}.json"
+                  if [ -f "$json_file" ]; then
+                    count=$(jq '[.rules[] | to_entries[] | .value | if type=="array" then length elif type=="string" then 1 else 0 end] | add' "$json_file" 2>/dev/null || echo "0")
+                  fi
+                elif [ "$ext" == "mrs" ]; then
+                  # 针对 mrs 二进制，回溯读取其同名的 txt 文件获取数量
+                  local txt_file="rules/${rule_name}.txt"
+                  if [ -f "$txt_file" ]; then
+                    count=$(grep -cvE '^\s*(#|$)' "$txt_file")
+                  fi
+                fi
+                
+                # 为数字加上千分位逗号 (如 192000 -> 192,000) 让视觉更舒适
+                if [ "$count" != "-" ] && [[ "$count" =~ ^[0-9]+$ ]]; then
+                  count=$(echo "$count" | sed ':a;s/\B[0-9]\{3\}\>/,&/;ta')
+                fi
+                # ==========================================
+
+                url="https://raw.githubusercontent.com/${{ github.repository }}/$TARGET/rules/$filename"
+                # 将数量变量 $count 填入表格
+                echo "| **$rule_name** | <kbd>$count</kbd> | [👉 获取直链]($url) |" >> README.md
+              fi
+            done
+            echo "" >> README.md
           done
           
           git add rules/ README.md
