@@ -21,20 +21,26 @@ jobs:
       with:
         python-version: '3.x'
 
-    - name: Install mihomo (Stable Binary)
+    - name: Install Tools (Mihomo & Sing-box)
       run: |
+        # 安装 Mihomo
         echo "Downloading latest mihomo binary..."
-        version=$(curl -sL https://api.github.com/repos/MetaCubeX/mihomo/releases/latest | jq -r .tag_name)
-        curl -skLo mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/$version/mihomo-linux-amd64-$version.gz"
-        gunzip mihomo.gz
-        chmod +x mihomo
-        sudo mv mihomo /usr/local/bin/mihomo
-        mihomo -v
+        m_version=$(curl -sL https://api.github.com/repos/MetaCubeX/mihomo/releases/latest | jq -r .tag_name)
+        curl -skLo mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/$m_version/mihomo-linux-amd64-$m_version.gz"
+        gunzip mihomo.gz && chmod +x mihomo && sudo mv mihomo /usr/local/bin/mihomo
+        
+        # 安装 Sing-box
+        echo "Downloading latest sing-box binary..."
+        sb_version=$(curl -sL https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)
+        sb_version_num=${sb_version#v}
+        curl -skLo sing-box.tar.gz "https://github.com/SagerNet/sing-box/releases/download/$sb_version/sing-box-${sb_version_num}-linux-amd64.tar.gz"
+        tar -xzf sing-box.tar.gz
+        sudo mv sing-box-${sb_version_num}-linux-amd64/sing-box /usr/local/bin/
 
     - name: Run Python Builders
       run: |
         export LC_ALL=C
-        python3 scripts/main.py
+        PYTHONPATH=scripts python3 scripts/main.py
 
     - name: Deploy to Orphan Branches
       run: |
@@ -46,14 +52,12 @@ jobs:
           echo "======================================"
           echo "🚀 Deploying to branch: $TARGET"
           
-          # 创建纯净的临时目录，防止工作区污染
           local DEPLOY_DIR=$(mktemp -d)
           cd $DEPLOY_DIR
           git init
           git checkout --orphan $TARGET
           
           mkdir -p rules
-          # 使用 -a 复制所有文件(包含隐藏文件)，如果目录为空也不会报错退出
           cp -a $GITHUB_WORKSPACE/output/$TARGET/. rules/ || true
           
           git add rules/
@@ -66,6 +70,7 @@ jobs:
         deploy_branch mihomo
         deploy_branch adg
         deploy_branch mosdns-x
+        deploy_branch singbox
 
     - name: Delete workflow runs
       uses: Mattraks/delete-workflow-runs@main
