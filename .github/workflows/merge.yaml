@@ -52,21 +52,42 @@ jobs:
           echo "======================================"
           echo "🚀 Deploying to branch: $TARGET"
           
+          # 创建纯净部署目录
           local DEPLOY_DIR=$(mktemp -d)
           cd $DEPLOY_DIR
           git init
           git checkout --orphan $TARGET
           
+          # 拷贝规则文件
           mkdir -p rules
           cp -a $GITHUB_WORKSPACE/output/$TARGET/. rules/ || true
           
-          git add rules/
+          # 📝 自动生成导航 README.md
+          echo "# 📦 $TARGET 规则订阅导航" > README.md
+          echo "最后自动更新时间：\`$(date +"%Y-%m-%d %H:%M:%S") (Asia/Shanghai)\`" >> README.md
+          echo "" >> README.md
+          echo "## 🔗 规则直链" >> README.md
+          echo "你可以直接复制以下链接，贴入到你的客户端或路由器的配置文件中：" >> README.md
+          echo "" >> README.md
+          
+          # 遍历规则目录，自动拼接直链
+          for file in rules/*; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              echo "- **$filename**" >> README.md
+              echo "  \`https://raw.githubusercontent.com/${{ github.repository }}/$TARGET/rules/$filename\`" >> README.md
+            fi
+          done
+          
+          # 提交并强制推送
+          git add rules/ README.md
           git commit -m "Auto Update $TARGET $(date +"%Y-%m-%d %H:%M")" || true
           git push -f https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git $TARGET
           
           cd $GITHUB_WORKSPACE
         }
 
+        # 依次部署四个分支
         deploy_branch mihomo
         deploy_branch adg
         deploy_branch mosdns-x
