@@ -43,7 +43,7 @@ def convert_txt_to_json(txt_path, json_path):
         return False
 
     json_data = {
-        "version": 1,
+        "version": 4,
         "rules": [rule_dict]
     }
 
