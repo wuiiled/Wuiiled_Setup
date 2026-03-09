@@ -118,6 +118,9 @@ def gen_extra_mihomo():
             line = re.sub(r'^DOMAIN,', '', line)
             line = re.sub(r'^DOMAIN-SUFFIX,', '+.', line)
             if line.strip(): lines.append(line)
+        
+        print(f"✅ [Mihomo] {name:<25} | 规则数: {len(lines):,}")
+
         txt_path = f"output/mihomo/{name}.txt"
         with open(txt_path, 'w', encoding='utf-8') as f: f.write('\n'.join(lines) + '\n')
         if utils.check_mihomo():
@@ -132,6 +135,9 @@ def gen_extra_mihomo():
             line = re.sub(r'^DOMAIN-SUFFIX,', '+.', line)
             line = re.sub(r'^DOMAIN,', '', line)
             if line.strip() and line.strip() != '+.': lines.append(line)
+            
+        print(f"✅ [Mihomo] {name:<25} | 规则数: {len(lines):,}")
+
         txt_path = f"output/mihomo/{name}.txt"
         with open(txt_path, 'w', encoding='utf-8') as f: f.write('\n'.join(lines) + '\n')
         if utils.check_mihomo():
@@ -142,4 +148,4 @@ def run_all():
     with ThreadPoolExecutor() as executor:
         futures = [executor.submit(t) for t in tasks]
         for future in futures:
-            future.result() # 确保任何一个线程出错都会直接抛出异常，中断执行
+            future.result()

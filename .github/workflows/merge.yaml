@@ -23,15 +23,13 @@ jobs:
 
     - name: Install Tools (Mihomo & Sing-box)
       run: |
-        # 安装 Mihomo
         echo "Downloading latest mihomo binary..."
-        m_version=$(curl -sL https://api.github.com/repos/MetaCubeX/mihomo/releases/latest | jq -r .tag_name)
+        m_version=$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL https://api.github.com/repos/MetaCubeX/mihomo/releases/latest | jq -r .tag_name)
         curl -skLo mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/$m_version/mihomo-linux-amd64-$m_version.gz"
         gunzip mihomo.gz && chmod +x mihomo && sudo mv mihomo /usr/local/bin/mihomo
         
-        # 安装 Sing-box
         echo "Downloading latest sing-box binary..."
-        sb_version=$(curl -sL https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)
+        sb_version=$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)
         sb_version_num=${sb_version#v}
         curl -skLo sing-box.tar.gz "https://github.com/SagerNet/sing-box/releases/download/$sb_version/sing-box-${sb_version_num}-linux-amd64.tar.gz"
         tar -xzf sing-box.tar.gz
@@ -49,62 +47,52 @@ jobs:
         
         deploy_branch() {
           local TARGET=$1
-          echo "======================================"
-          echo "🚀 Deploying to branch: $TARGET"
+          echo "🚀 Starting deploy process for: $TARGET"
           
           local DEPLOY_DIR=$(mktemp -d)
           cd $DEPLOY_DIR
-          git init
-          git checkout --orphan $TARGET
+          git init -q
+          git checkout -q --orphan $TARGET
           
           mkdir -p rules
           cp -a $GITHUB_WORKSPACE/output/$TARGET/. rules/ || true
           
-          # 💎 生成极致美观的 README.md
           echo "<div align=\"center\">" > README.md
           echo "" >> README.md
           echo "# 📦 $TARGET 规则订阅导航" >> README.md
           echo "" >> README.md
           echo "<i>自动更新于：$(date +"%Y-%m-%d %H:%M:%S") (Asia/Shanghai)</i>" >> README.md
-          echo "" >> README.md
           echo "</div>" >> README.md
           echo "" >> README.md
           echo "## 💡 如何使用" >> README.md
-          echo "请在下方的【订阅链接】列中，**右键点击** 对应的 \`[👉 获取直链]\`，选择 **“复制链接地址” (Copy link address)**，然后粘贴到您的代理工具配置中即可。" >> README.md
+          echo "请在下方表格中，**右键点击** \`[👉 获取直链]\`，选择 **“复制链接地址”**，贴入配置文件即可。" >> README.md
           echo "" >> README.md
-          echo "---" >> README.md
-          echo "" >> README.md
-          
-          # 📊 生成排版整洁的表格表头
           echo "| 🗂️ 规则名称 (Rule) | 📌 格式 | 🔗 订阅链接 (右键复制) |" >> README.md
           echo "| :--- | :---: | :---: |" >> README.md
           
-          # 遍历规则目录，自动填入表格
           for file in rules/*; do
             if [ -f "$file" ]; then
               filename=$(basename "$file")
-              # 提取不带后缀的文件名和纯后缀
               rule_name="${filename%.*}"
               ext="${filename##*.}"
-              
-              # 隐藏真实 URL，封装入 Markdown 超链接
               url="https://raw.githubusercontent.com/${{ github.repository }}/$TARGET/rules/$filename"
               echo "| **$rule_name** | \`.$ext\` | [👉 获取直链]($url) |" >> README.md
             fi
           done
           
           git add rules/ README.md
-          git commit -m "Auto Update $TARGET $(date +"%Y-%m-%d %H:%M")" || true
-          git push -f https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git $TARGET
+          git commit -q -m "Auto Update $TARGET $(date +"%Y-%m-%d %H:%M")" || true
+          git push -f -q https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git $TARGET
           
-          cd $GITHUB_WORKSPACE
+          echo "✅ Deploy completed for: $TARGET"
         }
 
-        # 依次部署四个分支，自动生成各自的 README
-        deploy_branch mihomo
-        deploy_branch adg
-        deploy_branch mosdns-x
-        deploy_branch singbox
+        deploy_branch mihomo &
+        deploy_branch adg &
+        deploy_branch mosdns-x &
+        deploy_branch singbox &
+        
+        wait
 
     - name: Delete workflow runs
       uses: Mattraks/delete-workflow-runs@main

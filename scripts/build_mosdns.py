@@ -16,6 +16,7 @@ def run_all():
             lines.append(line)
         with open("output/mosdns-x/ad_domain_list.txt", 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines) + '\n')
+        print(f"✅ [MosDNS] {'ad_domain_list':<25} | 规则数: {len(lines):,}")
 
     # 2. SKK 规则
     for name, url in providers.MIHOMO_SKK.items():
@@ -29,3 +30,4 @@ def run_all():
             lines.append(line)
         with open(f"output/mosdns-x/{name}.txt", 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines) + '\n')
+        print(f"✅ [MosDNS] {name:<25} | 规则数: {len(lines):,}")

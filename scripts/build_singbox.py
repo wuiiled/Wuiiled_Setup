@@ -19,12 +19,10 @@ def convert_txt_to_json(txt_path, json_path):
             line = line.strip()
             if not line or line.startswith('#'): continue
             
-            # 兼容行内注释
             line = line.split('#')[0].strip()
             if not line: continue
 
-            # 判断规则类型
-            if '/' in line and any(c.isdigit() for c in line): # 判断为 IP CIDR
+            if '/' in line and any(c.isdigit() for c in line):
                 ip_cidrs.append(line)
             elif line.startswith('+.'):
                 domain_suffixes.append(line[2:])
@@ -38,9 +36,14 @@ def convert_txt_to_json(txt_path, json_path):
     if domain_suffixes: rule_dict["domain_suffix"] = domain_suffixes
     if ip_cidrs: rule_dict["ip_cidr"] = ip_cidrs
 
-    # 避免写入空规则导致 sing-box 报错
-    if not rule_dict:
+    total_rules = len(domains) + len(domain_suffixes) + len(ip_cidrs)
+    base_name = os.path.splitext(os.path.basename(txt_path))[0]
+    
+    if total_rules == 0: 
+        print(f"⚠️ [Sing-box] {base_name:<23} | ⚠️ 规则为空被跳过")
         return False
+
+    print(f"✅ [Sing-box] {base_name:<23} | 规则总数: {total_rules:,} (后缀: {len(domain_suffixes):,}, 域名: {len(domains):,}, IP: {len(ip_cidrs):,})")
 
     json_data = {
         "version": 4,
@@ -55,16 +58,13 @@ def run_all():
     os.makedirs("output/singbox", exist_ok=True)
     has_sb = check_singbox()
     
-    # 直接读取 Mihomo 处理好的全部 txt 文件
     txt_files = glob("output/mihomo/*.txt")
     for txt_path in txt_files:
         base_name = os.path.splitext(os.path.basename(txt_path))[0]
         json_path = os.path.join("output/singbox", f"{base_name}.json")
         srs_path = os.path.join("output/singbox", f"{base_name}.srs")
         
-        # 转换 txt 成 sing-box 的 json 格式
         if convert_txt_to_json(txt_path, json_path):
-            # 编译 srs
             if has_sb:
                 try:
                     subprocess.run(["sing-box", "rule-set", "compile", json_path, "-o", srs_path], check=True, capture_output=True, text=True)

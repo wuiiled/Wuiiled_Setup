@@ -10,7 +10,6 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
-# 全局变量与环境配置
 WORK_DIR = tempfile.mkdtemp(prefix="wuiiled_convert_")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 EXCLUDE_FILE = os.path.join(SCRIPT_DIR, "exclude-keyword.txt")
@@ -162,8 +161,12 @@ def finalize_output(src, dst_dir, base_name, mode):
     with open(src, 'r', encoding='utf-8') as f: lines = list(set(f.read().splitlines()))
     lines.sort()
     if mode == "add_prefix": lines = ["+." + line if not line.startswith("+.") else line for line in lines]
+    
+    rule_count = len(lines)
+    print(f"✅ [Mihomo] {base_name:<25} | 规则数: {rule_count:,}")
+
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    header = f"# Count: {len(lines)}\n# Updated: {date_str}\n"
+    header = f"# Count: {rule_count}\n# Updated: {date_str}\n"
     txt_path = os.path.join(dst_dir, f"{base_name}.txt")
     mrs_path = os.path.join(dst_dir, f"{base_name}.mrs")
     with open(txt_path, 'w', encoding='utf-8') as f: f.write(header + "\n".join(lines) + "\n")

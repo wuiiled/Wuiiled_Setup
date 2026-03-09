@@ -17,6 +17,7 @@ def run_all():
             lines.append(line)
         with open("output/adg/ADs_merged_adg.txt", 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines) + '\n')
+        print(f"✅ [AdGuard] {'ADs_merged_adg':<24} | 规则数: {len(lines):,}")
 
     # 2. Httpdns
     content = download_file(providers.ADG_URLS["Httpdns"])
@@ -28,6 +29,7 @@ def run_all():
         lines.append(line)
     with open("output/adg/Httpdns_adg.txt", 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines) + '\n')
+    print(f"✅ [AdGuard] {'Httpdns_adg':<24} | 规则数: {len(lines):,}")
 
     # 3. PCDN
     content = download_file(providers.ADG_URLS["PCDN"])
@@ -39,3 +41,4 @@ def run_all():
         lines.append(line)
     with open("output/adg/PCDN_adg.txt", 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines) + '\n')
+    print(f"✅ [AdGuard] {'PCDN_adg':<24} | 规则数: {len(lines):,}")
