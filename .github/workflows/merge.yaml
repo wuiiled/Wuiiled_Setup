@@ -52,34 +52,47 @@ jobs:
           echo "======================================"
           echo "🚀 Deploying to branch: $TARGET"
           
-          # 创建纯净部署目录
           local DEPLOY_DIR=$(mktemp -d)
           cd $DEPLOY_DIR
           git init
           git checkout --orphan $TARGET
           
-          # 拷贝规则文件
           mkdir -p rules
           cp -a $GITHUB_WORKSPACE/output/$TARGET/. rules/ || true
           
-          # 📝 自动生成导航 README.md
-          echo "# 📦 $TARGET 规则订阅导航" > README.md
-          echo "最后自动更新时间：\`$(date +"%Y-%m-%d %H:%M:%S") (Asia/Shanghai)\`" >> README.md
+          # 💎 生成极致美观的 README.md
+          echo "<div align=\"center\">" > README.md
           echo "" >> README.md
-          echo "## 🔗 规则直链" >> README.md
-          echo "你可以直接复制以下链接，贴入到你的客户端或路由器的配置文件中：" >> README.md
+          echo "# 📦 $TARGET 规则订阅导航" >> README.md
+          echo "" >> README.md
+          echo "<i>自动更新于：$(date +"%Y-%m-%d %H:%M:%S") (Asia/Shanghai)</i>" >> README.md
+          echo "" >> README.md
+          echo "</div>" >> README.md
+          echo "" >> README.md
+          echo "## 💡 如何使用" >> README.md
+          echo "请在下方的【订阅链接】列中，**右键点击** 对应的 \`[👉 获取直链]\`，选择 **“复制链接地址” (Copy link address)**，然后粘贴到您的代理工具配置中即可。" >> README.md
+          echo "" >> README.md
+          echo "---" >> README.md
           echo "" >> README.md
           
-          # 遍历规则目录，自动拼接直链
+          # 📊 生成排版整洁的表格表头
+          echo "| 🗂️ 规则名称 (Rule) | 📌 格式 | 🔗 订阅链接 (右键复制) |" >> README.md
+          echo "| :--- | :---: | :---: |" >> README.md
+          
+          # 遍历规则目录，自动填入表格
           for file in rules/*; do
             if [ -f "$file" ]; then
               filename=$(basename "$file")
-              echo "- **$filename**" >> README.md
-              echo "  \`https://raw.githubusercontent.com/${{ github.repository }}/$TARGET/rules/$filename\`" >> README.md
+              # 提取不带后缀的文件名和纯后缀
+              rule_name="${filename%.*}"
+              ext="${filename##*.}"
+              
+              # 隐藏真实 URL，封装入 Markdown 超链接
+              url="https://raw.githubusercontent.com/${{ github.repository }}/$TARGET/rules/$filename"
+              echo "| **$rule_name** | \`.$ext\` | [👉 获取直链]($url) |" >> README.md
             fi
           done
           
-          # 提交并强制推送
           git add rules/ README.md
           git commit -m "Auto Update $TARGET $(date +"%Y-%m-%d %H:%M")" || true
           git push -f https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git $TARGET
@@ -87,7 +100,7 @@ jobs:
           cd $GITHUB_WORKSPACE
         }
 
-        # 依次部署四个分支
+        # 依次部署四个分支，自动生成各自的 README
         deploy_branch mihomo
         deploy_branch adg
         deploy_branch mosdns-x
