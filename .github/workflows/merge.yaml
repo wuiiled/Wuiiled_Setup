@@ -25,9 +25,9 @@ jobs:
 
     - name: Install mihomo
       run: |
-        echo "Installing mihomo..."
-        version=$(curl -skL https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt)
-        curl -skLo mihomo.deb "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/mihomo-linux-amd64-$version.deb"
+        echo "Installing mihomo (Stable)..."
+        version=$(curl -sL https://api.github.com/repos/MetaCubeX/mihomo/releases/latest | jq -r .tag_name)
+        curl -skLo mihomo.deb "https://github.com/MetaCubeX/mihomo/releases/download/$version/mihomo-linux-amd64-$version.deb"
         sudo dpkg -i mihomo.deb
 
     # 【修改点】将 bash 改为 python3 调用新脚本
