@@ -1,0 +1,4 @@
+#网盘下载
++.megadl.boats
+#原神亚服
++.autopatchhk.yuanshen.com
