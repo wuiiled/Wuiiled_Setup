@@ -1,1 +1,2 @@
 DOMAIN-WILDCARD,stun*.chat.bilibili.com
+DST-PORT,6881-6999
