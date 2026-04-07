@@ -49,6 +49,7 @@ MIHOMO_GENERIC_RAW = {
     "Custom_Direct_IP": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Direct_IP.txt",
     "Custom_Emby": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Emby.txt",
     "Custom_Proxy": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Proxy.txt",
+    "Custom_Download": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Download.txt",
     "LocationDKS": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/LocationDKS.txt"
 }
 
