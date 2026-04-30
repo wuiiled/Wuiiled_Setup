@@ -1,0 +1,27 @@
+{
+  "version": 4,
+  "rules": [
+    {
+      "domain_suffix": [
+        "duokan.com",
+        "gorouter.info",
+        "mi-fds.com",
+        "mi-idc.com",
+        "mi-img.com",
+        "mi.com",
+        "mifile.cn",
+        "mijia.tech",
+        "mipay.com",
+        "miui.com",
+        "miwifi.com",
+        "xiaoaisound.com",
+        "xiaomi.cn",
+        "xiaomi.com",
+        "xiaomi.net",
+        "xiaomiev.com",
+        "xiaomixiaoai.com",
+        "xiaomiyoupin.com"
+      ]
+    }
+  ]
+}

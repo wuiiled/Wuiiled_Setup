@@ -1,0 +1,22 @@
+{
+  "version": 4,
+  "rules": [
+    {
+      "domain_suffix": [
+        "28.al",
+        "b-cdn.net",
+        "dnscf.dpdns.org",
+        "feiniu.lol",
+        "liminalnet.com",
+        "mebimmer.de",
+        "mjji.de",
+        "oceancloud.asia",
+        "ouonet.org",
+        "rjf37.com",
+        "startspoint.com",
+        "tv.iill.top",
+        "vincent253.us.ci"
+      ]
+    }
+  ]
+}

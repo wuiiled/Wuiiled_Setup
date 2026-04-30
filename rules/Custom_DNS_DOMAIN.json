@@ -1,0 +1,23 @@
+{
+  "version": 4,
+  "rules": [
+    {
+      "domain_suffix": [
+        "adguard-dns.com",
+        "dns.cloudflare.com",
+        "dns.controld.com",
+        "dns.google",
+        "dns.jupitrdns.com",
+        "dns.twnic.tw",
+        "doh.dns.sb",
+        "doh.opendns.com",
+        "doh.sandbox.opendns.com",
+        "doh.tiar.app",
+        "hk-hkg.doh.sb",
+        "nextdns.io",
+        "quad9.net",
+        "rx.techomespace.com"
+      ]
+    }
+  ]
+}
