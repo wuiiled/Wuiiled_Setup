@@ -172,7 +172,7 @@ def convert_txt_to_json(txt_path, json_path):
     print(f"✅ [Sing-box] {base_name:<23} | 规则总数: {total_rules:,} (正则: {len(rule_dict.get('domain_regex', [])):,}, 后缀: {len(domain_suffixes):,}, 域名: {len(domains):,}, IP: {len(ip_cidrs):,})")
 
     json_data = {
-        "version": 4,
+        "version": 5,
         "rules": [rule_dict]
     }
 
