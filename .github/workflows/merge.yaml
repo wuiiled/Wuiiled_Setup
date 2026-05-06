@@ -28,8 +28,15 @@ jobs:
         curl -skLo mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/$m_version/mihomo-linux-amd64-$m_version.gz"
         gunzip mihomo.gz && chmod +x mihomo && sudo mv mihomo /usr/local/bin/mihomo
         
-        echo "Downloading latest sing-box binary..."
-        sb_version=$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)
+        #echo "Downloading latest sing-box binary..."
+        #sb_version=$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)
+        #sb_version_num=${sb_version#v}
+        #curl -skLo sing-box.tar.gz "https://github.com/SagerNet/sing-box/releases/download/$sb_version/sing-box-${sb_version_num}-linux-amd64.tar.gz"
+        #tar -xzf sing-box.tar.gz
+        #sudo mv sing-box-${sb_version_num}-linux-amd64/sing-box /usr/local/bin/
+
+        echo "Downloading latest sing-box alpha/pre-release binary..."
+        sb_version=$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL https://api.github.com/repos/SagerNet/sing-box/releases | jq -r '.[0].tag_name')
         sb_version_num=${sb_version#v}
         curl -skLo sing-box.tar.gz "https://github.com/SagerNet/sing-box/releases/download/$sb_version/sing-box-${sb_version_num}-linux-amd64.tar.gz"
         tar -xzf sing-box.tar.gz
