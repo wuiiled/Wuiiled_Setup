@@ -1,0 +1,14 @@
++.dns.cloudflare.com
++.dns.google
++.quad9.net
++.adguard-dns.com
++.doh.opendns.com
++.doh.sandbox.opendns.com
++.doh.dns.sb
++.hk-hkg.doh.sb
++.dns.twnic.tw
++.nextdns.io
++.dns.controld.com
++.rx.techomespace.com
++.doh.tiar.app
++.dns.jupitrdns.com
