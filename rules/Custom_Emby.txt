@@ -18,5 +18,4 @@
 +.inemby.us.ci
 +.idcdd.eu.org
 +.aemby.de
-+.111848.xyz
 +.micu.hk
