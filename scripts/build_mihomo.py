@@ -135,9 +135,15 @@ def gen_extra_mihomo():
                 if cleaned and utils.is_valid_ip_or_cidr(cleaned):
                     lines.append(cleaned)
             else:
-                cleaned = utils.clean_mihomo_domain_line(line)
-                if cleaned:
-                    lines.append(cleaned)
+                # 尝试作为 IP 解析
+                cleaned_ip = utils.clean_ip_line(line)
+                if cleaned_ip and utils.is_valid_ip_or_cidr(cleaned_ip):
+                    lines.append(cleaned_ip)
+                else:
+                    # 尝试作为域名解析
+                    cleaned_dom = utils.clean_mihomo_domain_line(line)
+                    if cleaned_dom:
+                        lines.append(cleaned_dom)
         
         print(f"✅ [Mihomo] {name:<25} | 规则数: {len(lines):,}")
 
@@ -145,23 +151,54 @@ def gen_extra_mihomo():
         with open(txt_path, 'w', encoding='utf-8') as f: f.write('\n'.join(lines) + '\n')
         if utils.check_mihomo():
             rule_type = "ipcidr" if is_ip_ruleset else "domain"
-            subprocess.run(["mihomo", "convert-ruleset", rule_type, "text", txt_path, f"output/mihomo/{name}.mrs"], check=False)
+            if not is_ip_ruleset:
+                # 过滤出仅包含域名的临时文件用于编译 Mihomo domain ruleset
+                dom_lines = [l for l in lines if not utils.is_valid_ip_or_cidr(l)]
+                temp_dir = utils.get_work_dir()
+                temp_path = os.path.join(temp_dir, f"{name}_temp.txt")
+                with open(temp_path, 'w', encoding='utf-8') as tf:
+                    tf.write('\n'.join(dom_lines) + '\n')
+                try:
+                    subprocess.run(["mihomo", "convert-ruleset", rule_type, "text", temp_path, f"output/mihomo/{name}.mrs"], check=False)
+                finally:
+                    if os.path.exists(temp_path):
+                        try: os.remove(temp_path)
+                        except: pass
+            else:
+                subprocess.run(["mihomo", "convert-ruleset", rule_type, "text", txt_path, f"output/mihomo/{name}.mrs"], check=False)
 
     for name, url in providers.MIHOMO_SKK.items():
         content = utils.download_file(url)
         lines = []
         for line in content.splitlines():
             if 'skk.moe' in line or line.startswith('DOMAIN-WILDCARD,'): continue
-            cleaned = utils.clean_mihomo_domain_line(line)
-            if cleaned and cleaned != '+.':
-                lines.append(cleaned)
+            
+            # 尝试作为 IP 解析
+            cleaned_ip = utils.clean_ip_line(line)
+            if cleaned_ip and utils.is_valid_ip_or_cidr(cleaned_ip):
+                lines.append(cleaned_ip)
+            else:
+                cleaned_dom = utils.clean_mihomo_domain_line(line)
+                if cleaned_dom and cleaned_dom != '+.':
+                    lines.append(cleaned_dom)
             
         print(f"✅ [Mihomo] {name:<25} | 规则数: {len(lines):,}")
 
         txt_path = f"output/mihomo/{name}.txt"
         with open(txt_path, 'w', encoding='utf-8') as f: f.write('\n'.join(lines) + '\n')
         if utils.check_mihomo():
-            subprocess.run(["mihomo", "convert-ruleset", "domain", "text", txt_path, f"output/mihomo/{name}.mrs"], check=False)
+            # 过滤出仅包含域名的临时文件用于编译 Mihomo domain ruleset
+            dom_lines = [l for l in lines if not utils.is_valid_ip_or_cidr(l)]
+            temp_dir = utils.get_work_dir()
+            temp_path = os.path.join(temp_dir, f"{name}_temp.txt")
+            with open(temp_path, 'w', encoding='utf-8') as tf:
+                tf.write('\n'.join(dom_lines) + '\n')
+            try:
+                subprocess.run(["mihomo", "convert-ruleset", "domain", "text", temp_path, f"output/mihomo/{name}.mrs"], check=False)
+            finally:
+                if os.path.exists(temp_path):
+                    try: os.remove(temp_path)
+                    except: pass
 
 def run_all():
     # 预先下载共享的白名单以进行缓存，避免子线程重复发起网络请求
