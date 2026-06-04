@@ -19,3 +19,4 @@
 +.idcdd.eu.org
 +.aemby.de
 +.micu.hk
++.covh.eu.org
