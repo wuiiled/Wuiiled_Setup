@@ -7,9 +7,15 @@ import re
 import ipaddress
 from glob import glob
 import shutil
+import utils
 
 def check_singbox():
-    return shutil.which("sing-box") is not None
+    has_sb = shutil.which("sing-box") is not None
+    if not has_sb and os.environ.get("GITHUB_ACTIONS") == "true":
+        import sys
+        print("❌ 错误: 在 GitHub Actions 环境中未找到 'sing-box' 编译器！必须中断任务以防生成残缺规则集。")
+        sys.exit(1)
+    return has_sb
 
 def compact_regexes(regex_set):
     """
@@ -185,7 +191,54 @@ def run_all():
     has_sb = check_singbox()
     
     txt_files = glob("output/mihomo/*.txt")
+    processed_files = set()
+    
+    # 查找所有后缀为 _DOMAIN.txt 的文件，并匹配是否有同名的 _IP.txt 文件
+    domain_files = [f for f in txt_files if os.path.splitext(os.path.basename(f))[0].endswith("_DOMAIN")]
+    
+    for domain_path in domain_files:
+        base_dir = os.path.dirname(domain_path)
+        base_name_domain = os.path.splitext(os.path.basename(domain_path))[0]
+        prefix = base_name_domain[:-7]  # 去除 "_DOMAIN" 后缀，获取主规则名 (如 Custom_DNS)
+        ip_path = os.path.join(base_dir, f"{prefix}_IP.txt")
+        
+        if os.path.exists(ip_path):
+            print(f"📦 [Sing-box] 检测到配对规则，正在合并: {base_name_domain} + {prefix}_IP -> {prefix}")
+            
+            # 读取并合并两个文件的规则内容
+            merged_lines = []
+            for path in [domain_path, ip_path]:
+                with open(path, 'r', encoding='utf-8') as f:
+                    merged_lines.extend(f.readlines())
+            
+            # 写入临时文本文件，供 convert_txt_to_json 转换使用
+            temp_dir = utils.get_work_dir()
+            temp_f_path = os.path.join(temp_dir, f"{prefix}.txt")
+            with open(temp_f_path, 'w', encoding='utf-8') as temp_f:
+                temp_f.writelines(merged_lines)
+                
+            try:
+                json_path = os.path.join("output/singbox", f"{prefix}.json")
+                srs_path = os.path.join("output/singbox", f"{prefix}.srs")
+                
+                if convert_txt_to_json(temp_f_path, json_path):
+                    if has_sb:
+                        try:
+                            subprocess.run(["sing-box", "rule-set", "compile", json_path, "-o", srs_path], check=True, capture_output=True, text=True)
+                        except subprocess.CalledProcessError as e:
+                            print(f"⚠️ 警告: 编译 {prefix}.srs 发生异常:\n{e.stderr}")
+            finally:
+                if os.path.exists(temp_f_path):
+                    os.remove(temp_f_path)
+            
+            processed_files.add(domain_path)
+            processed_files.add(ip_path)
+            
+    # 处理其它无需合并的正常规则文件
     for txt_path in txt_files:
+        if txt_path in processed_files:
+            continue
+            
         base_name = os.path.splitext(os.path.basename(txt_path))[0]
         json_path = os.path.join("output/singbox", f"{base_name}.json")
         srs_path = os.path.join("output/singbox", f"{base_name}.srs")

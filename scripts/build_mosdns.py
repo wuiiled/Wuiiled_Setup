@@ -1,6 +1,6 @@
 import os
 import re
-from utils import download_file
+import utils
 import providers
 
 def run_all():
@@ -21,12 +21,17 @@ def run_all():
     # 2. SKK 规则
     for name, url in providers.MIHOMO_SKK.items():
         if name == "download": continue
-        content = download_file(url)
+        content = utils.download_file(url)
         lines = []
         for line in content.splitlines():
-            if line.startswith('#') or 'skk.moe' in line or not line.strip(): continue
-            line = re.sub(r'^DOMAIN-SUFFIX,', 'domain:', line)
-            line = re.sub(r'^DOMAIN,', 'full:', line)
+            cleaned = utils.clean_mihomo_domain_line(line)
+            if not cleaned or 'skk.moe' in line or cleaned == '+.':
+                continue
+            
+            if cleaned.startswith('+.'):
+                line = 'domain:' + cleaned[2:]
+            else:
+                line = 'full:' + cleaned
             lines.append(line)
         with open(f"output/mosdns-x/{name}.txt", 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines) + '\n')

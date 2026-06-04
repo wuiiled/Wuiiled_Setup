@@ -10,21 +10,33 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
-WORK_DIR = tempfile.mkdtemp(prefix="wuiiled_convert_")
+WORK_DIR = None
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 EXCLUDE_FILE = os.path.join(SCRIPT_DIR, "exclude-keyword.txt")
 os.environ["LC_ALL"] = "C"
 
+def get_work_dir():
+    global WORK_DIR
+    if WORK_DIR is None:
+        WORK_DIR = tempfile.mkdtemp(prefix="wuiiled_convert_")
+        import atexit
+        atexit.register(cleanup)
+    return WORK_DIR
+
 def cleanup():
-    if os.path.exists(WORK_DIR):
+    global WORK_DIR
+    if WORK_DIR and os.path.exists(WORK_DIR):
         try: shutil.rmtree(WORK_DIR)
         except: pass
-
-import atexit
-atexit.register(cleanup)
+        WORK_DIR = None
 
 def check_mihomo():
-    return shutil.which("mihomo") is not None
+    has_mihomo = shutil.which("mihomo") is not None
+    if not has_mihomo and os.environ.get("GITHUB_ACTIONS") == "true":
+        import sys
+        print("❌ 错误: 在 GitHub Actions 环境中未找到 'mihomo' 编译器！必须中断任务以防生成残缺规则集。")
+        sys.exit(1)
+    return has_mihomo
 
 def download_file(url, timeout=20, retries=3):
     ua = "Mozilla/5.0 (compatible; MihomoRuleConverter/1.0)"
@@ -126,35 +138,55 @@ def optimize_smart_self(input_file, output_file):
         f.write('\n'.join(result_lines) + '\n')
 
 def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
-    combined_data = []
+    allow_set = set()
+    allow_parents_set = set()
+    
     if os.path.exists(allow_in):
         with open(allow_in, 'r', encoding='utf-8') as f:
             for line in f:
-                key = line.strip()
-                if key: combined_data.append({'key': key[::-1], 'type': 1, 'original': None})
+                line = line.strip().lower()
+                if not line or line.startswith('#'): continue
+                if line.startswith("+."): line = line[2:]
+                elif line.startswith("."): line = line[1:]
+                allow_set.add(line)
+                
+                # 构建白名单域名的所有父域名集合，用于 Option A 的子域防误杀检测
+                parts = line.split('.')
+                for i in range(1, len(parts)):
+                    parent = ".".join(parts[i:])
+                    allow_parents_set.add(parent)
+                    
+    final_lines = []
     if os.path.exists(block_in):
         with open(block_in, 'r', encoding='utf-8') as f:
             for line in f:
                 original = line.strip()
-                if not original: continue
-                pure = original
+                if not original or original.startswith('#'): continue
+                pure = original.lower()
                 if pure.startswith("+."): pure = pure[2:]
                 elif pure.startswith("."): pure = pure[1:]
-                combined_data.append({'key': pure[::-1], 'type': 0, 'original': original})
-    combined_data.sort(key=lambda x: (x['key'], x['type']))
-    active_white_root, buffered_key, buffered_line, final_lines = "", "", "", []
-    for item in combined_data:
-        key, typ, original = item['key'], item['type'], item['original']
-        if active_white_root and key.startswith(active_white_root + "."): continue
-        is_child_or_equal = bool(buffered_key and (key == buffered_key or key.startswith(buffered_key + ".")))
-        if is_child_or_equal:
-            if typ == 1: buffered_key, buffered_line, active_white_root = "", "", key
-        else:
-            if buffered_line: final_lines.append(buffered_line)
-            if typ == 1: active_white_root, buffered_key, buffered_line = key, "", ""
-            else: buffered_key, buffered_line, active_white_root = key, original, ""
-    if buffered_line: final_lines.append(buffered_line)
-    with open(final_out, 'w', encoding='utf-8') as f: f.write('\n'.join(final_lines) + '\n')
+                
+                is_allowed = False
+                
+                # 1. 检查当前拦截域名（或其父域名）是否在白名单中
+                parts = pure.split('.')
+                for i in range(len(parts)):
+                    parent = ".".join(parts[i:])
+                    if parent in allow_set:
+                        is_allowed = True
+                        break
+                        
+                # 2. 检查是否有任何白名单域名属于当前拦截域名的子域。
+                # 如果有，为了避免拦截父域时误杀白名单子域，当前拦截域也必须放行（Option A 策略）
+                if not is_allowed:
+                    if pure in allow_parents_set:
+                        is_allowed = True
+                        
+                if not is_allowed:
+                    final_lines.append(original)
+                    
+    with open(final_out, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(final_lines) + '\n')
 
 def finalize_output(src, dst_dir, base_name, mode):
     if not os.path.exists(src) or os.path.getsize(src) == 0: return
@@ -175,3 +207,70 @@ def finalize_output(src, dst_dir, base_name, mode):
             subprocess.run(["mihomo", "convert-ruleset", "domain", "text", txt_path, mrs_path], check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as e: 
             print(f"⚠️ 警告: 转换 {base_name}.mrs 发生异常:\n{e.stderr}")
+
+def clean_mihomo_domain_line(line):
+    """
+    将 Clash/Mihomo 规则行统一清洗为标准域名格式。
+    如果包含非 domain/domain-suffix 规则（如 IP-CIDR, PROCESS-NAME 等）则过滤掉。
+    """
+    import ipaddress
+    line = line.strip()
+    if not line or line.startswith('#'):
+        return None
+    # 剥离尾部注释
+    line = line.split('#')[0].strip()
+    if not line:
+        return None
+    
+    lower = line.lower()
+    if lower.startswith("domain-suffix,"):
+        val = line.split(',')[1].strip()
+        return "+." + val if val else None
+    elif lower.startswith("domain,"):
+        val = line.split(',')[1].strip()
+        return val if val else None
+    
+    # 如果包含逗号，说明是具有其它前缀修饰的行，且没被上面的 DOMAIN 匹配到，属非域名规则，过滤掉
+    if ',' in line:
+        return None
+        
+    # 如果是纯 IP 或 CIDR 地址，也过滤掉
+    try:
+        ipaddress.ip_network(line, strict=False)
+        return None
+    except ValueError:
+        pass
+        
+    return line
+
+def clean_ip_line(line):
+    """
+    清洗 IP/CIDR 规则行，返回纯 IP/CIDR，如果无效则返回 None。
+    """
+    import ipaddress
+    line = line.strip()
+    if not line or line.startswith('#'):
+        return None
+    line = line.split('#')[0].strip()
+    if not line:
+        return None
+    
+    parts = line.split(',')
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if part.lower() in ("ip-cidr", "ip-cidr6", "no-resolve", "force-remote", "direct", "reject"):
+            continue
+        try:
+            ipaddress.ip_network(part, strict=False)
+            return part
+        except ValueError:
+            pass
+    return None
+
+def is_valid_ip_or_cidr(line):
+    """
+    判断一行内容是否为有效的 IP 或 CIDR (可包含 IP-CIDR 前缀等)
+    """
+    return clean_ip_line(line) is not None

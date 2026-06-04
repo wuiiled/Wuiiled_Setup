@@ -39,9 +39,6 @@ CN_URLS_1 = ["https://static-file-global.353355.xyz/rules/cn-additional-list.txt
 CN_URLS_2 = ["https://ruleset.skk.moe/Clash/non_ip/domestic.txt"]
 
 MIHOMO_GENERIC_RAW = {
-    "AppleProxy": "https://raw.githubusercontent.com/Repcz/Tool/X/mihomo/Rules/AppleProxy.list",
-    "AppleServers": "https://raw.githubusercontent.com/Repcz/Tool/X/mihomo/Rules/AppleServers.list",
-    "AppleCN": "https://raw.githubusercontent.com/Repcz/Tool/X/mihomo/Rules/AppleCN.list",
     "private": "https://raw.githubusercontent.com/ForestL18/rules-dat/mihomo/geo/classical/private.list",
     "Custom_DNS_DOMAIN": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_DNS_DOMAIN.txt",
     "Custom_DNS_IP": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_DNS_IP.txt",
@@ -62,7 +59,11 @@ MIHOMO_SKK = {
     "baidu": "https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/baidu.txt",
     "qihoo360": "https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/qihoo360.txt",
     "download": "https://ruleset.skk.moe/Clash/domainset/download.txt",
-    "domestic": "https://ruleset.skk.moe/Clash/non_ip/domestic.txt"
+    "domestic": "https://ruleset.skk.moe/Clash/non_ip/domestic.txt",
+    "microsoft_cdn": "https://ruleset.skk.moe/Clash/non_ip/microsoft_cdn.txt",
+    "apple_services": "https://ruleset.skk.moe/Clash/non_ip/apple_services.txt",
+    "apple_cn": "https://ruleset.skk.moe/Clash/non_ip/apple_cn.txt",
+    "apple_cdn": "https://ruleset.skk.moe/Clash/domainset/apple_cdn.txt",
 }
 
 ADG_URLS = {
