@@ -127,7 +127,7 @@ def gen_extra_mihomo():
     for name, url in providers.MIHOMO_GENERIC_RAW.items():
         content = utils.download_file(url)
         lines = []
-        is_ip_ruleset = name.endswith("_IP")
+        is_ip_ruleset = name.endswith("_IP") or name == "cnip"
         for line in content.splitlines():
             if 'PROCESS-NAME' in line: continue
             if is_ip_ruleset:

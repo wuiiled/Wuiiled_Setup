@@ -47,7 +47,8 @@ MIHOMO_GENERIC_RAW = {
     "Custom_Emby": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Emby.txt",
     "Custom_Proxy": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Proxy.txt",
     "Custom_Download": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Download.txt",
-    "LocationDKS": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/LocationDKS.txt"
+    "LocationDKS": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/LocationDKS.txt",
+    "cnip": "https://raw.githubusercontent.com/DustinWin/ruleset_geodata/refs/heads/mihomo-ruleset/cnip.list"
 }
 
 MIHOMO_SKK = {

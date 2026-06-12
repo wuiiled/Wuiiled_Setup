@@ -64,7 +64,7 @@ def run_all():
     for src in txt_files:
         base_name = os.path.splitext(os.path.basename(src))[0]
         # 跳过 IP 专用的规则文件，避免生成无意义的空文件
-        if base_name.endswith("_IP"):
+        if base_name.endswith("_IP") or base_name == "cnip":
             continue
         dst = os.path.join("output/smartdns", f"{base_name}.txt")
         convert_txt_to_smartdns(src, dst)
