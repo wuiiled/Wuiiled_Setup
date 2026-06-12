@@ -4,7 +4,7 @@ import os
 import glob
 import utils
 
-def convert_txt_to_smartdns(src_path, dst_path):
+def convert_txt_to_smartdns(src_path, dst_path, is_ip):
     base_name = os.path.splitext(os.path.basename(src_path))[0]
     smartdns_lines = []
     
@@ -25,24 +25,29 @@ def convert_txt_to_smartdns(src_path, dst_path):
             if not rule:
                 continue
                 
-            # 跳过 IP / CIDR 规则，SmartDNS domain-set 不支持 IP
-            if utils.is_valid_ip_or_cidr(rule):
-                continue
-                
-            # 语法转换
-            if rule.startswith('+.'):
-                converted = rule[2:]
-            elif rule.startswith('.'):
-                converted = rule[1:]
-            elif rule.startswith('*.'):
-                converted = rule
-            elif rule.startswith('-.'):
-                converted = rule
+            if is_ip:
+                # IP-set 模式：只保留有效的 IP 或 CIDR
+                cleaned_ip = utils.clean_ip_line(rule)
+                if cleaned_ip and utils.is_valid_ip_or_cidr(cleaned_ip):
+                    smartdns_lines.append(cleaned_ip + comment)
             else:
-                # Mihomo 中不含通配前缀的为精确匹配，映射到 SmartDNS 的 -. 匹配
-                converted = "-." + rule
-                
-            smartdns_lines.append(converted + comment)
+                # Domain-set 模式：过滤掉 IP，并转换域名匹配语法
+                if utils.is_valid_ip_or_cidr(rule):
+                    continue
+                    
+                if rule.startswith('+.'):
+                    converted = rule[2:]
+                elif rule.startswith('.'):
+                    converted = rule[1:]
+                elif rule.startswith('*.'):
+                    converted = rule
+                elif rule.startswith('-.'):
+                    converted = rule
+                else:
+                    # Mihomo 中不含通配前缀的为精确匹配，映射到 SmartDNS 的 -. 匹配
+                    converted = "-." + rule
+                    
+                smartdns_lines.append(converted + comment)
             
     # 统计有效规则条数 (排除了空行和注释)
     rules_count = sum(1 for l in smartdns_lines if l.strip() and not l.strip().startswith('#'))
@@ -54,7 +59,7 @@ def convert_txt_to_smartdns(src_path, dst_path):
     with open(dst_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(smartdns_lines) + '\n')
         
-    print(f"✅ [SmartDNS] {base_name:<25} | 规则数: {rules_count:,}")
+    print(f"✅ [SmartDNS] {base_name:<25} | {'IP-set' if is_ip else 'Domain-set'} | 规则数: {rules_count:,}")
     return True
 
 def run_all():
@@ -63,11 +68,9 @@ def run_all():
     txt_files = glob.glob("output/mihomo/*.txt")
     for src in txt_files:
         base_name = os.path.splitext(os.path.basename(src))[0]
-        # 跳过 IP 专用的规则文件，避免生成无意义的空文件
-        if base_name.endswith("_IP") or base_name == "cnip":
-            continue
+        is_ip = base_name.endswith("_IP") or base_name == "cnip"
         dst = os.path.join("output/smartdns", f"{base_name}.txt")
-        convert_txt_to_smartdns(src, dst)
+        convert_txt_to_smartdns(src, dst, is_ip)
 
 if __name__ == '__main__':
     run_all()
