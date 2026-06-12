@@ -139,6 +139,7 @@ jobs:
         deploy_branch adg &
         deploy_branch mosdns-x &
         deploy_branch singbox &
+        deploy_branch smartdns &
         
         wait
 
