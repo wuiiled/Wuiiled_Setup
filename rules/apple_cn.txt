@@ -1,0 +1,9 @@
+full:gs-loc-cn.apple.com
+full:appleintelligencefeedback.care.apple.com
+domain:gspe19-cn-ssl.ls.apple.com
+domain:cn-ssl.ls.apple.com
+domain:cn.ls.apple.com
+domain:cn.apple.com
+full:api.smoot.apple.cn
+domain:icloud.com.cn
+domain:apple.com.cn

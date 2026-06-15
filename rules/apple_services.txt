@@ -1,0 +1,16 @@
+domain:apple.news
+domain:apple-dns.net
+domain:push-apple.com.akadns.net
+domain:organicfruitapps.com
+domain:icloud-content.com
+domain:apple-cloudkit.com
+domain:apple-mapkit.com
+domain:cdn-apple.com
+domain:appstore.com
+domain:aaplimg.com
+domain:itunes.com
+domain:icloud.com
+domain:apple.com
+domain:me.com
+domain:appsto.re
+domain:apple.co
