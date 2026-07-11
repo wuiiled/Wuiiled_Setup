@@ -3,10 +3,24 @@
 import os
 import re
 import shutil
-import subprocess
 from concurrent.futures import ThreadPoolExecutor
 import utils
 import providers
+
+def _merge_allow_list(raw_allow_path, merged_output_path):
+    """合并共享白名单和 exclude-keyword.txt 为统一的白名单文件"""
+    allow_content = []
+    if os.path.exists(raw_allow_path):
+        with open(raw_allow_path, 'r', encoding='utf-8') as f:
+            allow_content.append(f.read())
+    if os.path.exists(utils.EXCLUDE_FILE):
+        with open(utils.EXCLUDE_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    allow_content.append(line + "\n")
+    with open(merged_output_path, 'w', encoding='utf-8') as f:
+        f.write("".join(allow_content))
 
 def gen_ads_reject():
     mod_dir = os.path.join(utils.get_work_dir(), "ads")
@@ -21,18 +35,15 @@ def gen_ads_reject():
     if os.path.exists(shared_allow):
         shutil.copyfile(shared_allow, raw_allow)
     else:
-        open(raw_allow, 'w').close()
+        with open(raw_allow, 'w', encoding='utf-8') as f:
+            pass
 
     clean_ads, filter_ads = os.path.join(mod_dir, "clean_ads.txt"), os.path.join(mod_dir, "filter_ads.txt")
     utils.process_normalize_domain(raw_ads, clean_ads, skip_allow_rules=True)
     utils.apply_keyword_filter(clean_ads, filter_ads)
 
     merged_allow_raw = os.path.join(mod_dir, "merged_allow_raw.txt")
-    allow_content = [open(raw_allow, 'r', encoding='utf-8').read()] if os.path.exists(raw_allow) else []
-    if os.path.exists(utils.EXCLUDE_FILE):
-        with open(utils.EXCLUDE_FILE, 'r', encoding='utf-8') as f:
-            allow_content.extend([l + "\n" for l in f.read().splitlines() if l.strip() and not l.startswith('#')])
-    with open(merged_allow_raw, 'w', encoding='utf-8') as f: f.write("".join(allow_content))
+    _merge_allow_list(raw_allow, merged_allow_raw)
 
     clean_allow, opt_ads, opt_allow, final_ads = [os.path.join(mod_dir, x) for x in ["clean_allow.txt", "opt_ads.txt", "opt_allow.txt", "final_ads.txt"]]
     utils.process_normalize_domain(merged_allow_raw, clean_allow, skip_allow_rules=False)
@@ -57,11 +68,12 @@ def gen_fakeip():
     utils.download_files_parallel(raw_fakeip_dl, providers.FAKE_IP_URLS)
     unique_lines = set()
     if os.path.exists(raw_fakeip_dl):
-        for line in open(raw_fakeip_dl, 'r', encoding='utf-8').read().splitlines():
-            line = line.lower()
-            if re.match(r'^\s*(dns:|fake-ip-filter:)', line): continue
-            line = re.sub(r'^\s*-\s*', '', line).replace('"', '').replace("'", '').replace('\\', '').strip()
-            if line and not line.startswith('#'): unique_lines.add(line)
+        with open(raw_fakeip_dl, 'r', encoding='utf-8') as f:
+            for line in f.read().splitlines():
+                line = line.lower()
+                if re.match(r'^\s*(dns:|fake-ip-filter:)', line): continue
+                line = re.sub(r'^\s*-\s*', '', line).replace('"', '').replace("'", '').replace('\\', '').strip()
+                if line and not line.startswith('#'): unique_lines.add(line)
     clean_fakeip, final_fakeip = os.path.join(mod_dir, "clean_fakeip.txt"), os.path.join(mod_dir, "final_fakeip.txt")
     with open(clean_fakeip, 'w', encoding='utf-8') as f: f.write('\n'.join(sorted(unique_lines)) + '\n')
     utils.optimize_smart_self(clean_fakeip, final_fakeip)
@@ -74,20 +86,17 @@ def gen_ads_drop():
     utils.download_files_parallel(raw_rd, providers.DROP_URLS)
     rd_lines = set()
     if os.path.exists(raw_rd):
-        for line in open(raw_rd, 'r', encoding='utf-8').read().splitlines():
-            cleaned = utils.clean_mihomo_domain_line(line)
-            if cleaned and "skk.moe" not in line.lower() and cleaned != "+.":
-                rd_lines.add(cleaned)
+        with open(raw_rd, 'r', encoding='utf-8') as f:
+            for line in f.read().splitlines():
+                cleaned = utils.clean_mihomo_domain_line(line)
+                if cleaned and "skk.moe" not in line.lower() and cleaned != "+.":
+                    rd_lines.add(cleaned)
     clean_rd = os.path.join(mod_dir, "clean_rd.txt")
     with open(clean_rd, 'w', encoding='utf-8') as f: f.write('\n'.join(sorted(rd_lines)) + '\n')
     
     raw_allow_temp = os.path.join(utils.get_work_dir(), "shared", "raw_allow.txt")
     merged_allow_raw = os.path.join(mod_dir, "merged_allow_raw.txt")
-    allow_content = [open(raw_allow_temp, 'r', encoding='utf-8').read()] if os.path.exists(raw_allow_temp) else []
-    if os.path.exists(utils.EXCLUDE_FILE):
-        with open(utils.EXCLUDE_FILE, 'r', encoding='utf-8') as f:
-            allow_content.extend([l + "\n" for l in f.read().splitlines() if l.strip() and not l.startswith('#')])
-    with open(merged_allow_raw, 'w', encoding='utf-8') as f: f.write("".join(allow_content))
+    _merge_allow_list(raw_allow_temp, merged_allow_raw)
     
     clean_rd_allow, final_rd = os.path.join(mod_dir, "clean_rd_allow.txt"), os.path.join(mod_dir, "final_rd.txt")
     utils.process_normalize_domain(merged_allow_raw, clean_rd_allow, skip_allow_rules=False)
@@ -103,22 +112,24 @@ def gen_cn():
     merged_cn = os.path.join(mod_dir, "merged_cn_raw.txt")
     with open(merged_cn, 'w', encoding='utf-8') as f:
         if os.path.exists(raw_cn_1):
-            for line in open(raw_cn_1, 'r', encoding='utf-8').read().splitlines():
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    line = line.split('#')[0].strip()
-                    if line:
-                        f.write("+." + line + "\n")
+            with open(raw_cn_1, 'r', encoding='utf-8') as rf:
+                for line in rf.read().splitlines():
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        line = line.split('#')[0].strip()
+                        if line:
+                            f.write("+." + line + "\n")
         if os.path.exists(raw_cn_2):
-            for line in open(raw_cn_2, 'r', encoding='utf-8').read().splitlines():
-                line_lower = line.strip().lower()
-                if not line_lower or line_lower.startswith('#') or "skk.moe" in line_lower:
-                    continue
-                # 原逻辑仅匹配以 domain-suffix 或 domain 开头的行
-                if line_lower.startswith("domain-suffix,") or line_lower.startswith("domain,"):
-                    cleaned = utils.clean_mihomo_domain_line(line)
-                    if cleaned:
-                        f.write(cleaned + "\n")
+            with open(raw_cn_2, 'r', encoding='utf-8') as rf:
+                for line in rf.read().splitlines():
+                    line_lower = line.strip().lower()
+                    if not line_lower or line_lower.startswith('#') or "skk.moe" in line_lower:
+                        continue
+                    # 原逻辑仅匹配以 domain-suffix 或 domain 开头的行
+                    if line_lower.startswith("domain-suffix,") or line_lower.startswith("domain,"):
+                        cleaned = utils.clean_mihomo_domain_line(line)
+                        if cleaned:
+                            f.write(cleaned + "\n")
     final_cn = os.path.join(mod_dir, "final_cn.txt")
     utils.optimize_smart_self(merged_cn, final_cn)
     utils.finalize_output(final_cn, "output/mihomo", "CN_merged", "none")
@@ -159,13 +170,21 @@ def gen_extra_mihomo():
                 with open(temp_path, 'w', encoding='utf-8') as tf:
                     tf.write('\n'.join(dom_lines) + '\n')
                 try:
-                    subprocess.run(["mihomo", "convert-ruleset", rule_type, "text", temp_path, f"output/mihomo/{name}.mrs"], check=False)
+                    utils.compile_ruleset(
+                        ["mihomo", "convert-ruleset", rule_type, "text", temp_path, f"output/mihomo/{name}.mrs"],
+                        f"{name}.mrs"
+                    )
                 finally:
                     if os.path.exists(temp_path):
-                        try: os.remove(temp_path)
-                        except: pass
+                        try:
+                            os.remove(temp_path)
+                        except OSError:
+                            pass
             else:
-                subprocess.run(["mihomo", "convert-ruleset", rule_type, "text", txt_path, f"output/mihomo/{name}.mrs"], check=False)
+                utils.compile_ruleset(
+                    ["mihomo", "convert-ruleset", rule_type, "text", txt_path, f"output/mihomo/{name}.mrs"],
+                    f"{name}.mrs"
+                )
 
     for name, url in providers.MIHOMO_SKK.items():
         content = utils.download_file(url)
@@ -194,11 +213,16 @@ def gen_extra_mihomo():
             with open(temp_path, 'w', encoding='utf-8') as tf:
                 tf.write('\n'.join(dom_lines) + '\n')
             try:
-                subprocess.run(["mihomo", "convert-ruleset", "domain", "text", temp_path, f"output/mihomo/{name}.mrs"], check=False)
+                utils.compile_ruleset(
+                    ["mihomo", "convert-ruleset", "domain", "text", temp_path, f"output/mihomo/{name}.mrs"],
+                    f"{name}.mrs"
+                )
             finally:
                 if os.path.exists(temp_path):
-                    try: os.remove(temp_path)
-                    except: pass
+                    try:
+                        os.remove(temp_path)
+                    except OSError:
+                        pass
 
 def run_all():
     # 预先下载共享的白名单以进行缓存，避免子线程重复发起网络请求

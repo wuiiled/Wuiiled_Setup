@@ -25,20 +25,28 @@ jobs:
       run: |
         echo "Downloading latest mihomo binary..."
         m_version=$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL https://api.github.com/repos/MetaCubeX/mihomo/releases/latest | jq -r .tag_name)
-        curl -skLo mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/$m_version/mihomo-linux-amd64-$m_version.gz"
+        if [ -z "$m_version" ] || [ "$m_version" = "null" ]; then
+          echo "::error::Failed to fetch mihomo version"
+          exit 1
+        fi
+        curl -fsLo mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/$m_version/mihomo-linux-amd64-$m_version.gz"
         gunzip mihomo.gz && chmod +x mihomo && sudo mv mihomo /usr/local/bin/mihomo
         
         #echo "Downloading latest sing-box binary..."
         #sb_version=$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)
         #sb_version_num=${sb_version#v}
-        #curl -skLo sing-box.tar.gz "https://github.com/SagerNet/sing-box/releases/download/$sb_version/sing-box-${sb_version_num}-linux-amd64.tar.gz"
+        #curl -fsLo sing-box.tar.gz "https://github.com/SagerNet/sing-box/releases/download/$sb_version/sing-box-${sb_version_num}-linux-amd64.tar.gz"
         #tar -xzf sing-box.tar.gz
         #sudo mv sing-box-${sb_version_num}-linux-amd64/sing-box /usr/local/bin/
 
         echo "Downloading latest sing-box 1.14 version (including alpha/pre-release) binary..."
         sb_version=$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL https://api.github.com/repos/SagerNet/sing-box/releases | jq -r '[.[] | select(.tag_name | startswith("v1.14."))] | .[0].tag_name')
+        if [ -z "$sb_version" ] || [ "$sb_version" = "null" ]; then
+          echo "::error::Failed to fetch sing-box version"
+          exit 1
+        fi
         sb_version_num=${sb_version#v}
-        curl -skLo sing-box.tar.gz "https://github.com/SagerNet/sing-box/releases/download/$sb_version/sing-box-${sb_version_num}-linux-amd64.tar.gz"
+        curl -fsLo sing-box.tar.gz "https://github.com/SagerNet/sing-box/releases/download/$sb_version/sing-box-${sb_version_num}-linux-amd64.tar.gz"
         tar -xzf sing-box.tar.gz
         sudo mv sing-box-${sb_version_num}-linux-amd64/sing-box /usr/local/bin/
 
@@ -46,6 +54,11 @@ jobs:
       run: |
         export LC_ALL=C
         PYTHONPATH=scripts python3 scripts/main.py
+
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "::error::Rule build failed! Check the logs above."
 
     - name: Deploy to Orphan Branches
       run: |
@@ -130,6 +143,10 @@ jobs:
           
           git add rules/ README.md
           git commit -q -m "Auto Update $TARGET $(date +"%Y-%m-%d %H:%M")" || true
+          case "$TARGET" in
+            mihomo|adg|mosdns-x|singbox|smartdns) ;;
+            *) echo "Invalid target: $TARGET" && exit 1 ;;
+          esac
           git push -f -q https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git $TARGET
           
           echo "✅ Deploy completed for: $TARGET"
@@ -144,7 +161,7 @@ jobs:
         wait
 
     - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@v2
+      uses: Mattraks/delete-workflow-runs@0cf693bc9909e5e867ee8f27b813224ba862939c
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         repository: ${{ github.repository }}

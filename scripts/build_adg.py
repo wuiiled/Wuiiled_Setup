@@ -17,21 +17,23 @@ def run_all():
     
     # 添加拦截规则 (从未经过白名单过滤的 opt_ads 读取)
     if os.path.exists(opt_ads_path):
-        for line in open(opt_ads_path, 'r', encoding='utf-8').read().splitlines():
-            domain = line.strip()
-            if not domain or domain.startswith('#'): continue
-            if domain.startswith("+."): domain = domain[2:]
-            elif domain.startswith("."): domain = domain[1:]
-            adg_lines.append(f"||{domain}^")
+        with open(opt_ads_path, 'r', encoding='utf-8') as f:
+            for line in f.read().splitlines():
+                domain = line.strip()
+                if not domain or domain.startswith('#'): continue
+                if domain.startswith("+."): domain = domain[2:]
+                elif domain.startswith("."): domain = domain[1:]
+                adg_lines.append(f"||{domain}^")
             
     # 添加放行/白名单规则 (从 opt_allow 读取，并加上 @@|| 前缀)
     if os.path.exists(opt_allow_path):
-        for line in open(opt_allow_path, 'r', encoding='utf-8').read().splitlines():
-            domain = line.strip()
-            if not domain or domain.startswith('#'): continue
-            if domain.startswith("+."): domain = domain[2:]
-            elif domain.startswith("."): domain = domain[1:]
-            adg_lines.append(f"@@||{domain}^")
+        with open(opt_allow_path, 'r', encoding='utf-8') as f:
+            for line in f.read().splitlines():
+                domain = line.strip()
+                if not domain or domain.startswith('#'): continue
+                if domain.startswith("+."): domain = domain[2:]
+                elif domain.startswith("."): domain = domain[1:]
+                adg_lines.append(f"@@||{domain}^")
             
     # 写入 AdGuard Home 合并规则文件
     with open("output/adg/ADs_merged_adg.txt", 'w', encoding='utf-8') as f:

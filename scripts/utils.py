@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
+import sys
+import ssl
 import shutil
 import tempfile
 import time
 import re
+import atexit
+import ipaddress
 import urllib.request
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
@@ -15,25 +19,29 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 EXCLUDE_FILE = os.path.join(SCRIPT_DIR, "exclude-keyword.txt")
 os.environ["LC_ALL"] = "C"
 
+# Security: explicit SSL context to ensure certificate verification is always enabled
+_SSL_CONTEXT = ssl.create_default_context()
+
 def get_work_dir():
     global WORK_DIR
     if WORK_DIR is None:
         WORK_DIR = tempfile.mkdtemp(prefix="wuiiled_convert_")
-        import atexit
         atexit.register(cleanup)
     return WORK_DIR
 
 def cleanup():
     global WORK_DIR
     if WORK_DIR and os.path.exists(WORK_DIR):
-        try: shutil.rmtree(WORK_DIR)
-        except: pass
-        WORK_DIR = None
+        try:
+            shutil.rmtree(WORK_DIR)
+        except OSError as e:
+            print(f"⚠️ 临时目录清理失败: {e}")
+        finally:
+            WORK_DIR = None
 
 def check_mihomo():
     has_mihomo = shutil.which("mihomo") is not None
     if not has_mihomo and os.environ.get("GITHUB_ACTIONS") == "true":
-        import sys
         print("❌ 错误: 在 GitHub Actions 环境中未找到 'mihomo' 编译器！必须中断任务以防生成残缺规则集。")
         sys.exit(1)
     return has_mihomo
@@ -43,26 +51,35 @@ def download_file(url, timeout=20, retries=3):
     req = urllib.request.Request(url, headers={'User-Agent': ua})
     for attempt in range(retries):
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as response:
+            with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as response:
                 return response.read().decode('utf-8', errors='ignore')
-        except Exception:
-            if attempt == retries - 1: return ""
-            time.sleep(1)
+        except Exception as e:
+            if attempt == retries - 1:
+                print(f"⚠️ 下载失败 (重试 {retries} 次后放弃): {url}\n   错误: {e}")
+                return ""
+            time.sleep(1 * (attempt + 1))
     return ""
 
 def download_files_parallel(output_file, urls):
-    content_list = []
     with ThreadPoolExecutor(max_workers=min(len(urls) + 1, 10)) as executor:
         futures_map = {executor.submit(download_file, url): url for url in urls}
         results = []
-        for url in urls:
-            for future, f_url in futures_map.items():
-                if f_url == url:
-                    content = future.result()
-                    if content.strip():
-                        if not content.endswith('\n'): content += '\n'
-                        results.append(content)
-                    break
+        success_count = 0
+        fail_count = 0
+        for future, url in futures_map.items():
+            try:
+                content = future.result()
+                if content.strip():
+                    if not content.endswith('\n'): content += '\n'
+                    results.append(content)
+                    success_count += 1
+                else:
+                    fail_count += 1
+            except Exception as e:
+                print(f"⚠️ 并行下载异常: {url} -> {e}")
+                fail_count += 1
+    if urls:
+        print(f"📥 下载完成: {success_count} 成功, {fail_count} 失败 (共 {len(urls)} 源)")
     with open(output_file, 'w', encoding='utf-8') as f:
         if results: f.write("".join(results))
 
@@ -82,7 +99,8 @@ def normalize_domain_line(line):
 
 def process_normalize_domain(input_file, output_file, skip_allow_rules=False):
     if not os.path.exists(input_file):
-        open(output_file, 'w').close()
+        with open(output_file, 'w', encoding='utf-8') as f:
+            pass
         return
     domains = set()
     with open(input_file, 'r', encoding='utf-8') as f:
@@ -110,7 +128,8 @@ def apply_keyword_filter(input_file, output_file):
 
 def optimize_smart_self(input_file, output_file):
     if not os.path.exists(input_file) or os.path.getsize(input_file) == 0:
-        open(output_file, 'w').close()
+        with open(output_file, 'w', encoding='utf-8') as f:
+            pass
         return
     with open(input_file, 'r', encoding='utf-8') as f:
         lines = f.read().splitlines()
@@ -135,7 +154,8 @@ def optimize_smart_self(input_file, output_file):
             result_lines.append(item['original'])
             last_root = curr if item['is_wildcard'] else None
     with open(output_file, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(result_lines) + '\n')
+        if result_lines:
+            f.write('\n'.join(result_lines) + '\n')
 
 def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
     allow_set = set()
@@ -186,7 +206,15 @@ def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
                     final_lines.append(original)
                     
     with open(final_out, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(final_lines) + '\n')
+        if final_lines:
+            f.write('\n'.join(final_lines) + '\n')
+
+def compile_ruleset(cmd, output_name):
+    """执行规则集编译命令，失败时打印警告而非中断流程。"""
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        print(f"⚠️ 警告: 编译 {output_name} 发生异常:\n{e.stderr}")
 
 def finalize_output(src, dst_dir, base_name, mode):
     if not os.path.exists(src) or os.path.getsize(src) == 0: return
@@ -203,17 +231,16 @@ def finalize_output(src, dst_dir, base_name, mode):
     mrs_path = os.path.join(dst_dir, f"{base_name}.mrs")
     with open(txt_path, 'w', encoding='utf-8') as f: f.write(header + "\n".join(lines) + "\n")
     if check_mihomo():
-        try: 
-            subprocess.run(["mihomo", "convert-ruleset", "domain", "text", txt_path, mrs_path], check=True, capture_output=True, text=True)
-        except subprocess.CalledProcessError as e: 
-            print(f"⚠️ 警告: 转换 {base_name}.mrs 发生异常:\n{e.stderr}")
+        compile_ruleset(
+            ["mihomo", "convert-ruleset", "domain", "text", txt_path, mrs_path],
+            f"{base_name}.mrs"
+        )
 
 def clean_mihomo_domain_line(line):
     """
     将 Clash/Mihomo 规则行统一清洗为标准域名格式。
     如果包含非 domain/domain-suffix 规则（如 IP-CIDR, PROCESS-NAME 等）则过滤掉。
     """
-    import ipaddress
     line = line.strip()
     if not line or line.startswith('#'):
         return None
@@ -247,7 +274,6 @@ def clean_ip_line(line):
     """
     清洗 IP/CIDR 规则行，返回纯 IP/CIDR，如果无效则返回 None。
     """
-    import ipaddress
     line = line.strip()
     if not line or line.startswith('#'):
         return None

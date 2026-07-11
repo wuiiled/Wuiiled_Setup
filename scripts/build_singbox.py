@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
+import sys
 import json
 import subprocess
 import re
@@ -12,9 +13,14 @@ import utils
 def check_singbox():
     has_sb = shutil.which("sing-box") is not None
     if not has_sb and os.environ.get("GITHUB_ACTIONS") == "true":
-        import sys
         print("❌ 错误: 在 GitHub Actions 环境中未找到 'sing-box' 编译器！必须中断任务以防生成残缺规则集。")
         sys.exit(1)
+    if has_sb:
+        try:
+            result = subprocess.run(["sing-box", "version"], capture_output=True, text=True, check=True)
+            print(f"📋 sing-box 版本: {result.stdout.strip()}")
+        except Exception:
+            pass
     return has_sb
 
 def compact_regexes(regex_set):
@@ -223,10 +229,10 @@ def run_all():
                 
                 if convert_txt_to_json(temp_f_path, json_path):
                     if has_sb:
-                        try:
-                            subprocess.run(["sing-box", "rule-set", "compile", json_path, "-o", srs_path], check=True, capture_output=True, text=True)
-                        except subprocess.CalledProcessError as e:
-                            print(f"⚠️ 警告: 编译 {prefix}.srs 发生异常:\n{e.stderr}")
+                        utils.compile_ruleset(
+                            ["sing-box", "rule-set", "compile", json_path, "-o", srs_path],
+                            f"{prefix}.srs"
+                        )
             finally:
                 if os.path.exists(temp_f_path):
                     os.remove(temp_f_path)
@@ -245,10 +251,10 @@ def run_all():
         
         if convert_txt_to_json(txt_path, json_path):
             if has_sb:
-                try:
-                    subprocess.run(["sing-box", "rule-set", "compile", json_path, "-o", srs_path], check=True, capture_output=True, text=True)
-                except subprocess.CalledProcessError as e:
-                    print(f"⚠️ 警告: 编译 {base_name}.srs 发生异常:\n{e.stderr}")
+                utils.compile_ruleset(
+                    ["sing-box", "rule-set", "compile", json_path, "-o", srs_path],
+                    f"{base_name}.srs"
+                )
 
 if __name__ == '__main__':
     run_all()

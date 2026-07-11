@@ -1,16 +1,17 @@
 # 🚀 All-in-One 网络分流规则构建引擎
 
 这是一个高度自动化的无服务器（Serverless）规则转换与分发引擎。
-基于 GitHub Actions 每日定时运行，自动从上游拉取最新的规则元数据，经过**清洗、白名单过滤、智能去重合并**后，自动编译为四大平台支持的格式，并分发到独立的订阅分支。
+基于 GitHub Actions 每日定时运行，自动从上游拉取最新的规则元数据，经过**清洗、白名单过滤、智能去重合并**后，自动编译为五大平台支持的格式，并分发到独立的订阅分支。
 
 ## 🎯 支持的客户端分支与格式
 
 我们在不同的孤儿分支（Orphan Branch）中维护了对应平台的专属规则，点击链接即可进入获取订阅直链：
 
 * 📦 [**Mihomo (Clash Meta)**](./../../tree/mihomo) - 提供 `.mrs` 二进制与 `.txt` 文本规则。
-* 📦 [**Sing-box**](./../../tree/singbox) - 提供 `.srs` 二进制与 `.json` 规则（采用最新 Version 4 标准优化内存）。
+* 📦 [**Sing-box**](./../../tree/singbox) - 提供 `.srs` 二进制与 `.json` 规则（采用 Version 5 标准，兼容 sing-box 1.14.x）。
 * 📦 [**AdGuard Home**](./../../tree/adg) - 提供标准的 AdGuard 过滤语法规则。
 * 📦 [**MosDNS**](./../../tree/mosdns-x) - 提供专为 MosDNS-X 适配的 `domain:` / `full:` 语法规则。
+* 📦 [**SmartDNS**](./../../tree/smartdns) - 提供标准 SmartDNS domain-set / ip-set 语法规则。
 
 ---
 
@@ -66,11 +67,106 @@
 
 存放在主分支 `rules/` 目录下，用于满足个人的特殊路由需求，每次构建时会原样打包并转换格式：
 
-* `Custom_Direct.txt` (含 IP/DOMAIN) —— 强制直连
-* `Custom_Proxy.txt` —— 强制代理
-* `Custom_DNS.txt` (含 IP/DOMAIN) —— 强制指定 DNS 解析
-* `Custom_Emby.txt` —— Emby 媒体服分流
+* `Custom_Direct_DOMAIN.txt` —— 自定义直连域名
+* `Custom_Direct_IP.txt` —— 自定义直连 IP（CIDR 格式）
+* `Custom_Proxy.txt` —— 强制代理域名
+* `Custom_DNS_DOMAIN.txt` —— 自定义 DNS 域名（强制指定 DNS 解析）
+* `Custom_DNS_IP.txt` —— 自定义 DNS IP（CIDR 格式）
+* `Custom_Download.txt` —— 下载流量分流
+* `Custom_Reject.txt` —— 自定义拦截域名
+* `Custom_Reject-drop.txt` —— 自定义高危丢弃域名
+* `Custom_Emby.txt` —— Emby 媒体服务器分流
 * `LocationDKS.txt` —— 特定地域服务
+
+---
+
+## 📁 项目结构
+
+```
+Wuiiled_Setup/
+├── .github/workflows/
+│   └── merge.yaml              # GitHub Actions 工作流：定时构建 + 部署
+├── rules/                      # 自定义规则源文件（主分支维护）
+│   ├── Custom_DNS_DOMAIN.txt   # 自定义 DNS 域名
+│   ├── Custom_DNS_IP.txt       # 自定义 DNS IP（CIDR）
+│   ├── Custom_Direct_DOMAIN.txt# 自定义直连域名
+│   ├── Custom_Direct_IP.txt    # 自定义直连 IP（CIDR）
+│   ├── Custom_Download.txt     # 下载流量分流
+│   ├── Custom_Emby.txt         # Emby 媒体服务器分流
+│   ├── Custom_Proxy.txt        # 自定义代理域名
+│   ├── Custom_Reject.txt       # 自定义拦截域名
+│   ├── Custom_Reject-drop.txt  # 自定义高危丢弃域名
+│   └── LocationDKS.txt         # 特定地域服务
+├── scripts/                    # 构建引擎源码
+│   ├── main.py                 # 入口：Mihomo(串行) → 其他平台(并行)
+│   ├── utils.py                # 核心工具（下载/清洗/去重/白名单过滤）
+│   ├── providers.py            # 上游规则源 URL 配置
+│   ├── build_mihomo.py         # Mihomo 构建器 (.txt + .mrs)
+│   ├── build_singbox.py        # Sing-box 构建器 (.json + .srs)
+│   ├── build_adg.py            # AdGuard Home 构建器 (.txt)
+│   ├── build_mosdns.py         # MosDNS 构建器 (.txt)
+│   ├── build_smartdns.py       # SmartDNS 构建器 (.txt)
+│   ├── exclude-keyword.txt     # 白名单关键字（防误杀）
+│   ├── Reject-addon.txt        # 自定义广告拦截补充规则
+│   └── fake-ip-addon.txt       # 自定义 Fake-IP 过滤补充规则
+├── singbox/                    # Sing-box 参考配置（不参与构建输出）
+├── tests/                      # 单元测试（pytest）
+└── readme.md
+```
+
+---
+
+## 🔄 构建流程
+
+### 自动构建
+GitHub Actions 每日 00:00 与 12:00（Asia/Shanghai）自动触发：
+
+1. **环境准备**：安装最新版 mihomo 和 sing-box 1.14.x 二进制
+2. **阶段 1 - Mihomo 构建**（串行，作为其他平台的前置依赖）：
+   - 6 个任务并行：`ADs_merged`、`AIs_merged`、`Fake_IP_Filter`、`Reject_Drop`、`CN_merged`、`Extra Rules (SKK + Generic)`
+   - 每个任务经过：下载 → 清洗 → 关键字过滤 → 前缀树去重 → 白名单过滤 → 编译 .mrs
+3. **阶段 2 - 其他平台构建**（4 个任务并行）：
+   - AdGuard Home / MosDNS / Sing-box / SmartDNS 分别从 Mihomo 中间产物转换
+4. **部署**：5 个 orphan 分支并行强制推送
+
+### 本地构建
+```bash
+# 安装依赖工具
+# mihomo: https://github.com/MetaCubeX/mihomo/releases
+# sing-box: https://github.com/SagerNet/sing-box/releases (1.14.x)
+
+# 运行构建
+export PYTHONPATH=scripts
+python3 scripts/main.py
+
+# 运行测试
+pip install pytest
+PYTHONPATH=scripts python3 -m pytest tests/ -v
+```
+
+---
+
+## 📝 自定义规则格式说明
+
+`rules/` 目录下的自定义规则文件使用以下格式：
+
+### 域名规则
+| 语法 | 含义 | 示例 |
+| :--- | :--- | :--- |
+| `domain.com` | 精确匹配域名 | `google.com` |
+| `+.domain.com` | 匹配域名及其所有子域 | `+.google.com` |
+| `.domain.com` | 同 `+.domain.com` | `.google.com` |
+| `# comment` | 注释行（被忽略） | `# 拦截列表` |
+
+### IP 规则
+| 语法 | 含义 | 示例 |
+| :--- | :--- | :--- |
+| `1.2.3.4` | 单个 IP | `8.8.8.8` |
+| `10.0.0.0/8` | CIDR 网段 | `192.168.0.0/16` |
+| `IP-CIDR,1.2.3.0/24` | Clash 格式 IP 规则 | `IP-CIDR,10.0.0.0/8,no-resolve` |
+
+### 白名单文件 (exclude-keyword.txt)
+此文件中的每一行是一个域名，构建时会从 `ADs_merged` 和 `Reject_Drop` 中移除匹配项及其子域，防止误杀。以 `#` 开头的行被视为注释（临时禁用）。
 
 ---
 
