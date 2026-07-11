@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+.pytest_cache/
 
 # Distribution / packaging
 dist/
@@ -25,3 +26,4 @@ Thumbs.db
 # Project specific
 output/
 work/
+security_best_practices_report.md
