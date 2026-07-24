@@ -1,0 +1,9 @@
+apple.com.cn
+cn.apple.com
+icloud.com.cn
+cn.ls.apple.com
+-.api.smoot.apple.cn
+cn-ssl.ls.apple.com
+-.gs-loc-cn.apple.com
+gspe19-cn-ssl.ls.apple.com
+-.appleintelligencefeedback.care.apple.com
