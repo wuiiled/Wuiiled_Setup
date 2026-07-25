@@ -48,7 +48,7 @@ MIHOMO_GENERIC_RAW = {
     "Custom_Proxy": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Proxy.txt",
     "Custom_Download": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Download.txt",
     "LocationDKS": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/LocationDKS.txt",
-    "cnip": "https://raw.githubusercontent.com/DustinWin/ruleset_geodata/refs/heads/mihomo-ruleset/cnip.list",
+    "cnip": "https://gaoyifan.github.io/china-operator-ip/china46.txt",
     "proxy": "https://raw.githubusercontent.com/DustinWin/ruleset_geodata/refs/heads/mihomo-ruleset/proxy.list"
 }
 
