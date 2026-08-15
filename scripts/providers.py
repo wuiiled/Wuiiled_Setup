@@ -13,6 +13,7 @@ ADS_BLOCK_URLS = [
     "https://a.dove.isdumb.one/pihole.txt",
     "https://raw.githubusercontent.com/Cats-Team/AdRules/main/adrules_domainset.txt",
     "https://raw.githubusercontent.com/yyysuo/firetv/master/httpdns.txt",
+    "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Geosite.txt",
 ]
 
 AI_URLS = [
