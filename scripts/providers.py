@@ -20,7 +20,7 @@ AI_URLS = [
     "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/category-ai-!cn.list",
     "https://ruleset.skk.moe/List/non_ip/ai.conf",
     "https://github.com/DustinWin/ruleset_geodata/raw/mihomo-ruleset/ai.list",
-    "https://raw.githubusercontent.com/ConnersHua/RuleGo/master/Surge/Ruleset/Extra/AI.list"
+    #"https://raw.githubusercontent.com/ConnersHua/RuleGo/master/Surge/Ruleset/Extra/AI.list"
 ]
 
 FAKE_IP_URLS = [
