@@ -8,13 +8,20 @@ import utils
 import providers
 
 def _merge_allow_list(raw_allow_path, merged_output_path):
-    """合并共享白名单和 exclude-keyword.txt 为统一的白名单文件"""
+    """合并共享白名单、exclude-keyword.txt 以及本地 Custom_Direct_DOMAIN.txt 为统一的白名单文件"""
     allow_content = []
     if os.path.exists(raw_allow_path):
         with open(raw_allow_path, 'r', encoding='utf-8') as f:
             allow_content.append(f.read())
     if os.path.exists(utils.EXCLUDE_FILE):
         with open(utils.EXCLUDE_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    allow_content.append(line + "\n")
+    custom_direct = os.path.join(os.path.dirname(__file__), "..", "rules", "Custom_Direct_DOMAIN.txt")
+    if os.path.exists(custom_direct):
+        with open(custom_direct, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#'):

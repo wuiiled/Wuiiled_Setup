@@ -1,19 +1,33 @@
 ALLOW_URLS = [
+    # Cats-Team dns-allowlist
     "https://raw.githubusercontent.com/Cats-Team/AdRules/script/mod/rules/dns-allowlist.txt",
+    # AdGuard SDNS Filter exceptions
     "https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exceptions.txt",
+    # anti-AD white-list
+    "https://raw.githubusercontent.com/privacy-protection-tools/dead-horse/master/anti-ad-white-list.txt",
+    # anudeepND whitelist
+    "https://raw.githubusercontent.com/anudeepND/whitelist/master/domains/whitelist.txt",
 ]
 
 ADS_BLOCK_URLS = [
+    # EasyMosdns ad_domain_list
     "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt",
+    # Reject-addon
     "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/scripts/Reject-addon.txt",
+    # AdGuard DNS Filter
     "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt",
+    # Peter Lowe's Blocklist
     "https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt",
+    # Dan Pollock's List
     "https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt",
-    "https://raw.githubusercontent.com/ForestL18/rules-dat/mihomo/geo/classical/pcdn.list",
+    # Adobe Telemetry
     "https://a.dove.isdumb.one/pihole.txt",
+    # Cats-Team adrules_domainset
     "https://raw.githubusercontent.com/Cats-Team/AdRules/main/adrules_domainset.txt",
-    "https://raw.githubusercontent.com/yyysuo/firetv/master/httpdns.txt",
+    # AWAvenue Ads Rule Geosite
     "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Geosite.txt",
+    # OISD Small
+    "https://raw.githubusercontent.com/sjhgvr/oisd/main/domainswild_small.txt",
 ]
 
 AI_URLS = [
