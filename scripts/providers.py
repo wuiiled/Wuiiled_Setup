@@ -3,8 +3,6 @@ ALLOW_URLS = [
     "https://raw.githubusercontent.com/Cats-Team/AdRules/script/mod/rules/dns-allowlist.txt",
     # AdGuard SDNS Filter exceptions
     "https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exceptions.txt",
-    # anti-AD white-list
-    "https://raw.githubusercontent.com/privacy-protection-tools/dead-horse/master/anti-ad-white-list.txt",
     # anudeepND whitelist
     "https://raw.githubusercontent.com/anudeepND/whitelist/master/domains/whitelist.txt",
 ]
