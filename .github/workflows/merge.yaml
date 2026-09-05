@@ -1,6 +1,9 @@
 name: Merge Rules All-in-One
 
 on:
+  push:
+    branches:
+      - master
   schedule:
     - cron: '0 0,12 * * *'
   workflow_dispatch:
