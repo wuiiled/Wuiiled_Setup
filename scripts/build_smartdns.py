@@ -68,7 +68,7 @@ def run_all():
     txt_files = glob.glob("output/mihomo/*.txt")
     for src in txt_files:
         base_name = os.path.splitext(os.path.basename(src))[0]
-        is_ip = base_name.endswith("_IP") or base_name == "cnip"
+        is_ip = base_name.endswith("_IP") or base_name in ("cnip", "gfwip")
         dst = os.path.join("output/smartdns", f"{base_name}.txt")
         convert_txt_to_smartdns(src, dst, is_ip)
 

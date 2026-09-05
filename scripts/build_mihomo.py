@@ -3,6 +3,7 @@
 import os
 import re
 import shutil
+import ipaddress
 from concurrent.futures import ThreadPoolExecutor
 import utils
 import providers
@@ -231,6 +232,72 @@ def gen_extra_mihomo():
                     except OSError:
                         pass
 
+def gen_gfwip():
+    mod_dir = os.path.join(utils.get_work_dir(), "gfwip")
+    os.makedirs(mod_dir, exist_ok=True)
+    raw_gfwip = os.path.join(mod_dir, "raw_gfwip.txt")
+    utils.download_files_parallel(raw_gfwip, providers.GFW_IP_URLS)
+
+    ipv4_nets = set()
+    ipv6_nets = set()
+
+    if os.path.exists(raw_gfwip):
+        with open(raw_gfwip, 'r', encoding='utf-8') as f:
+            for line in f:
+                cleaned = utils.clean_ip_line(line)
+                if cleaned:
+                    try:
+                        net = ipaddress.ip_network(cleaned, strict=False)
+                        if net.version == 4:
+                            ipv4_nets.add(net)
+                        else:
+                            ipv6_nets.add(net)
+                    except ValueError:
+                        pass
+
+    for item in providers.GFW_IPV6_LIST:
+        cleaned = utils.clean_ip_line(item)
+        if cleaned:
+            try:
+                net = ipaddress.ip_network(cleaned, strict=False)
+                if net.version == 6:
+                    ipv6_nets.add(net)
+                else:
+                    ipv4_nets.add(net)
+            except ValueError:
+                pass
+
+    sorted_ipv4 = sorted(list(ipv4_nets), key=lambda x: (int(x.network_address), x.prefixlen))
+    sorted_ipv6 = sorted(list(ipv6_nets), key=lambda x: (int(x.network_address), x.prefixlen))
+
+    lines = []
+    for net in sorted_ipv4:
+        if net.prefixlen == 32:
+            lines.append(str(net.network_address))
+        else:
+            lines.append(str(net))
+
+    for net in sorted_ipv6:
+        if net.prefixlen == 128:
+            lines.append(str(net.network_address))
+        else:
+            lines.append(str(net))
+
+    rule_count = len(lines)
+    print(f"✅ [Mihomo] {'gfwip':<25} | 规则数: {rule_count:,} (IPv4: {len(sorted_ipv4):,}, IPv6: {len(sorted_ipv6):,})")
+
+    txt_path = "output/mihomo/gfwip.txt"
+    mrs_path = "output/mihomo/gfwip.mrs"
+    os.makedirs(os.path.dirname(txt_path), exist_ok=True)
+    with open(txt_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines) + '\n')
+
+    if utils.check_mihomo():
+        utils.compile_ruleset(
+            ["mihomo", "convert-ruleset", "ipcidr", "text", txt_path, mrs_path],
+            "gfwip.mrs"
+        )
+
 def run_all():
     # 预先下载共享的白名单以进行缓存，避免子线程重复发起网络请求
     work_dir = utils.get_work_dir()
@@ -239,7 +306,7 @@ def run_all():
     shared_allow = os.path.join(shared_dir, "raw_allow.txt")
     utils.download_files_parallel(shared_allow, providers.ALLOW_URLS)
 
-    tasks = [gen_ads_reject, gen_ai, gen_fakeip, gen_ads_drop, gen_cn, gen_extra_mihomo]
+    tasks = [gen_ads_reject, gen_ai, gen_fakeip, gen_ads_drop, gen_cn, gen_extra_mihomo, gen_gfwip]
     with ThreadPoolExecutor() as executor:
         futures = [executor.submit(t) for t in tasks]
         for future in futures:

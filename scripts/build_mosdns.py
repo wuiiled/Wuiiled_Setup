@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import utils
 import providers
 
@@ -45,3 +46,9 @@ def run_all():
         with open(f"output/mosdns-x/{name}.txt", 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines) + '\n')
         print(f"✅ [MosDNS] {name:<25} | 规则数: {len(lines):,}")
+
+    # 3. 复制 gfwip.txt (IP 规则无需额外转换)
+    mihomo_gfwip = "output/mihomo/gfwip.txt"
+    if os.path.exists(mihomo_gfwip):
+        shutil.copyfile(mihomo_gfwip, "output/mosdns-x/gfwip.txt")
+        print(f"✅ [MosDNS] {'gfwip':<25} | 规则已生成")

@@ -85,3 +85,30 @@ ADG_URLS = {
     "Httpdns": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-httpdns-cn.list",
     "PCDN": "https://raw.githubusercontent.com/wuiiled/PCDN-mihomo-list/main/pcdn.list"
 }
+
+GFW_IP_URLS = [
+    # ChinaDNS 经典历史精准投毒 IPv4 单 IP 库
+    "https://raw.githubusercontent.com/clowwindy/ChinaDNS/master/iplist.txt",
+    "https://cdn.jsdelivr.net/gh/clowwindy/ChinaDNS@master/iplist.txt",
+    # EasyMosdns 投毒网段 CIDR 库
+    "https://raw.githubusercontent.com/pmkol/easymosdns/rules/gfw_ip_list.txt",
+    "https://cdn.jsdelivr.net/gh/pmkol/easymosdns@rules/gfw_ip_list.txt",
+]
+
+GFW_IPV6_LIST = [
+    # GFW 经典假 IPv6 靶心地址与网段
+    "2001:4860:4860::8888",
+    "2001:4860:4860::8844",
+    "2001:da8::666",
+    "2404:6800:4008:c01::65",
+    "2001:252:0:1::/64",
+    "2001:470:20::2",
+    "2001:7fa::1",
+    "3ffe::/16",
+    "100::/64",
+    "2a03:2880:f100::/40",
+    "2001:db8::/32",
+    "::1",
+    "::",
+]
+
