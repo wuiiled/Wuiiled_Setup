@@ -27,6 +27,11 @@ def run_all():
         if not os.path.exists(mihomo_txt):
             print(f"⚠️ [MosDNS] {name} 源文件不存在，跳过")
             continue
+        # IP 规则集直接以纯 IP CIDR 文本输出，与 gfwip 保持一致
+        if name.lower().endswith(('_ip', '_ip.txt')):
+            shutil.copyfile(mihomo_txt, f"output/mosdns-x/{name}.txt")
+            print(f"✅ [MosDNS] {name:<25} | 规则已生成 (IP 规则)")
+            continue
         lines = []
         with open(mihomo_txt, 'r', encoding='utf-8') as f:
             for line in f:
@@ -35,8 +40,6 @@ def run_all():
                     continue
                 if 'skk.moe' in cleaned:
                     continue
-                # 跳过 IP/CIDR 行：原始代码仅通过 clean_mihomo_domain_line 处理，
-                # IP/CIDR 返回 None 被过滤。mihomo 输出含 IP 行，需显式跳过以保持一致。
                 if utils.is_valid_ip_or_cidr(cleaned):
                     continue
                 if cleaned.startswith('+.'):

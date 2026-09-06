@@ -4,6 +4,9 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import build_mihomo
 import build_adg
 import build_mosdns

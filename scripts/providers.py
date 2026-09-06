@@ -79,6 +79,8 @@ MIHOMO_SKK = {
     "apple_services": "https://ruleset.skk.moe/Clash/non_ip/apple_services.txt",
     "apple_cn": "https://ruleset.skk.moe/Clash/non_ip/apple_cn.txt",
     "apple_cdn": "https://ruleset.skk.moe/Clash/domainset/apple_cdn.txt",
+    "stream_ip": "https://ruleset.skk.moe/List/ip/stream.conf",
+    "apple_services_ip": "https://ruleset.skk.moe/List/ip/apple_services.conf",
 }
 
 ADG_URLS = {

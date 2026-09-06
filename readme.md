@@ -48,6 +48,8 @@
 * **`bytedance`** (字节跳动)
 * **`baidu`** (百度系)
 * **`qihoo360`** (奇虎360)
+* **`stream_ip`** (流媒体服务 IP 规则，源自 `skk.moe`)
+* **`apple_services_ip`** (Apple 核心服务 IP 规则，源自 `skk.moe`)
 
 ### 2. Apple 生态服务 (源自 Repcz)
 * **`AppleProxy`**：苹果非大陆服务（通常需走代理，如 News, AI）
