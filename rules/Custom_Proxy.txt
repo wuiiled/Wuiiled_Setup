@@ -18,3 +18,4 @@ dash.xns.one
 #+.mtalk.google.com
 # EA Desktop 云同步
 #+.cloudsync-prod.s3.us-east-1.amazonaws.com
++.outlands.eu.org
