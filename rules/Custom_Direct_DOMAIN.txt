@@ -17,6 +17,7 @@
 +.imee.me
 +.ihtw.moe
 +.gh-proxy.com
++.gh-proxy.org
 +.gh.con.sh
 +.gh.ddlc.top
 +.gh.llkk.cc
