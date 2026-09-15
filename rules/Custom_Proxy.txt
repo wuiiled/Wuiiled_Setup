@@ -1,0 +1,4 @@
+dash.xns.one
++.platformio.org
++.arduino.cc
++.outlands.eu.org
