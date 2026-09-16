@@ -250,6 +250,7 @@ def compile_ruleset(cmd, output_name):
 
 def finalize_output(src, dst_dir, base_name, mode):
     if not os.path.exists(src) or os.path.getsize(src) == 0: return
+    os.makedirs(dst_dir, exist_ok=True)
     with open(src, 'r', encoding='utf-8') as f: lines = list(set(f.read().splitlines()))
     lines.sort()
     if mode == "add_prefix": lines = ["+." + line if not line.startswith("+.") else line for line in lines]

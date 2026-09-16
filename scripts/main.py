@@ -19,6 +19,12 @@ def main():
     for d in ["output/mihomo", "output/adg", "output/mosdns-x", "output/singbox", "output/smartdns"]:
         if os.path.exists(d):
             shutil.rmtree(d)
+    for d in [
+        "output/mihomo/geosite", "output/mihomo/geoip",
+        "output/singbox/geosite", "output/singbox/geoip",
+        "output/smartdns/geosite", "output/smartdns/geoip",
+        "output/adg", "output/mosdns-x"
+    ]:
         os.makedirs(d, exist_ok=True)
 
     print("\n🚀 [阶段 1/2] 构建 Mihomo 规则 (其他平台的前置依赖)...")

@@ -208,18 +208,19 @@ def convert_txt_to_json(txt_path, json_path):
     return True
 
 def run_all():
-    os.makedirs("output/singbox", exist_ok=True)
+    os.makedirs("output/singbox/geosite", exist_ok=True)
+    os.makedirs("output/singbox/geoip", exist_ok=True)
     has_sb = check_singbox()
     
     # 1. 复合规则 (既有域名又有 IP)，合体编译为 geosite-custom-*
     # Sing-box 规则集原生支持同时包含 domain 与 ip_cidr
     composite_configs = [
         ("geosite-custom-direct", 
-         ["output/mihomo/geosite-custom-direct.txt", "rules/Custom_Direct_DOMAIN.txt"], 
-         ["output/mihomo/geoip-custom-direct.txt", "rules/Custom_Direct_IP.txt"]),
+         ["output/mihomo/geosite/geosite-custom-direct.txt", "output/mihomo/geosite-custom-direct.txt", "rules/Custom_Direct_DOMAIN.txt"], 
+         ["output/mihomo/geoip/geoip-custom-direct.txt", "output/mihomo/geoip-custom-direct.txt", "rules/Custom_Direct_IP.txt"]),
         ("geosite-custom-dns", 
-         ["output/mihomo/geosite-custom-dns.txt", "rules/Custom_DNS_DOMAIN.txt"], 
-         ["output/mihomo/geoip-custom-dns.txt", "rules/Custom_DNS_IP.txt"]),
+         ["output/mihomo/geosite/geosite-custom-dns.txt", "output/mihomo/geosite-custom-dns.txt", "rules/Custom_DNS_DOMAIN.txt"], 
+         ["output/mihomo/geoip/geoip-custom-dns.txt", "output/mihomo/geoip-custom-dns.txt", "rules/Custom_DNS_IP.txt"]),
     ]
     
     for comp_name, domain_candidates, ip_candidates in composite_configs:
@@ -240,8 +241,8 @@ def run_all():
             temp_f.writelines(merged_lines)
             
         try:
-            json_path = os.path.join("output/singbox", f"{comp_name}.json")
-            srs_path = os.path.join("output/singbox", f"{comp_name}.srs")
+            json_path = os.path.join("output/singbox", "geosite", f"{comp_name}.json")
+            srs_path = os.path.join("output/singbox", "geosite", f"{comp_name}.srs")
             if convert_txt_to_json(temp_f_path, json_path):
                 if has_sb:
                     utils.compile_ruleset(
@@ -254,15 +255,15 @@ def run_all():
                 
     # 自定义单向规则
     custom_standalone = [
-        ("geosite-custom-download", ["output/mihomo/geosite-custom-download.txt", "rules/Custom_Download.txt"]),
-        ("geosite-custom-emby", ["output/mihomo/geosite-custom-emby.txt", "rules/Custom_Emby.txt"]),
-        ("geosite-custom-proxy", ["output/mihomo/geosite-custom-proxy.txt", "rules/Custom_Proxy.txt"]),
+        ("geosite-custom-download", ["output/mihomo/geosite/geosite-custom-download.txt", "output/mihomo/geosite-custom-download.txt", "rules/Custom_Download.txt"]),
+        ("geosite-custom-emby", ["output/mihomo/geosite/geosite-custom-emby.txt", "output/mihomo/geosite-custom-emby.txt", "rules/Custom_Emby.txt"]),
+        ("geosite-custom-proxy", ["output/mihomo/geosite/geosite-custom-proxy.txt", "output/mihomo/geosite-custom-proxy.txt", "rules/Custom_Proxy.txt"]),
     ]
     for c_name, candidates in custom_standalone:
         src = next((p for p in candidates if os.path.exists(p)), None)
         if src:
-            json_path = os.path.join("output/singbox", f"{c_name}.json")
-            srs_path = os.path.join("output/singbox", f"{c_name}.srs")
+            json_path = os.path.join("output/singbox", "geosite", f"{c_name}.json")
+            srs_path = os.path.join("output/singbox", "geosite", f"{c_name}.srs")
             if convert_txt_to_json(src, json_path):
                 if has_sb:
                     utils.compile_ruleset(
@@ -271,7 +272,7 @@ def run_all():
                     )
 
     # 2. 编译所有标准规则 (geosite-* 和 geoip-* 以及特定独立规则)
-    all_txts = glob("output/mihomo/*.txt")
+    all_txts = glob("output/mihomo/**/*.txt", recursive=True)
     
     excluded_names = {
         "geosite-custom-direct", "geosite-custom-dns", "geosite-custom-download", 
@@ -301,8 +302,9 @@ def run_all():
         if not (is_standard_geosite or is_standard_geoip):
             continue
             
-        json_path = os.path.join("output/singbox", f"{base_name}.json")
-        srs_path = os.path.join("output/singbox", f"{base_name}.srs")
+        sub_dir = "geoip" if is_standard_geoip else "geosite"
+        json_path = os.path.join("output/singbox", sub_dir, f"{base_name}.json")
+        srs_path = os.path.join("output/singbox", sub_dir, f"{base_name}.srs")
         
         if convert_txt_to_json(txt_path, json_path):
             if has_sb:
@@ -324,10 +326,11 @@ def run_all():
     }
     
     for alias_name, target_name in aliases.items():
-        target_srs = os.path.join("output/singbox", f"{target_name}.srs")
-        target_json = os.path.join("output/singbox", f"{target_name}.json")
-        alias_srs = os.path.join("output/singbox", f"{alias_name}.srs")
-        alias_json = os.path.join("output/singbox", f"{alias_name}.json")
+        sub_dir = "geoip" if alias_name.startswith("geoip-") else "geosite"
+        target_srs = os.path.join("output/singbox", sub_dir, f"{target_name}.srs")
+        target_json = os.path.join("output/singbox", sub_dir, f"{target_name}.json")
+        alias_srs = os.path.join("output/singbox", sub_dir, f"{alias_name}.srs")
+        alias_json = os.path.join("output/singbox", sub_dir, f"{alias_name}.json")
         
         if os.path.exists(target_srs):
             utils.safe_copy(target_srs, alias_srs)

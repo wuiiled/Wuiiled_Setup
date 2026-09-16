@@ -69,9 +69,10 @@ def convert_txt_to_smartdns(src_path, dst_path, is_ip):
     return True
 
 def run_all():
-    os.makedirs("output/smartdns", exist_ok=True)
-    # 从已经构建完成的 mihomo 规则文本目录进行转换
-    txt_files = glob.glob("output/mihomo/*.txt")
+    os.makedirs("output/smartdns/geosite", exist_ok=True)
+    os.makedirs("output/smartdns/geoip", exist_ok=True)
+    # 从已经构建完成的 mihomo 规则文本目录进行转换 (递归扫描)
+    txt_files = glob.glob("output/mihomo/**/*.txt", recursive=True)
     for src in txt_files:
         base_name = os.path.splitext(os.path.basename(src))[0]
         is_ip = (
@@ -79,7 +80,8 @@ def run_all():
             or base_name.lower().endswith(('_ip', '_ip.txt')) 
             or base_name in ("cnip", "gfwip")
         )
-        dst = os.path.join("output/smartdns", f"{base_name}.txt")
+        sub_dir = "geoip" if is_ip else "geosite"
+        dst = os.path.join("output/smartdns", sub_dir, f"{base_name}.txt")
         convert_txt_to_smartdns(src, dst, is_ip)
 
 if __name__ == '__main__':

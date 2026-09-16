@@ -228,7 +228,9 @@ def extract_all(cache_dir="."):
             elif itype == 'keyword':
                 lines.add(ival)
                 
-        out_txt = os.path.join("output/mihomo", f"{dst_name}.txt")
+        sub_dir = "geoip" if dst_name.startswith("geoip-") else "geosite"
+        os.makedirs(os.path.join("output/mihomo", sub_dir), exist_ok=True)
+        out_txt = os.path.join("output/mihomo", sub_dir, f"{dst_name}.txt")
         sorted_lines = sorted(list(lines))
         with open(out_txt, "w", encoding="utf-8") as f:
             f.write('\n'.join(sorted_lines) + ('\n' if sorted_lines else ''))
@@ -236,6 +238,7 @@ def extract_all(cache_dir="."):
         
     # 2. Extract GeoIPs
     print("⚡️ 下载与提纯 GeoIP 规则...")
+    os.makedirs("output/mihomo/geoip", exist_ok=True)
     for dst_name, url in GEOIP_TARGETS.items():
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -254,7 +257,7 @@ def extract_all(cache_dir="."):
                     continue
                     
             clean_ips = sorted(list(set(clean_ips)))
-            out_txt = os.path.join("output/mihomo", f"{dst_name}.txt")
+            out_txt = os.path.join("output/mihomo", "geoip", f"{dst_name}.txt")
             with open(out_txt, "w", encoding="utf-8") as f:
                 f.write('\n'.join(clean_ips) + ('\n' if clean_ips else ''))
             print(f"✅ [GeoIP]   {dst_name:<26} | 规则数: {len(clean_ips):,}")

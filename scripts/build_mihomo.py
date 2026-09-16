@@ -63,7 +63,7 @@ def gen_ads_reject():
     utils.optimize_smart_self(filter_ads, opt_ads)
     utils.optimize_smart_self(clean_allow, opt_allow)
     utils.apply_advanced_whitelist_filter(opt_ads, opt_allow, final_ads)
-    utils.finalize_output(final_ads, "output/mihomo", "geosite-ad", "add_prefix")
+    utils.finalize_output(final_ads, "output/mihomo/geosite", "geosite-ad", "add_prefix")
 
 def gen_ai():
     mod_dir = os.path.join(utils.get_work_dir(), "ai")
@@ -72,7 +72,7 @@ def gen_ai():
     utils.download_files_parallel(raw_ai, providers.AI_URLS)
     utils.process_normalize_domain(raw_ai, clean_ai, skip_allow_rules=False)
     utils.optimize_smart_self(clean_ai, opt_ai)
-    utils.finalize_output(opt_ai, "output/mihomo", "geosite-ai", "add_prefix")
+    utils.finalize_output(opt_ai, "output/mihomo/geosite", "geosite-ai", "add_prefix")
 
 def gen_fakeip():
     mod_dir = os.path.join(utils.get_work_dir(), "fakeip")
@@ -90,7 +90,7 @@ def gen_fakeip():
     clean_fakeip, final_fakeip = os.path.join(mod_dir, "clean_fakeip.txt"), os.path.join(mod_dir, "final_fakeip.txt")
     with open(clean_fakeip, 'w', encoding='utf-8') as f: f.write('\n'.join(sorted(unique_lines)) + '\n')
     utils.optimize_smart_self(clean_fakeip, final_fakeip)
-    utils.finalize_output(final_fakeip, "output/mihomo", "geosite-fakeip-filter", "none")
+    utils.finalize_output(final_fakeip, "output/mihomo/geosite", "geosite-fakeip-filter", "none")
 
 def gen_ads_drop():
     mod_dir = os.path.join(utils.get_work_dir(), "drop")
@@ -114,7 +114,7 @@ def gen_ads_drop():
     clean_rd_allow, final_rd = os.path.join(mod_dir, "clean_rd_allow.txt"), os.path.join(mod_dir, "final_rd.txt")
     utils.process_normalize_domain(merged_allow_raw, clean_rd_allow, skip_allow_rules=False)
     utils.apply_advanced_whitelist_filter(clean_rd, clean_rd_allow, final_rd)
-    utils.finalize_output(final_rd, "output/mihomo", "geosite-reject-drop", "none")
+    utils.finalize_output(final_rd, "output/mihomo/geosite", "geosite-reject-drop", "none")
 
 def gen_custom_rules():
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -142,7 +142,9 @@ def gen_custom_rules():
                     
         lines = sorted(list(set(lines)))
         print(f"✅ [Custom]  {name:<26} | 规则数: {len(lines):,}")
-        txt_path = f"output/mihomo/{name}.txt"
+        sub_dir = "geoip" if is_ip else "geosite"
+        os.makedirs(f"output/mihomo/{sub_dir}", exist_ok=True)
+        txt_path = f"output/mihomo/{sub_dir}/{name}.txt"
         with open(txt_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines) + ('\n' if lines else ''))
 
@@ -167,7 +169,9 @@ def gen_skk_rules():
                     
         lines = sorted(list(set(lines)))
         print(f"✅ [SKK]     {name:<26} | 规则数: {len(lines):,}")
-        txt_path = f"output/mihomo/{name}.txt"
+        sub_dir = "geoip" if is_ip else "geosite"
+        os.makedirs(f"output/mihomo/{sub_dir}", exist_ok=True)
+        txt_path = f"output/mihomo/{sub_dir}/{name}.txt"
         with open(txt_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines) + ('\n' if lines else ''))
 
@@ -212,18 +216,20 @@ def gen_gfwip():
     rule_count = len(lines)
     print(f"✅ [Mihomo]  {'geoip-gfw':<26} | 规则数: {rule_count:,} (IPv4: {len(sorted_ipv4):,}, IPv6: {len(sorted_ipv6):,})")
 
-    txt_path = "output/mihomo/geoip-gfw.txt"
+    os.makedirs("output/mihomo/geoip", exist_ok=True)
+    txt_path = "output/mihomo/geoip/geoip-gfw.txt"
     with open(txt_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines) + '\n')
 
 def compile_all_mrs():
     has_m = utils.check_mihomo()
     
-    # 批量编译所有 txt 为 mrs
-    all_txts = glob("output/mihomo/*.txt")
+    # 批量编译所有 txt 为 mrs (递归搜索 geosite/ 与 geoip/)
+    all_txts = glob("output/mihomo/**/*.txt", recursive=True)
     for txt_path in all_txts:
+        rel_dir = os.path.dirname(txt_path)
         base_name = os.path.splitext(os.path.basename(txt_path))[0]
-        mrs_path = os.path.join("output/mihomo", f"{base_name}.mrs")
+        mrs_path = os.path.join(rel_dir, f"{base_name}.mrs")
         
         is_ip = (
             base_name.startswith("geoip-") 
@@ -240,17 +246,19 @@ def compile_all_mrs():
 
     # 规范别名支持 (如 geosite-emby)
     for alias_name, target_name in [("geosite-emby", "geosite-custom-emby")]:
-        src_txt = os.path.join("output/mihomo", f"{target_name}.txt")
-        src_mrs = os.path.join("output/mihomo", f"{target_name}.mrs")
-        dst_txt = os.path.join("output/mihomo", f"{alias_name}.txt")
-        dst_mrs = os.path.join("output/mihomo", f"{alias_name}.mrs")
+        sub_dir = "geoip" if alias_name.startswith("geoip-") else "geosite"
+        src_txt = os.path.join("output/mihomo", sub_dir, f"{target_name}.txt")
+        src_mrs = os.path.join("output/mihomo", sub_dir, f"{target_name}.mrs")
+        dst_txt = os.path.join("output/mihomo", sub_dir, f"{alias_name}.txt")
+        dst_mrs = os.path.join("output/mihomo", sub_dir, f"{alias_name}.mrs")
         if os.path.exists(src_txt):
             utils.safe_copy(src_txt, dst_txt)
         if os.path.exists(src_mrs):
             utils.safe_copy(src_mrs, dst_mrs)
 
 def run_all():
-    os.makedirs("output/mihomo", exist_ok=True)
+    os.makedirs("output/mihomo/geosite", exist_ok=True)
+    os.makedirs("output/mihomo/geoip", exist_ok=True)
     work_dir = utils.get_work_dir()
     shared_dir = os.path.join(work_dir, "shared")
     os.makedirs(shared_dir, exist_ok=True)
