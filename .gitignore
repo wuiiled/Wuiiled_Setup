@@ -26,4 +26,5 @@ Thumbs.db
 # Project specific
 output/
 work/
+*.dat
 security_best_practices_report.md

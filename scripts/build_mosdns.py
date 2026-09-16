@@ -8,7 +8,9 @@ def run_all():
     os.makedirs("output/mosdns-x", exist_ok=True)
 
     # 1. 转换 ADs_merged
-    base_ads = "output/mihomo/ADs_merged.txt"
+    base_ads = "output/mihomo/geosite-ad.txt"
+    if not os.path.exists(base_ads):
+        base_ads = "output/mihomo/ADs_merged.txt"
     if os.path.exists(base_ads):
         lines = []
         with open(base_ads, 'r', encoding='utf-8') as f:
@@ -22,13 +24,13 @@ def run_all():
 
     # 2. SKK 规则 (从 mihomo 已生成的 txt 读取，不再重复下载)
     for name in providers.MIHOMO_SKK:
-        if name == "download": continue
+        if name in ("download", "geosite-download"): continue
         mihomo_txt = f"output/mihomo/{name}.txt"
         if not os.path.exists(mihomo_txt):
             print(f"⚠️ [MosDNS] {name} 源文件不存在，跳过")
             continue
         # IP 规则集直接以纯 IP CIDR 文本输出，与 gfwip 保持一致
-        if name.lower().endswith(('_ip', '_ip.txt')):
+        if name.startswith("geoip-") or name.lower().endswith(('_ip', '_ip.txt')):
             shutil.copyfile(mihomo_txt, f"output/mosdns-x/{name}.txt")
             print(f"✅ [MosDNS] {name:<25} | 规则已生成 (IP 规则)")
             continue

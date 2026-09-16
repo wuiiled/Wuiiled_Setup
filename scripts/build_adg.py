@@ -41,7 +41,12 @@ def run_all():
     print(f"✅ [AdGuard] {'ADs_merged_adg':<24} | 规则数: {len(adg_lines):,} (包含白名单例外规则)")
 
     # 2. Httpdns
-    content = download_file(providers.ADG_URLS["Httpdns"])
+    httpdns_txt = "output/mihomo/Httpdns.txt"
+    if os.path.exists(httpdns_txt):
+        with open(httpdns_txt, 'r', encoding='utf-8') as f:
+            content = f.read()
+    else:
+        content = download_file(providers.ADG_URLS.get("Httpdns", ""))
     lines = []
     for line in content.splitlines():
         if not line.strip(): continue

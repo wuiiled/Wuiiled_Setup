@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
+import shutil
 import build_mihomo
 import build_adg
 import build_mosdns
@@ -14,8 +15,10 @@ import build_singbox
 import build_smartdns
 
 def main():
-    print("⚡️ 创建基础输出目录...")
+    print("⚡️ 清理与创建基础输出目录...")
     for d in ["output/mihomo", "output/adg", "output/mosdns-x", "output/singbox", "output/smartdns"]:
+        if os.path.exists(d):
+            shutil.rmtree(d)
         os.makedirs(d, exist_ok=True)
 
     print("\n🚀 [阶段 1/2] 构建 Mihomo 规则 (其他平台的前置依赖)...")

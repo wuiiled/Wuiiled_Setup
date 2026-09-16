@@ -41,10 +41,23 @@ def cleanup():
 
 def check_mihomo():
     has_mihomo = shutil.which("mihomo") is not None
+    if not has_mihomo and sys.platform == "win32" and shutil.which("wsl"):
+        has_mihomo = True
     if not has_mihomo and os.environ.get("GITHUB_ACTIONS") == "true":
         print("❌ 错误: 在 GitHub Actions 环境中未找到 'mihomo' 编译器！必须中断任务以防生成残缺规则集。")
         sys.exit(1)
     return has_mihomo
+
+def safe_copy(src, dst):
+    """跨平台安全复制文件，自动规避 Windows 不区分大小写导致的 SameFileError。"""
+    try:
+        if os.path.normcase(os.path.abspath(src)) == os.path.normcase(os.path.abspath(dst)):
+            return
+        shutil.copyfile(src, dst)
+    except shutil.SameFileError:
+        pass
+    except Exception as e:
+        print(f"⚠️ 复制文件失败: {src} -> {dst}: {e}")
 
 def download_file(url, timeout=20, retries=3):
     ua = "Mozilla/5.0 (compatible; MihomoRuleConverter/1.0)"
@@ -209,10 +222,29 @@ def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
         if final_lines:
             f.write('\n'.join(final_lines) + '\n')
 
+def _resolve_cmd(cmd):
+    binary = cmd[0]
+    if shutil.which(binary):
+        return cmd
+    if sys.platform == "win32" and shutil.which("wsl"):
+        wsl_bin = f"/mnt/f/antigravity/debian13/bin/{binary}"
+        wsl_cmd = ["wsl", wsl_bin]
+        for arg in cmd[1:]:
+            if isinstance(arg, str) and (":\\" in arg or ":/" in arg or arg.startswith("output/") or arg.startswith("rules/")):
+                abs_path = os.path.abspath(arg)
+                drive, rest = os.path.splitdrive(abs_path)
+                wsl_path = f"/mnt/{drive[0].lower()}{rest.replace(chr(92), '/')}"
+                wsl_cmd.append(wsl_path)
+            else:
+                wsl_cmd.append(arg)
+        return wsl_cmd
+    return cmd
+
 def compile_ruleset(cmd, output_name):
     """执行规则集编译命令，失败时打印警告而非中断流程。"""
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        resolved_cmd = _resolve_cmd(cmd)
+        subprocess.run(resolved_cmd, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as e:
         print(f"⚠️ 警告: 编译 {output_name} 发生异常:\n{e.stderr}")
 

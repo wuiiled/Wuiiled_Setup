@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+import os
+
 ALLOW_URLS = [
     # Cats-Team dns-allowlist
     "https://raw.githubusercontent.com/Cats-Team/AdRules/script/mod/rules/dns-allowlist.txt",
@@ -29,16 +32,12 @@ ADS_BLOCK_URLS = [
 ]
 
 AI_URLS = [
-    "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/category-ai-!cn.list",
     "https://ruleset.skk.moe/List/non_ip/ai.conf",
-    "https://github.com/DustinWin/ruleset_geodata/raw/mihomo-ruleset/ai.list",
-    #"https://raw.githubusercontent.com/ConnersHua/RuleGo/master/Surge/Ruleset/Extra/AI.list"
 ]
 
 FAKE_IP_URLS = [
     "https://raw.githubusercontent.com/vernesong/OpenClash/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list",
     "https://raw.githubusercontent.com/juewuy/ShellCrash/dev/public/fake_ip_filter.list",
-    "https://raw.githubusercontent.com/DustinWin/ruleset_geodata/mihomo-ruleset/fakeip-filter.list",
     "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/scripts/fake-ip-addon.txt",
     "https://ruleset.skk.moe/Internal/clash_fake_ip_filter.yaml"
 ]
@@ -48,21 +47,15 @@ DROP_URLS = [
     "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Reject-drop.txt"
 ]
 
-CN_URLS_1 = ["https://static-file-global.353355.xyz/rules/cn-additional-list.txt"]
-CN_URLS_2 = ["https://ruleset.skk.moe/Clash/non_ip/domestic.txt"]
-
-MIHOMO_GENERIC_RAW = {
-    "private": "https://raw.githubusercontent.com/ForestL18/rules-dat/mihomo/geo/classical/private.list",
-    "Custom_DNS_DOMAIN": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_DNS_DOMAIN.txt",
-    "Custom_DNS_IP": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_DNS_IP.txt",
-    "Custom_Direct_DOMAIN": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Direct_DOMAIN.txt",
-    "Custom_Direct_IP": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Direct_IP.txt",
-    "Custom_Emby": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Emby.txt",
-    "Custom_Proxy": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Proxy.txt",
-    "Custom_Download": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Download.txt",
-    "LocationDKS": "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/LocationDKS.txt",
-    "cnip": "https://gaoyifan.github.io/china-operator-ip/china46.txt",
-    "proxy": "https://raw.githubusercontent.com/DustinWin/ruleset_geodata/refs/heads/mihomo-ruleset/proxy.list"
+CUSTOM_RULES = {
+    "geosite-custom-direct": "rules/Custom_Direct_DOMAIN.txt",
+    "geoip-custom-direct": "rules/Custom_Direct_IP.txt",
+    "geosite-custom-dns": "rules/Custom_DNS_DOMAIN.txt",
+    "geoip-custom-dns": "rules/Custom_DNS_IP.txt",
+    "geosite-custom-emby": "rules/Custom_Emby.txt",
+    "geosite-custom-proxy": "rules/Custom_Proxy.txt",
+    "geosite-custom-download": "rules/Custom_Download.txt",
+    "LocationDKS": "rules/LocationDKS.txt",
 }
 
 MIHOMO_SKK = {
@@ -73,32 +66,35 @@ MIHOMO_SKK = {
     "bytedance": "https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/bytedance.txt",
     "baidu": "https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/baidu.txt",
     "qihoo360": "https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/qihoo360.txt",
-    "download": "https://ruleset.skk.moe/Clash/domainset/download.txt",
     "domestic": "https://ruleset.skk.moe/Clash/non_ip/domestic.txt",
+    "download": "https://ruleset.skk.moe/Clash/domainset/download.txt",
     "microsoft_cdn": "https://ruleset.skk.moe/Clash/non_ip/microsoft_cdn.txt",
     "apple_services": "https://ruleset.skk.moe/Clash/non_ip/apple_services.txt",
     "apple_cn": "https://ruleset.skk.moe/Clash/non_ip/apple_cn.txt",
     "apple_cdn": "https://ruleset.skk.moe/Clash/domainset/apple_cdn.txt",
     "stream_ip": "https://ruleset.skk.moe/List/ip/stream.conf",
     "apple_services_ip": "https://ruleset.skk.moe/List/ip/apple_services.conf",
+    "geosite-download": "https://ruleset.skk.moe/Clash/domainset/download.txt",
+    "geosite-microsoft-cdn": "https://ruleset.skk.moe/Clash/non_ip/microsoft_cdn.txt",
+    "geosite-apple-services": "https://ruleset.skk.moe/Clash/non_ip/apple_services.txt",
+    "geosite-apple-cn": "https://ruleset.skk.moe/Clash/non_ip/apple_cn.txt",
+    "geosite-apple-cdn": "https://ruleset.skk.moe/Clash/domainset/apple_cdn.txt",
+    "geoip-stream": "https://ruleset.skk.moe/List/ip/stream.conf",
+    "geoip-apple": "https://ruleset.skk.moe/List/ip/apple_services.conf",
 }
 
 ADG_URLS = {
-    "Httpdns": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-httpdns-cn.list",
     "PCDN": "https://raw.githubusercontent.com/wuiiled/PCDN-mihomo-list/main/pcdn.list"
 }
 
 GFW_IP_URLS = [
-    # ChinaDNS 经典历史精准投毒 IPv4 单 IP 库
     "https://raw.githubusercontent.com/clowwindy/ChinaDNS/master/iplist.txt",
     "https://cdn.jsdelivr.net/gh/clowwindy/ChinaDNS@master/iplist.txt",
-    # EasyMosdns 投毒网段 CIDR 库
     "https://raw.githubusercontent.com/pmkol/easymosdns/rules/gfw_ip_list.txt",
     "https://cdn.jsdelivr.net/gh/pmkol/easymosdns@rules/gfw_ip_list.txt",
 ]
 
 GFW_IPV6_LIST = [
-    # GFW 经典假 IPv6 靶心地址与网段
     "2001:4860:4860::8888",
     "2001:4860:4860::8844",
     "2001:da8::666",
@@ -113,4 +109,3 @@ GFW_IPV6_LIST = [
     "::1",
     "::",
 ]
-
