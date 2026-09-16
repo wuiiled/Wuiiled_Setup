@@ -211,47 +211,100 @@ def run_all():
     os.makedirs("output/singbox", exist_ok=True)
     has_sb = check_singbox()
     
-    txt_files = glob("output/mihomo/*.txt")
-    
-    # 1. 优先处理复合规则 (既有域名又有 IP)，合体编译
-    paired_configs = [
-        ("custom-direct", "geosite-custom-direct.txt", "geoip-custom-direct.txt"),
-        ("custom-dns", "geosite-custom-dns.txt", "geoip-custom-dns.txt"),
-        ("private", "geosite-private.txt", "geoip-private.txt"),
+    # 1. 优先处理复合规则 (既有域名又有 IP)，合体编译为单一规则集
+    # 满足用户要求：在 singbox 中 Custom_Direct 和 Custom_DNS 是同时包含域名和 IP 的单一规则
+    composite_configs = [
+        ("Custom_Direct", 
+         ["output/mihomo/geosite-custom-direct.txt", "rules/Custom_Direct_DOMAIN.txt"], 
+         ["output/mihomo/geoip-custom-direct.txt", "rules/Custom_Direct_IP.txt"]),
+        ("Custom_DNS", 
+         ["output/mihomo/geosite-custom-dns.txt", "rules/Custom_DNS_DOMAIN.txt"], 
+         ["output/mihomo/geoip-custom-dns.txt", "rules/Custom_DNS_IP.txt"]),
     ]
     
-    for comp_name, site_name, ip_name in paired_configs:
-        site_path = os.path.join("output/mihomo", site_name)
-        ip_path = os.path.join("output/mihomo", ip_name)
+    for comp_name, domain_candidates, ip_candidates in composite_configs:
+        domain_src = next((p for p in domain_candidates if os.path.exists(p)), None)
+        ip_src = next((p for p in ip_candidates if os.path.exists(p)), None)
         
-        if os.path.exists(site_path) and os.path.exists(ip_path):
-            print(f"📦 [Sing-box] 复合规则正在合并: {site_name} + {ip_name} -> {comp_name}.srs")
-            merged_lines = []
-            for p in [site_path, ip_path]:
-                with open(p, 'r', encoding='utf-8') as f:
-                    merged_lines.extend(f.readlines())
-                    
-            temp_dir = utils.get_work_dir()
-            temp_f_path = os.path.join(temp_dir, f"{comp_name}.txt")
-            with open(temp_f_path, 'w', encoding='utf-8') as temp_f:
-                temp_f.writelines(merged_lines)
+        merged_lines = []
+        if domain_src:
+            with open(domain_src, 'r', encoding='utf-8') as f:
+                merged_lines.extend(f.readlines())
+        if ip_src:
+            with open(ip_src, 'r', encoding='utf-8') as f:
+                merged_lines.extend(f.readlines())
                 
-            try:
-                json_path = os.path.join("output/singbox", f"{comp_name}.json")
-                srs_path = os.path.join("output/singbox", f"{comp_name}.srs")
-                if convert_txt_to_json(temp_f_path, json_path):
-                    if has_sb:
-                        utils.compile_ruleset(
-                            ["sing-box", "rule-set", "compile", json_path, "-o", srs_path],
-                            f"{comp_name}.srs"
-                        )
-            finally:
-                if os.path.exists(temp_f_path):
-                    os.remove(temp_f_path)
-                    
-    # 2. 编译所有标准规则 (包括单个 geosite- 和 geoip-)
-    for txt_path in txt_files:
+        temp_dir = utils.get_work_dir()
+        temp_f_path = os.path.join(temp_dir, f"{comp_name}.txt")
+        with open(temp_f_path, 'w', encoding='utf-8') as temp_f:
+            temp_f.writelines(merged_lines)
+            
+        try:
+            json_path = os.path.join("output/singbox", f"{comp_name}.json")
+            srs_path = os.path.join("output/singbox", f"{comp_name}.srs")
+            if convert_txt_to_json(temp_f_path, json_path):
+                if has_sb:
+                    utils.compile_ruleset(
+                        ["sing-box", "rule-set", "compile", json_path, "-o", srs_path],
+                        f"{comp_name}.srs"
+                    )
+        finally:
+            if os.path.exists(temp_f_path):
+                os.remove(temp_f_path)
+                
+    # 自定义单向规则
+    custom_standalone = [
+        ("Custom_Download", ["output/mihomo/geosite-custom-download.txt", "rules/Custom_Download.txt"]),
+        ("Custom_Emby", ["output/mihomo/geosite-custom-emby.txt", "rules/Custom_Emby.txt"]),
+        ("Custom_Proxy", ["output/mihomo/geosite-custom-proxy.txt", "rules/Custom_Proxy.txt"]),
+    ]
+    for c_name, candidates in custom_standalone:
+        src = next((p for p in candidates if os.path.exists(p)), None)
+        if src:
+            json_path = os.path.join("output/singbox", f"{c_name}.json")
+            srs_path = os.path.join("output/singbox", f"{c_name}.srs")
+            if convert_txt_to_json(src, json_path):
+                if has_sb:
+                    utils.compile_ruleset(
+                        ["sing-box", "rule-set", "compile", json_path, "-o", srs_path],
+                        f"{c_name}.srs"
+                    )
+
+    # 2. 编译所有标准规则 (geosite-* 和 geoip-* 以及特定独立规则)
+    # 严格过滤，杜绝编译任何无前缀的别名或旧规则文件
+    all_txts = glob("output/mihomo/*.txt")
+    
+    excluded_names = {
+        "geosite-custom-direct", "geosite-custom-dns", "geosite-custom-download", 
+        "geosite-custom-emby", "geosite-custom-proxy",
+        "geoip-custom-direct", "geoip-custom-dns",
+        # 排除所有无前缀副本与历史别名
+        "telegram", "twitter", "facebook", "cn", "cnip", "gfw", "proxy",
+        "download", "microsoft_cdn", "apple_services", "apple_cn", "apple_cdn",
+        "stream_ip", "apple_services_ip", "private", "CN_merged", "Custom_ADs_merged",
+        "Custom_Direct_DOMAIN", "Custom_Direct_IP", "Custom_DNS_DOMAIN", "Custom_DNS_IP",
+        "Custom_Direct", "Custom_DNS", "Custom_Download", "Custom_Emby", "Custom_Proxy",
+        "ADs_merged", "AIs_merged", "Fake_IP_Filter_merged", "Reject_Drop_merged"
+    }
+    
+    allowed_standalone = {
+        "LocationDKS", "gfwip", "Httpdns",
+        "alibaba", "baidu", "bilibili", "bytedance", "domestic", "qihoo360", "tencent", "xiaomi"
+    }
+    
+    for txt_path in all_txts:
         base_name = os.path.splitext(os.path.basename(txt_path))[0]
+        
+        if base_name in excluded_names:
+            continue
+            
+        is_standard_geosite = base_name.startswith("geosite-")
+        is_standard_geoip = base_name.startswith("geoip-")
+        is_allowed_standalone = base_name in allowed_standalone
+        
+        if not (is_standard_geosite or is_standard_geoip or is_allowed_standalone):
+            continue
+            
         json_path = os.path.join("output/singbox", f"{base_name}.json")
         srs_path = os.path.join("output/singbox", f"{base_name}.srs")
         
@@ -261,55 +314,41 @@ def run_all():
                     ["sing-box", "rule-set", "compile", json_path, "-o", srs_path],
                     f"{base_name}.srs"
                 )
-
-    # 3. 生成向后兼容的别名文件 (平滑过渡保障)
+                
+    # 3. 针对用户的 {tag} 标签匹配需求生成必要的向后兼容别名文件
+    # 仅生成与用户的标签命名（如无中划线变体、历史订阅直链）精准匹配的别名，绝不生成 telegram.srs 等混乱缩写！
     aliases = {
-        "Custom_Direct": "custom-direct",
-        "Custom-Direct": "custom-direct",
-        "Custom_Direct_DOMAIN": "geosite-custom-direct",
-        "Custom_Direct_IP": "geoip-custom-direct",
-        "Custom_DNS": "custom-dns",
-        "Custom-DNS": "custom-dns",
-        "Custom_DNS_DOMAIN": "geosite-custom-dns",
-        "Custom_DNS_IP": "geoip-custom-dns",
-        "Custom_Emby": "geosite-custom-emby",
-        "Custom-Emby": "geosite-custom-emby",
-        "Custom_Download": "geosite-custom-download",
-        "Custom-Download": "geosite-custom-download",
-        "Custom_Proxy": "geosite-custom-proxy",
-        "Custom-Proxy": "geosite-custom-proxy",
-        "Custom_ADs_merged": "geosite-ad",
+        # 用户的 {tag} 标签别名 (支持 singbox 规则中 {tag}.srs 直接请求)
+        "geosite-emby": "Custom_Emby",
+        "geosite-game": "geosite-games",
+        "geosite-!cn": "geosite-geolocation-!cn",
+        "geosite-microsoftcdn": "geosite-microsoft-cdn",
+        "geosite-appleservice": "geosite-apple-services",
+        "geosite-applecn": "geosite-apple-cn",
+        "geosite-applecdn": "geosite-apple-cdn",
+        "Custom-Direct": "Custom_Direct",
+        "Custom-DNS": "Custom_DNS",
+        "Custom-Download": "Custom_Download",
+        "Custom-Emby": "Custom_Emby",
+        "Custom-Proxy": "Custom_Proxy",
+        # 历史配置直链兼容
         "ADs_merged": "geosite-ad",
         "AIs_merged": "geosite-ai",
         "Fake_IP_Filter_merged": "geosite-fakeip-filter",
         "Reject_Drop_merged": "geosite-reject-drop",
-        "download": "geosite-download",
-        "microsoft_cdn": "geosite-microsoft-cdn",
-        "apple_services": "geosite-apple-services",
-        "apple_cn": "geosite-apple-cn",
-        "apple_cdn": "geosite-apple-cdn",
-        "stream_ip": "geoip-stream",
-        "apple_services_ip": "geoip-apple",
-        "cnip": "geoip-cn",
-        "cn": "geosite-cn",
-        "gfw": "geosite-gfw",
-        "proxy": "geosite-geolocation-!cn",
-        "CN_merged": "geosite-cn",
-        "telegram": "geoip-telegram",
-        "twitter": "geoip-twitter",
-        "facebook": "geoip-facebook",
+        "Custom_ADs_merged": "geosite-ad",
     }
     
-    for old_name, target_name in aliases.items():
+    for alias_name, target_name in aliases.items():
         target_srs = os.path.join("output/singbox", f"{target_name}.srs")
         target_json = os.path.join("output/singbox", f"{target_name}.json")
-        old_srs = os.path.join("output/singbox", f"{old_name}.srs")
-        old_json = os.path.join("output/singbox", f"{old_name}.json")
+        alias_srs = os.path.join("output/singbox", f"{alias_name}.srs")
+        alias_json = os.path.join("output/singbox", f"{alias_name}.json")
         
         if os.path.exists(target_srs):
-            utils.safe_copy(target_srs, old_srs)
+            utils.safe_copy(target_srs, alias_srs)
         if os.path.exists(target_json):
-            utils.safe_copy(target_json, old_json)
+            utils.safe_copy(target_json, alias_json)
 
 if __name__ == '__main__':
     run_all()
