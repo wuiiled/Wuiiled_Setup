@@ -79,3 +79,25 @@ class TestConvertTxtToJson:
         result, data = self._run(["example.com # comment"])
         assert result is True
         assert "example.com" in data["rules"][0]["domain"]
+
+
+class TestSingboxRuleNaming:
+    """Verify rules and alias configurations follow geosite-* naming without obsolete aliases."""
+
+    def test_no_obsolete_aliases(self):
+        import build_singbox
+        # Verify prohibited names are not in aliases
+        prohibited = [
+            "ADs_merged", "Custom_ADs_merged", "AIs_merged", 
+            "Fake_IP_Filter_merged", "Reject_Drop_merged",
+            "Custom-DNS", "Custom_DNS", "Custom-Direct", "Custom_Direct",
+            "Custom-Download", "Custom_Download", "Custom-Emby", "Custom_Emby", "Custom-Proxy", "Custom_Proxy"
+        ]
+        # In build_singbox, aliases are defined in run_all
+        # We also check that composite_configs map to geosite-custom-*
+        import inspect
+        src = inspect.getsource(build_singbox.run_all)
+        for name in prohibited:
+            assert f'"{name}":' not in src, f"Obsolete alias key '{name}' found in run_all"
+            assert f'("{name}",' not in src, f"Obsolete config tuple '{name}' found in run_all"
+

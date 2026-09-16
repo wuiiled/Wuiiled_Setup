@@ -67,8 +67,6 @@ MIHOMO_SKK = {
     "baidu": "https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/baidu.txt",
     "qihoo360": "https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/qihoo360.txt",
     "domestic": "https://ruleset.skk.moe/Clash/non_ip/domestic.txt",
-    "stream_ip": "https://ruleset.skk.moe/List/ip/stream.conf",
-    "apple_services_ip": "https://ruleset.skk.moe/List/ip/apple_services.conf",
     "geosite-download": "https://ruleset.skk.moe/Clash/domainset/download.txt",
     "geosite-microsoft-cdn": "https://ruleset.skk.moe/Clash/non_ip/microsoft_cdn.txt",
     "geosite-apple-services": "https://ruleset.skk.moe/Clash/non_ip/apple_services.txt",

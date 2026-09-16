@@ -1,16 +1,22 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import os
+import sys
 import re
 import shutil
 import utils
 import providers
 
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 def run_all():
     os.makedirs("output/mosdns-x", exist_ok=True)
 
-    # 1. 转换 ADs_merged
+    # 1. 转换 geosite-ad
     base_ads = "output/mihomo/geosite-ad.txt"
-    if not os.path.exists(base_ads):
-        base_ads = "output/mihomo/ADs_merged.txt"
     if os.path.exists(base_ads):
         lines = []
         with open(base_ads, 'r', encoding='utf-8') as f:

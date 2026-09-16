@@ -216,10 +216,10 @@ def gen_gfwip():
     with open(txt_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines) + '\n')
 
-def compile_all_mrs_and_aliases():
+def compile_all_mrs():
     has_m = utils.check_mihomo()
     
-    # 1. 批量编译所有 txt 为 mrs
+    # 批量编译所有 txt 为 mrs
     all_txts = glob("output/mihomo/*.txt")
     for txt_path in all_txts:
         base_name = os.path.splitext(os.path.basename(txt_path))[0]
@@ -238,39 +238,12 @@ def compile_all_mrs_and_aliases():
                 f"{base_name}.mrs"
             )
 
-    # 2. 为老旧客户端和配置生成别名文件，确保 100% 向下兼容
-    aliases = {
-        "ADs_merged": "geosite-ad",
-        "AIs_merged": "geosite-ai",
-        "Fake_IP_Filter_merged": "geosite-fakeip-filter",
-        "Reject_Drop_merged": "geosite-reject-drop",
-        "Custom_Direct_DOMAIN": "geosite-custom-direct",
-        "Custom_Direct_IP": "geoip-custom-direct",
-        "Custom_DNS_DOMAIN": "geosite-custom-dns",
-        "Custom_DNS_IP": "geoip-custom-dns",
-        "Custom_Emby": "geosite-custom-emby",
-        "Custom_Proxy": "geosite-custom-proxy",
-        "Custom_Download": "geosite-custom-download",
-        "apple_services": "geosite-apple-services",
-        "apple_cn": "geosite-apple-cn",
-        "apple_cdn": "geosite-apple-cdn",
-        "microsoft_cdn": "geosite-microsoft-cdn",
-        "download": "geosite-download",
-        "stream_ip": "geoip-stream",
-        "apple_services_ip": "geoip-apple",
-        "cn": "geosite-cn",
-        "cnip": "geoip-cn",
-        "gfw": "geosite-gfw",
-        "proxy": "geosite-geolocation-!cn",
-        "CN_merged": "geosite-cn"
-    }
-
-    for old_name, target_name in aliases.items():
+    # 规范别名支持 (如 geosite-emby)
+    for alias_name, target_name in [("geosite-emby", "geosite-custom-emby")]:
         src_txt = os.path.join("output/mihomo", f"{target_name}.txt")
         src_mrs = os.path.join("output/mihomo", f"{target_name}.mrs")
-        dst_txt = os.path.join("output/mihomo", f"{old_name}.txt")
-        dst_mrs = os.path.join("output/mihomo", f"{old_name}.mrs")
-        
+        dst_txt = os.path.join("output/mihomo", f"{alias_name}.txt")
+        dst_mrs = os.path.join("output/mihomo", f"{alias_name}.mrs")
         if os.path.exists(src_txt):
             utils.safe_copy(src_txt, dst_txt)
         if os.path.exists(src_mrs):
@@ -300,8 +273,8 @@ def run_all():
         for future in futures:
             future.result()
             
-    print("\n📦 正在编译所有 Mihomo 规则集 (.mrs) 并生成向下兼容别名...")
-    compile_all_mrs_and_aliases()
+    print("\n📦 正在编译所有 Mihomo 规则集 (.mrs)...")
+    compile_all_mrs()
 
 if __name__ == '__main__':
     run_all()

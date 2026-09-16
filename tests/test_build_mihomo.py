@@ -70,8 +70,32 @@ class TestSKKRulesParsing:
         assert not any("no-resolve" in ip for ip in ip_lines)
 
     def test_providers_has_new_skk_ip_entries(self):
-        """Verify stream_ip and apple_services_ip exist in providers.MIHOMO_SKK."""
-        assert "stream_ip" in providers.MIHOMO_SKK
-        assert "apple_services_ip" in providers.MIHOMO_SKK
-        assert providers.MIHOMO_SKK["stream_ip"] == "https://ruleset.skk.moe/List/ip/stream.conf"
-        assert providers.MIHOMO_SKK["apple_services_ip"] == "https://ruleset.skk.moe/List/ip/apple_services.conf"
+        """Verify geoip-stream and geoip-apple exist in providers.MIHOMO_SKK."""
+        assert "geoip-stream" in providers.MIHOMO_SKK
+        assert "geoip-apple" in providers.MIHOMO_SKK
+        assert providers.MIHOMO_SKK["geoip-stream"] == "https://ruleset.skk.moe/List/ip/stream.conf"
+        assert providers.MIHOMO_SKK["geoip-apple"] == "https://ruleset.skk.moe/List/ip/apple_services.conf"
+
+
+class TestMihomoRuleNaming:
+    """Verify rules follow geosite-* / geoip-* naming without obsolete aliases."""
+
+    def test_providers_custom_rules_standard_names(self):
+        expected_custom_rules = [
+            "geosite-custom-direct",
+            "geoip-custom-direct",
+            "geosite-custom-dns",
+            "geoip-custom-dns",
+            "geosite-custom-emby",
+            "geosite-custom-proxy",
+            "geosite-custom-download",
+            "LocationDKS",
+        ]
+        for rule in expected_custom_rules:
+            assert rule in providers.CUSTOM_RULES, f"Expected rule {rule} missing in CUSTOM_RULES"
+        
+        # Verify no old Custom_* or ADs_merged keys in CUSTOM_RULES
+        prohibited = ["Custom_DNS_DOMAIN", "Custom_DNS_IP", "Custom_Direct_DOMAIN", "Custom_Direct_IP", "ADs_merged"]
+        for p in prohibited:
+            assert p not in providers.CUSTOM_RULES, f"Prohibited key {p} in CUSTOM_RULES"
+
