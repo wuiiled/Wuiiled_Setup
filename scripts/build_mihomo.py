@@ -210,9 +210,9 @@ def gen_gfwip():
         lines.append(str(net.network_address) if net.prefixlen == 128 else str(net))
 
     rule_count = len(lines)
-    print(f"✅ [Mihomo]  {'gfwip':<26} | 规则数: {rule_count:,} (IPv4: {len(sorted_ipv4):,}, IPv6: {len(sorted_ipv6):,})")
+    print(f"✅ [Mihomo]  {'geoip-gfw':<26} | 规则数: {rule_count:,} (IPv4: {len(sorted_ipv4):,}, IPv6: {len(sorted_ipv6):,})")
 
-    txt_path = "output/mihomo/gfwip.txt"
+    txt_path = "output/mihomo/geoip-gfw.txt"
     with open(txt_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines) + '\n')
 

@@ -284,10 +284,7 @@ def run_all():
         "Custom_Direct_DOMAIN", "Custom_Direct_IP", "Custom_DNS_DOMAIN", "Custom_DNS_IP",
         "Custom_Direct", "Custom_DNS", "Custom_Download", "Custom_Emby", "Custom_Proxy",
         "Custom-Direct", "Custom-DNS", "Custom-Download", "Custom-Emby", "Custom-Proxy",
-        "ADs_merged", "AIs_merged", "Fake_IP_Filter_merged", "Reject_Drop_merged"
-    }
-    
-    allowed_standalone = {
+        "ADs_merged", "AIs_merged", "Fake_IP_Filter_merged", "Reject_Drop_merged",
         "LocationDKS", "gfwip", "Httpdns",
         "alibaba", "baidu", "bilibili", "bytedance", "domestic", "qihoo360", "tencent", "xiaomi"
     }
@@ -300,9 +297,8 @@ def run_all():
             
         is_standard_geosite = base_name.startswith("geosite-")
         is_standard_geoip = base_name.startswith("geoip-")
-        is_allowed_standalone = base_name in allowed_standalone
         
-        if not (is_standard_geosite or is_standard_geoip or is_allowed_standalone):
+        if not (is_standard_geosite or is_standard_geoip):
             continue
             
         json_path = os.path.join("output/singbox", f"{base_name}.json")

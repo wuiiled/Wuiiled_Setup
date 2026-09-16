@@ -89,13 +89,40 @@ class TestMihomoRuleNaming:
             "geosite-custom-emby",
             "geosite-custom-proxy",
             "geosite-custom-download",
-            "LocationDKS",
+            "geosite-location-dks",
         ]
         for rule in expected_custom_rules:
             assert rule in providers.CUSTOM_RULES, f"Expected rule {rule} missing in CUSTOM_RULES"
         
         # Verify no old Custom_* or ADs_merged keys in CUSTOM_RULES
-        prohibited = ["Custom_DNS_DOMAIN", "Custom_DNS_IP", "Custom_Direct_DOMAIN", "Custom_Direct_IP", "ADs_merged"]
+        prohibited = ["Custom_DNS_DOMAIN", "Custom_DNS_IP", "Custom_Direct_DOMAIN", "Custom_Direct_IP", "ADs_merged", "LocationDKS"]
         for p in prohibited:
             assert p not in providers.CUSTOM_RULES, f"Prohibited key {p} in CUSTOM_RULES"
+
+    def test_providers_skk_standard_names(self):
+        expected_skk_rules = [
+            "geosite-alibaba",
+            "geosite-tencent",
+            "geosite-bilibili",
+            "geosite-xiaomi",
+            "geosite-bytedance",
+            "geosite-baidu",
+            "geosite-qihoo360",
+            "geosite-domestic",
+            "geosite-download",
+            "geosite-microsoft-cdn",
+            "geosite-apple-services",
+            "geosite-apple-cn",
+            "geosite-apple-cdn",
+            "geoip-stream",
+            "geoip-apple",
+        ]
+        for rule in expected_skk_rules:
+            assert rule in providers.MIHOMO_SKK, f"Expected rule {rule} missing in MIHOMO_SKK"
+
+        # Verify no un-prefixed old names in MIHOMO_SKK
+        prohibited_skk = ["alibaba", "tencent", "bilibili", "xiaomi", "bytedance", "baidu", "qihoo360", "domestic", "download", "microsoft_cdn", "apple_services", "apple_cn", "apple_cdn", "stream_ip", "apple_services_ip"]
+        for p in prohibited_skk:
+            assert p not in providers.MIHOMO_SKK, f"Prohibited key {p} in MIHOMO_SKK"
+
 

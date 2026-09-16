@@ -58,8 +58,10 @@ def run_all():
             f.write('\n'.join(lines) + '\n')
         print(f"✅ [MosDNS] {name:<25} | 规则数: {len(lines):,}")
 
-    # 3. 复制 gfwip.txt (IP 规则无需额外转换)
-    mihomo_gfwip = "output/mihomo/gfwip.txt"
+    # 3. 复制 geoip-gfw.txt (IP 规则无需额外转换)
+    mihomo_gfwip = "output/mihomo/geoip-gfw.txt"
+    if not os.path.exists(mihomo_gfwip):
+        mihomo_gfwip = "output/mihomo/gfwip.txt"
     if os.path.exists(mihomo_gfwip):
-        shutil.copyfile(mihomo_gfwip, "output/mosdns-x/gfwip.txt")
-        print(f"✅ [MosDNS] {'gfwip':<25} | 规则已生成")
+        shutil.copyfile(mihomo_gfwip, "output/mosdns-x/geoip-gfw.txt")
+        print(f"✅ [MosDNS] {'geoip-gfw':<25} | 规则已生成")

@@ -47,7 +47,9 @@ def run_all():
     print(f"✅ [AdGuard] {'ADs_merged_adg':<24} | 规则数: {len(adg_lines):,} (包含白名单例外规则)")
 
     # 2. Httpdns
-    httpdns_txt = "output/mihomo/Httpdns.txt"
+    httpdns_txt = "output/mihomo/geosite-httpdns.txt"
+    if not os.path.exists(httpdns_txt):
+        httpdns_txt = "output/mihomo/Httpdns.txt"
     if os.path.exists(httpdns_txt):
         with open(httpdns_txt, 'r', encoding='utf-8') as f:
             content = f.read()

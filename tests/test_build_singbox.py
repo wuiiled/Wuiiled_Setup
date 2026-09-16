@@ -91,7 +91,9 @@ class TestSingboxRuleNaming:
             "ADs_merged", "Custom_ADs_merged", "AIs_merged", 
             "Fake_IP_Filter_merged", "Reject_Drop_merged",
             "Custom-DNS", "Custom_DNS", "Custom-Direct", "Custom_Direct",
-            "Custom-Download", "Custom_Download", "Custom-Emby", "Custom_Emby", "Custom-Proxy", "Custom_Proxy"
+            "Custom-Download", "Custom_Download", "Custom-Emby", "Custom_Emby", "Custom-Proxy", "Custom_Proxy",
+            "LocationDKS", "gfwip", "Httpdns",
+            "alibaba", "baidu", "bilibili", "bytedance", "domestic", "qihoo360", "tencent", "xiaomi"
         ]
         # In build_singbox, aliases are defined in run_all
         # We also check that composite_configs map to geosite-custom-*

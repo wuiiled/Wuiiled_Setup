@@ -180,7 +180,7 @@ GEOSITE_TARGETS = {
     "category-games-cn": "geosite-games-cn",
     "private": "geosite-private",
     "apple-tvplus": "geosite-apple-tvplus",
-    "category-httpdns-cn": "Httpdns"
+    "category-httpdns-cn": "geosite-httpdns"
 }
 
 GEOIP_TARGETS = {

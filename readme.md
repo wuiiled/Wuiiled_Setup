@@ -21,14 +21,14 @@
 
 | 🗂️ 规则名称 | 📝 作用 | 🌐 上游元数据来源 (Sources) |
 | :--- | :--- | :--- |
-| **`ADs_merged`** | **终极去广告/防追踪**<br>*(剔除了数十万重复项与误杀项)* | 1. `pmkol/easymosdns` 广告列表<br>2. AdGuard 官方过滤列表 (1, 3, 4)<br>3. `ForestL18` PCDN 拦截库<br>4. Pi-hole 拦截名单<br>5. `Cats-Team/AdRules` 域名集<br>6. 库内自定义拦截 `Reject-addon.txt` |
-| **`AIs_merged`** | **AI 服务合集**<br>*(ChatGPT/Claude/Gemini等)* | 1. `MetaCubeX` AI 列表<br>2. `skk.moe` AI 配置<br>3. `DustinWin` AI 规则<br>4. `ConnersHua` AI 附加规则 |
-| **`Fake_IP_Filter`** | **Fake-IP 过滤名单**<br>*(不适合走 Fake-IP 的域名)* | 1. `OpenClash` 默认过滤列表<br>2. `ShellCrash` 过滤列表<br>3. `DustinWin` 过滤列表<br>4. `skk.moe` 过滤列表<br>5. 库内自定义 `fake-ip-addon.txt` |
-| **`Reject_Drop`** | **高危/垃圾流量丢弃** | 1. `skk.moe` 拒绝丢弃列表<br>2. 库内自定义 `Custom_Reject-drop.txt` |
-| **`CN_merged`** | **国内直连合集** | 1. `353355.xyz` 国内附加列表<br>2. `skk.moe` 国内域名合集 |
+| **`geosite-ad`** | **终极去广告/防追踪**<br>*(剔除了数十万重复项与误杀项)* | 1. `pmkol/easymosdns` 广告列表<br>2. AdGuard 官方过滤列表 (1, 3, 4)<br>3. `ForestL18` PCDN 拦截库<br>4. Pi-hole 拦截名单<br>5. `Cats-Team/AdRules` 域名集<br>6. 库内自定义拦截 `Reject-addon.txt` |
+| **`geosite-ai`** | **AI 服务合集**<br>*(ChatGPT/Claude/Gemini等)* | 1. `MetaCubeX` AI 列表<br>2. `skk.moe` AI 配置<br>3. `DustinWin` AI 规则<br>4. `ConnersHua` AI 附加规则 |
+| **`geosite-fakeip-filter`** | **Fake-IP 过滤名单**<br>*(不适合走 Fake-IP 的域名)* | 1. `OpenClash` 默认过滤列表<br>2. `ShellCrash` 过滤列表<br>3. `DustinWin` 过滤列表<br>4. `skk.moe` 过滤列表<br>5. 库内自定义 `fake-ip-addon.txt` |
+| **`geosite-reject-drop`** | **高危/垃圾流量丢弃** | 1. `skk.moe` 拒绝丢弃列表<br>2. 库内自定义 `Custom_Reject-drop.txt` |
+| **`geosite-cn`** | **国内直连合集** | 1. `Gaoyifan` 中国运营商网段<br>2. `Loyalsoldier` 中国域名列表 |
 
 ### 🛡️ 白名单防误杀机制
-上述 `ADs_merged` 和 `Reject_Drop` 在生成前，会严格经过以下白名单的过滤，确保不会造成正常网站（如淘宝、微软、苹果服务）的断流：
+上述 `geosite-ad` 和 `geosite-reject-drop` 在生成前，会严格经过以下白名单的过滤，确保不会造成正常网站（如淘宝、微软、苹果服务）的断流：
 * `Cats-Team/AdRules` Allowlist
 * AdGuardSDNSFilter Exceptions
 * 库内自定义白名单 `scripts/exclude-keyword.txt`
@@ -41,27 +41,29 @@
 
 ### 1. 互联网大厂服务 (源自 SKK)
 由 `ruleset.skk.moe` 提供，按国内大厂生态精准分类：
-* **`alibaba`** (阿里巴巴系)
-* **`tencent`** (腾讯系)
-* **`bilibili`** (哔哩哔哩)
-* **`xiaomi`** (小米系)
-* **`bytedance`** (字节跳动)
-* **`baidu`** (百度系)
-* **`qihoo360`** (奇虎360)
-* **`stream_ip`** (流媒体服务 IP 规则，源自 `skk.moe`)
-* **`apple_services_ip`** (Apple 核心服务 IP 规则，源自 `skk.moe`)
+* **`geosite-alibaba`** (阿里巴巴系)
+* **`geosite-tencent`** (腾讯系)
+* **`geosite-bilibili`** (哔哩哔哩)
+* **`geosite-xiaomi`** (小米系)
+* **`geosite-bytedance`** (字节跳动)
+* **`geosite-baidu`** (百度系)
+* **`geosite-qihoo360`** (奇虎360)
+* **`geoip-stream`** (流媒体服务 IP 规则，源自 `skk.moe`)
+* **`geoip-apple`** (Apple 核心服务 IP 规则，源自 `skk.moe`)
 
-### 2. Apple 生态服务 (源自 Repcz)
-* **`AppleProxy`**：苹果非大陆服务（通常需走代理，如 News, AI）
-* **`AppleServers`**：苹果核心服务器
-* **`AppleCN`**：苹果中国大陆本地服务（CDN，需直连）
+### 2. Apple 生态服务
+* **`geosite-apple-services`**：苹果核心服务器与服务
+* **`geosite-apple-cn`**：苹果中国大陆本地服务
+* **`geosite-apple-cdn`**：苹果 CDN 节点
+* **`geosite-apple-tvplus`**：Apple TV+ 媒体分流
 
 ### 3. 其他功能性分类
-* **`private`**：局域网与保留 IP (源自 `ForestL18`)
-* **`download`**：迅雷/BT/PT/各大应用商店下载流量 (源自 `skk.moe`)
-* **`domestic`**：国内常用服务 (源自 `skk.moe`)
+* **`geoip-private`** / **`geosite-private`**：局域网与保留地址
+* **`geosite-download`**：迅雷/BT/PT/各大应用商店下载流量 (源自 `skk.moe`)
+* **`geosite-domestic`**：国内常用服务 (源自 `skk.moe`)
+* **`geosite-httpdns`**：拦截国内 APP 内置的 HTTPDNS 解析防劫持
+* **`geoip-gfw`** / **`geosite-gfw`**：GFW 域名与 IP 过滤合集
 * **`PCDN`**：各大视频/网盘网站的 PCDN 节点拦截 (用于 AdGuard，源自库内 `pcdn.list`)
-* **`Httpdns`**：拦截国内 APP 内置的 HTTPDNS 解析防劫持 (用于 AdGuard，源自 `MetaCubeX`)
 
 ---
 
@@ -69,16 +71,13 @@
 
 存放在主分支 `rules/` 目录下，用于满足个人的特殊路由需求，每次构建时会原样打包并转换格式：
 
-* `Custom_Direct_DOMAIN.txt` —— 自定义直连域名
-* `Custom_Direct_IP.txt` —— 自定义直连 IP（CIDR 格式）
-* `Custom_Proxy.txt` —— 强制代理域名
-* `Custom_DNS_DOMAIN.txt` —— 自定义 DNS 域名（强制指定 DNS 解析）
-* `Custom_DNS_IP.txt` —— 自定义 DNS IP（CIDR 格式）
-* `Custom_Download.txt` —— 下载流量分流
-* `Custom_Reject.txt` —— 自定义拦截域名
-* `Custom_Reject-drop.txt` —— 自定义高危丢弃域名
-* `Custom_Emby.txt` —— Emby 媒体服务器分流
-* `LocationDKS.txt` —— 特定地域服务
+* `Custom_Direct_DOMAIN.txt` / `Custom_Direct_IP.txt` —— 自定义直连（Sing-box 编译为单一 `geosite-custom-direct`；Mihomo 编译为 `geosite-custom-direct` 与 `geoip-custom-direct`）
+* `Custom_DNS_DOMAIN.txt` / `Custom_DNS_IP.txt` —— 自定义 DNS 解析规则（Sing-box 编译为单一 `geosite-custom-dns`；Mihomo 编译为 `geosite-custom-dns` 与 `geoip-custom-dns`）
+* `Custom_Proxy.txt` —— 强制代理域名（`geosite-custom-proxy`）
+* `Custom_Download.txt` —— 下载流量分流（`geosite-custom-download`）
+* `Custom_Emby.txt` —— Emby 媒体服务器分流（`geosite-custom-emby`）
+* `LocationDKS.txt` —— 抖音/快手/小红书 IP 归属地分流（`geosite-location-dks`）
+* `Custom_Reject.txt` / `Custom_Reject-drop.txt` —— 自定义拦截与高危丢弃名单
 
 ---
 
