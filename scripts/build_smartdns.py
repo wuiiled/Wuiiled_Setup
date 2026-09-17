@@ -76,7 +76,12 @@ def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sm
         smartdns_lines = []
         if rs.is_geoip:
             for cidr in sorted(rs.ip_cidrs):
-                smartdns_lines.append(cidr)
+                if "." in cidr and cidr.endswith("/32"):
+                    smartdns_lines.append(cidr[:-3])
+                elif ":" in cidr and cidr.endswith("/128"):
+                    smartdns_lines.append(cidr[:-4])
+                else:
+                    smartdns_lines.append(cidr)
         else:
             for s in sorted(rs.domain_suffixes):
                 clean_s = s.lstrip('.')

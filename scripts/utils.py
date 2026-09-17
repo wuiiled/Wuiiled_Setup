@@ -59,18 +59,22 @@ def safe_copy(src, dst):
     except Exception as e:
         print(f"⚠️ 复制文件失败: {src} -> {dst}: {e}")
 
-def download_file(url, timeout=20, retries=3):
+def download_file(url, timeout=15, retries=3):
     ua = "Mozilla/5.0 (compatible; MihomoRuleConverter/1.0)"
-    req = urllib.request.Request(url, headers={'User-Agent': ua})
-    for attempt in range(retries):
-        try:
-            with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as response:
-                return response.read().decode('utf-8', errors='ignore')
-        except Exception as e:
-            if attempt == retries - 1:
-                print(f"⚠️ 下载失败 (重试 {retries} 次后放弃): {url}\n   错误: {e}")
-                return ""
-            time.sleep(1 * (attempt + 1))
+    candidates = [url]
+    if "raw.githubusercontent.com" in url or "github.com" in url:
+        candidates.append(f"https://ghfast.top/{url}")
+
+    for target in candidates:
+        req = urllib.request.Request(target, headers={'User-Agent': ua})
+        for attempt in range(retries):
+            try:
+                with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as response:
+                    return response.read().decode('utf-8', errors='ignore')
+            except Exception:
+                if attempt < retries - 1:
+                    time.sleep(0.5 * (attempt + 1))
+    print(f"⚠️ 下载失败 (所有镜像源均失败): {url}")
     return ""
 
 def download_files_parallel(output_file, urls):

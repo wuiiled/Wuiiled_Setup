@@ -63,17 +63,25 @@ def clean_mihomo_domain_line(line: str) -> Optional[str]:
     line = line.strip()
     if not line or line.startswith('#'):
         return None
-    line = re.sub(r'#.*$', '', line).strip()
-    line = re.sub(r'^(DOMAIN-SUFFIX|DOMAIN|DOMAIN-KEYWORD),', '', line, flags=re.IGNORECASE).strip()
-    if ',' in line:
-        line = line.split(',')[0].strip()
-    line = line.strip(" '\"")
+    line = line.split('#')[0].strip()
     if not line:
         return None
+
+    lower = line.lower()
+    if lower.startswith("domain-suffix,"):
+        val = line.split(',')[1].strip()
+        return "+." + val if val else None
+    elif lower.startswith("domain,"):
+        val = line.split(',')[1].strip()
+        return val if val else None
+
+    # 如果包含逗号，说明是具有其它前缀修饰的行 (如 IP-CIDR, PROCESS-NAME 等)，过滤掉
+    if ',' in line:
+        return None
+
     if is_valid_ip_or_cidr(line):
         return None
-    if not line.startswith('+.') and not line.startswith('.'):
-        line = '+.' + line
+
     return line
 
 

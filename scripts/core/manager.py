@@ -232,6 +232,7 @@ def load_fakeip_rules() -> RuleSet:
     domains = set()
     domain_suffixes = set()
     domain_regexes = set()
+    raw_mihomo_lines = []
 
     if os.path.exists(final_fakeip):
         with open(final_fakeip, "r", encoding="utf-8") as f:
@@ -239,10 +240,21 @@ def load_fakeip_rules() -> RuleSet:
                 line = line.strip()
                 if not line or line.startswith('#'):
                     continue
+                raw_mihomo_lines.append(line)
                 if line.startswith('+.'):
-                    domain_suffixes.add(line[2:])
-                elif line.startswith('.'):
-                    domain_suffixes.add(line[1:])
+                    suffix = line[2:]
+                    if not suffix:
+                        continue
+                    if '*' in suffix:
+                        escaped = re.escape(suffix).replace(r'\*', '.*')
+                        domain_regexes.add(f"^(.*\\.)?{escaped}$")
+                    else:
+                        if suffix == 'cn':
+                            domain_suffixes.add('cn')
+                        elif '.' not in suffix:
+                            domain_suffixes.add('.' + suffix)
+                        else:
+                            domain_suffixes.add(suffix)
                 elif '*' in line:
                     escaped = re.escape(line).replace(r'\*', '.*')
                     domain_regexes.add(f"^{escaped}$")
@@ -258,7 +270,8 @@ def load_fakeip_rules() -> RuleSet:
         description="Fake-IP 过滤名单",
         domains=domains,
         domain_suffixes=domain_suffixes,
-        domain_regexes=set(compacted_regexes)
+        domain_regexes=set(compacted_regexes),
+        raw_lines=raw_mihomo_lines
     )
 
 
@@ -298,24 +311,34 @@ def load_reject_drop_rules() -> RuleSet:
     utils.process_normalize_domain(raw_allow_temp, clean_rd_allow, skip_allow_rules=False)
     utils.apply_advanced_whitelist_filter(clean_rd, clean_rd_allow, final_rd)
 
+    domains = set()
     domain_suffixes = set()
+    raw_rd_lines = []
     if os.path.exists(final_rd):
         with open(final_rd, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if line:
+                if line and not line.startswith('#'):
+                    raw_rd_lines.append(line)
                     if line.startswith('+.'):
-                        line = line[2:]
-                    elif line.startswith('.'):
-                        line = line[1:]
-                    domain_suffixes.add(line)
+                        suffix = line[2:]
+                        if not suffix:
+                            continue
+                        if '.' not in suffix:
+                            domain_suffixes.add('.' + suffix)
+                        else:
+                            domain_suffixes.add(suffix)
+                    else:
+                        domains.add(line)
 
-    print(f"  ✅ [Reject-Drop]{'geosite-reject-drop':<26} | 规则数: {len(domain_suffixes):,}")
+    print(f"  ✅ [Reject-Drop]{'geosite-reject-drop':<26} | 规则数: {len(domains)+len(domain_suffixes):,}")
     return RuleSet(
         name="geosite-reject-drop",
         category="geosite",
         description="高危/垃圾流量直接丢弃规则",
-        domain_suffixes=domain_suffixes
+        domains=domains,
+        domain_suffixes=domain_suffixes,
+        raw_lines=raw_rd_lines
     )
 
 

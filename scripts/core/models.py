@@ -19,6 +19,7 @@ class RuleSet:
         domain_regexes: Optional[Set[str]] = None,
         ip_cidrs: Optional[Set[str]] = None,
         raw_srs: Optional[bytes] = None,
+        raw_lines: Optional[List[str]] = None,
     ):
         self.name = name
         self.category = category.lower()
@@ -29,6 +30,7 @@ class RuleSet:
         self.domain_regexes: Set[str] = domain_regexes or set()
         self.ip_cidrs: Set[str] = ip_cidrs or set()
         self.raw_srs: Optional[bytes] = raw_srs
+        self.raw_lines: Optional[List[str]] = raw_lines
 
     @property
     def is_geoip(self) -> bool:
@@ -74,10 +76,21 @@ class RuleSet:
         For ipcidr:
           - ip_cidr: 1.2.3.0/24
         """
+        if self.raw_lines is not None:
+            return list(self.raw_lines)
+
         lines = []
         if self.is_geoip:
             for cidr in sorted(self.ip_cidrs):
-                lines.append(cidr)
+                if self.name == "geoip-gfw":
+                    if "." in cidr and cidr.endswith("/32"):
+                        lines.append(cidr[:-3])
+                    elif ":" in cidr and cidr.endswith("/128"):
+                        lines.append(cidr[:-4])
+                    else:
+                        lines.append(cidr)
+                else:
+                    lines.append(cidr)
         else:
             for d in sorted(self.domains):
                 lines.append(d)

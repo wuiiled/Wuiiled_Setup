@@ -23,33 +23,42 @@ _SSL_CONTEXT = ssl.create_default_context()
 UA = "Mozilla/5.0 (compatible; WuiiledSetupRuleEngine/2.0)"
 
 
-def fetch_text_url(url: str, timeout: int = 25, retries: int = 3) -> str:
-    """Fetch text content from a remote URL with retries."""
-    req = urllib.request.Request(url, headers={'User-Agent': UA})
-    for attempt in range(retries):
-        try:
-            with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as resp:
-                return resp.read().decode('utf-8', errors='ignore')
-        except Exception as e:
-            if attempt == retries - 1:
-                print(f"⚠️ 下载失败 (尝试 {retries} 次后放弃): {url} -> {e}")
-                return ""
-            time.sleep(1 * (attempt + 1))
+def _get_target_urls(url: str) -> List[str]:
+    urls = [url]
+    if "raw.githubusercontent.com" in url or "github.com" in url:
+        urls.append(f"https://ghfast.top/{url}")
+    return urls
+
+
+def fetch_text_url(url: str, timeout: int = 15, retries: int = 3) -> str:
+    """Fetch text content from a remote URL with retries and mirror fallback."""
+    candidates = _get_target_urls(url)
+    for target in candidates:
+        req = urllib.request.Request(target, headers={'User-Agent': UA})
+        for attempt in range(retries):
+            try:
+                with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as resp:
+                    return resp.read().decode('utf-8', errors='ignore')
+            except Exception:
+                if attempt < retries - 1:
+                    time.sleep(0.5 * (attempt + 1))
+    print(f"⚠️ 下载失败 (所有镜像源均失败): {url}")
     return ""
 
 
-def fetch_bytes_url(url: str, timeout: int = 30, retries: int = 3) -> bytes:
-    """Fetch binary content from a remote URL with retries."""
-    req = urllib.request.Request(url, headers={'User-Agent': UA})
-    for attempt in range(retries):
-        try:
-            with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as resp:
-                return resp.read()
-        except Exception as e:
-            if attempt == retries - 1:
-                print(f"⚠️ 下载二进制失败 (尝试 {retries} 次): {url} -> {e}")
-                return b""
-            time.sleep(1 * (attempt + 1))
+def fetch_bytes_url(url: str, timeout: int = 15, retries: int = 3) -> bytes:
+    """Fetch binary content from a remote URL with retries and mirror fallback."""
+    candidates = _get_target_urls(url)
+    for target in candidates:
+        req = urllib.request.Request(target, headers={'User-Agent': UA})
+        for attempt in range(retries):
+            try:
+                with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as resp:
+                    return resp.read()
+            except Exception:
+                if attempt < retries - 1:
+                    time.sleep(0.5 * (attempt + 1))
+    print(f"⚠️ 下载二进制失败 (所有镜像源均失败): {url}")
     return b""
 
 
