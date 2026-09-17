@@ -1,19 +1,25 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+SmartDNS Rule Exporter.
+Decoupled: receives canonical RuleSet IR and generates SmartDNS domain-set and ip-set rules.
+"""
+
 import os
 import sys
-import glob
+from typing import Dict, Optional
+
 import utils
+from core.models import RuleSet
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-def convert_txt_to_smartdns(src_path, dst_path, is_ip):
-    base_name = os.path.splitext(os.path.basename(src_path))[0]
+
+def convert_txt_to_smartdns(src_path: str, dst_path: str, is_ip: bool) -> int:
+    """Helper to convert Mihomo text format to SmartDNS syntax."""
     smartdns_lines = []
-    
     with open(src_path, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
@@ -22,25 +28,18 @@ def convert_txt_to_smartdns(src_path, dst_path, is_ip):
             if line.startswith('#'):
                 smartdns_lines.append(line)
                 continue
-            
-            # 过滤尾部注释
             parts = line.split('#')
             rule = parts[0].strip()
             comment = f" #{parts[1]}" if len(parts) > 1 else ""
-            
             if not rule:
                 continue
-                
             if is_ip:
-                # IP-set 模式：只保留有效的 IP 或 CIDR
                 cleaned_ip = utils.clean_ip_line(rule)
                 if cleaned_ip and utils.is_valid_ip_or_cidr(cleaned_ip):
                     smartdns_lines.append(cleaned_ip + comment)
             else:
-                # Domain-set 模式：过滤掉 IP，并转换域名匹配语法
                 if utils.is_valid_ip_or_cidr(rule):
                     continue
-                    
                 if rule.startswith('+.'):
                     converted = rule[2:]
                 elif rule.startswith('.'):
@@ -50,39 +49,65 @@ def convert_txt_to_smartdns(src_path, dst_path, is_ip):
                 elif rule.startswith('-.'):
                     converted = rule
                 else:
-                    # Mihomo 中不含通配前缀的为精确匹配，映射到 SmartDNS 的 -. 匹配
                     converted = "-." + rule
-                    
                 smartdns_lines.append(converted + comment)
-            
-    # 统计有效规则条数 (排除了空行和注释)
+
     rules_count = sum(1 for l in smartdns_lines if l.strip() and not l.strip().startswith('#'))
-    
     if rules_count == 0:
-        print(f"⚠️ [SmartDNS] {base_name:<25} | ⚠️ 规则为空被跳过")
         return False
-        
+
     with open(dst_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(smartdns_lines) + '\n')
-        
-    print(f"✅ [SmartDNS] {base_name:<25} | {'IP-set' if is_ip else 'Domain-set'} | 规则数: {rules_count:,}")
     return True
 
-def run_all():
-    os.makedirs("output/smartdns/geosite", exist_ok=True)
-    os.makedirs("output/smartdns/geoip", exist_ok=True)
-    # 从已经构建完成的 mihomo 规则文本目录进行转换 (递归扫描)
-    txt_files = glob.glob("output/mihomo/**/*.txt", recursive=True)
-    for src in txt_files:
-        base_name = os.path.splitext(os.path.basename(src))[0]
-        is_ip = (
-            base_name.startswith("geoip-") 
-            or base_name.lower().endswith(('_ip', '_ip.txt')) 
-            or base_name in ("cnip", "gfwip")
-        )
-        sub_dir = "geoip" if is_ip else "geosite"
-        dst = os.path.join("output/smartdns", sub_dir, f"{base_name}.txt")
-        convert_txt_to_smartdns(src, dst, is_ip)
+
+def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/smartdns"):
+    geosite_out = os.path.join(output_dir, "geosite")
+    geoip_out = os.path.join(output_dir, "geoip")
+    os.makedirs(geosite_out, exist_ok=True)
+    os.makedirs(geoip_out, exist_ok=True)
+
+    print(f"\n📦 [SmartDNS] 正在构建所有规则集并输出至 {output_dir}...")
+
+    for name, rs in rules.items():
+        sub_dir = geoip_out if rs.is_geoip else geosite_out
+        out_path = os.path.join(sub_dir, f"{name}.txt")
+
+        smartdns_lines = []
+        if rs.is_geoip:
+            for cidr in sorted(rs.ip_cidrs):
+                smartdns_lines.append(cidr)
+        else:
+            for s in sorted(rs.domain_suffixes):
+                clean_s = s.lstrip('.')
+                if clean_s:
+                    smartdns_lines.append(clean_s)
+            for d in sorted(rs.domains):
+                clean_d = d.strip()
+                if clean_d and clean_d not in rs.domain_suffixes:
+                    smartdns_lines.append(f"-.{clean_d}")
+
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write("\n".join(smartdns_lines) + ("\n" if smartdns_lines else ""))
+
+    # Aliases
+    aliases = {"geosite-emby": "geosite-custom-emby"}
+    for alias_name, target_name in aliases.items():
+        sub_dir = geoip_out if alias_name.startswith("geoip-") else geosite_out
+        src = os.path.join(sub_dir, f"{target_name}.txt")
+        dst = os.path.join(sub_dir, f"{alias_name}.txt")
+        if os.path.exists(src):
+            utils.safe_copy(src, dst)
+
+    print("✅ [SmartDNS] 全部规则集构建完成！")
+
+
+def run_all(rules: Optional[Dict[str, RuleSet]] = None):
+    if rules is None:
+        from core.manager import load_all_rules
+        rules = load_all_rules()
+    build_smartdns_rules(rules)
+
 
 if __name__ == '__main__':
     run_all()

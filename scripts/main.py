@@ -6,51 +6,60 @@ from concurrent.futures import ThreadPoolExecutor
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
-import shutil
-import build_mihomo
-import build_adg
-import build_mosdns
+from core.manager import load_all_rules
+from core.readme_gen import generate_all_readmes
 import build_singbox
+import build_mihomo
 import build_smartdns
+import build_mosdns
+import build_adg
+
 
 def main():
-    print("⚡️ 清理与创建基础输出目录...")
-    for d in ["output/mihomo", "output/adg", "output/mosdns-x", "output/singbox", "output/smartdns"]:
-        if os.path.exists(d):
-            shutil.rmtree(d)
-    for d in [
-        "output/mihomo/geosite", "output/mihomo/geoip",
-        "output/singbox/geosite", "output/singbox/geoip",
-        "output/smartdns/geosite", "output/smartdns/geoip",
-        "output/adg", "output/mosdns-x"
-    ]:
-        os.makedirs(d, exist_ok=True)
+    print("==================================================")
+    print("🚀 All-in-One 网络分流规则统一构建引擎 (2.0)")
+    print("==================================================")
 
-    print("\n🚀 [阶段 1/2] 构建 Mihomo 规则 (其他平台的前置依赖)...")
+    # 阶段 1: 加载并清洗所有标准规则 (RuleSet IR)
     try:
-        build_mihomo.run_all()
+        rules = load_all_rules()
     except Exception as e:
-        print(f"❌ Mihomo 规则构建失败: {e}")
+        print(f"❌ 规则数据加载/提纯失败: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
-    print("\n🚀 [阶段 2/2] 并行构建 ADG、MosDNS、Sing-box 与 SmartDNS 规则...")
+    # 阶段 2: 并行导出所有目标平台 (零耦合独立构建)
+    print("\n🚀 [阶段 2/3] 并行构建所有目标平台专属规则...")
     with ThreadPoolExecutor() as executor:
         futures = {
-            "AdGuard Home": executor.submit(build_adg.run_all),
-            "MosDNS": executor.submit(build_mosdns.run_all),
-            "Sing-box": executor.submit(build_singbox.run_all),
-            "SmartDNS": executor.submit(build_smartdns.run_all),
+            "Sing-box": executor.submit(build_singbox.run_all, rules),
+            "Mihomo": executor.submit(build_mihomo.run_all, rules),
+            "SmartDNS": executor.submit(build_smartdns.run_all, rules),
+            "MosDNS": executor.submit(build_mosdns.run_all, rules),
+            "AdGuard Home": executor.submit(build_adg.run_all, rules),
         }
-        for name, future in futures.items():
+        for name, fut in futures.items():
             try:
-                future.result()
-                print(f"  ✅ {name} 构建完成")
+                fut.result()
             except Exception as e:
-                print(f"  ❌ {name} 构建失败: {e}")
+                print(f"❌ {name} 构建失败: {e}")
+                import traceback
+                traceback.print_exc()
                 sys.exit(1)
 
-    print("\n🎉 所有规则转换与打包任务完美执行完毕！")
+    # 阶段 3: 自动生成各平台规范 README 导航页
+    print("\n🚀 [阶段 3/3] 生成各平台发布分支订阅导航 (README.md)...")
+    try:
+        generate_all_readmes("output")
+    except Exception as e:
+        print(f"⚠️ README 生成异常: {e}")
+
+    print("\n🎉 所有规则转换与订阅导航生成任务圆满完成！")
+
 
 if __name__ == "__main__":
     main()

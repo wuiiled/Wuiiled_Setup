@@ -16,7 +16,7 @@ from datetime import datetime
 
 WORK_DIR = None
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-EXCLUDE_FILE = os.path.join(SCRIPT_DIR, "exclude-keyword.txt")
+EXCLUDE_FILE = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "rules", "addons", "exclude-keyword.txt"))
 os.environ["LC_ALL"] = "C"
 
 # Security: explicit SSL context to ensure certificate verification is always enabled

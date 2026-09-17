@@ -1,73 +1,72 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+MosDNS-X Rule Exporter.
+Decoupled: receives canonical RuleSet IR and generates domain: and full: MosDNS rules.
+"""
+
 import os
 import sys
-import re
-import shutil
+from typing import Dict, Optional
+
 import utils
-import providers
+from core.models import RuleSet
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-def run_all():
-    os.makedirs("output/mosdns-x", exist_ok=True)
 
-    # 1. 转换 geosite-ad
-    base_ads = "output/mihomo/geosite/geosite-ad.txt"
-    if not os.path.exists(base_ads):
-        base_ads = "output/mihomo/geosite-ad.txt"
-    if os.path.exists(base_ads):
-        lines = []
-        with open(base_ads, 'r', encoding='utf-8') as f:
-            for line in f.read().splitlines():
-                if not line.strip() or line.startswith('#'): continue
-                line = re.sub(r'^(DOMAIN-SUFFIX,|\+\.)', '', line)
-                lines.append(line)
-        with open("output/mosdns-x/ad_domain_list.txt", 'w', encoding='utf-8') as f:
-            f.write('\n'.join(lines) + '\n')
-        print(f"✅ [MosDNS] {'ad_domain_list':<25} | 规则数: {len(lines):,}")
+def build_mosdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/mosdns-x"):
+    geosite_out = os.path.join(output_dir, "geosite")
+    geoip_out = os.path.join(output_dir, "geoip")
+    os.makedirs(geosite_out, exist_ok=True)
+    os.makedirs(geoip_out, exist_ok=True)
 
-    # 2. SKK 规则 (从 mihomo 已生成的 txt 读取，不再重复下载)
-    for name in providers.MIHOMO_SKK:
-        if name in ("download", "geosite-download"): continue
-        is_ip = name.startswith("geoip-") or name.lower().endswith(('_ip', '_ip.txt'))
-        sub_dir = "geoip" if is_ip else "geosite"
-        mihomo_txt = f"output/mihomo/{sub_dir}/{name}.txt"
-        if not os.path.exists(mihomo_txt):
-            mihomo_txt = f"output/mihomo/{name}.txt"
-        if not os.path.exists(mihomo_txt):
-            print(f"⚠️ [MosDNS] {name} 源文件不存在，跳过")
-            continue
-        # IP 规则集直接以纯 IP CIDR 文本输出，与 gfwip 保持一致
-        if is_ip:
-            shutil.copyfile(mihomo_txt, f"output/mosdns-x/{name}.txt")
-            print(f"✅ [MosDNS] {name:<25} | 规则已生成 (IP 规则)")
-            continue
-        lines = []
-        with open(mihomo_txt, 'r', encoding='utf-8') as f:
-            for line in f:
-                cleaned = line.strip()
-                if not cleaned or cleaned.startswith('#') or cleaned == '+.':
-                    continue
-                if 'skk.moe' in cleaned:
-                    continue
-                if utils.is_valid_ip_or_cidr(cleaned):
-                    continue
-                if cleaned.startswith('+.'):
-                    lines.append('domain:' + cleaned[2:])
-                else:
-                    lines.append('full:' + cleaned)
-        with open(f"output/mosdns-x/{name}.txt", 'w', encoding='utf-8') as f:
-            f.write('\n'.join(lines) + '\n')
-        print(f"✅ [MosDNS] {name:<25} | 规则数: {len(lines):,}")
+    print(f"\n📦 [MosDNS] 正在构建所有规则集并输出至 {output_dir}...")
 
-    # 3. 复制 geoip-gfw.txt (IP 规则无需额外转换)
-    mihomo_gfwip = "output/mihomo/geoip/geoip-gfw.txt"
-    if not os.path.exists(mihomo_gfwip):
-        mihomo_gfwip = "output/mihomo/geoip-gfw.txt"
-    if os.path.exists(mihomo_gfwip):
-        shutil.copyfile(mihomo_gfwip, "output/mosdns-x/geoip-gfw.txt")
-        print(f"✅ [MosDNS] {'geoip-gfw':<25} | 规则已生成")
+    for name, rs in rules.items():
+        sub_dir = geoip_out if rs.is_geoip else geosite_out
+        out_path = os.path.join(sub_dir, f"{name}.txt")
+
+        mos_lines = []
+        if rs.is_geoip:
+            for cidr in sorted(rs.ip_cidrs):
+                mos_lines.append(cidr)
+        else:
+            for s in sorted(rs.domain_suffixes):
+                clean_s = s.lstrip('.')
+                if clean_s:
+                    mos_lines.append(f"domain:{clean_s}")
+            for d in sorted(rs.domains):
+                clean_d = d.strip()
+                if clean_d and clean_d not in rs.domain_suffixes:
+                    mos_lines.append(f"full:{clean_d}")
+            for k in sorted(rs.domain_keywords):
+                mos_lines.append(f"keyword:{k}")
+            for r in sorted(rs.domain_regexes):
+                mos_lines.append(f"regexp:{r}")
+
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write("\n".join(mos_lines) + ("\n" if mos_lines else ""))
+
+    # Backward compatibility: ad_domain_list.txt in root
+    if "geosite-ad" in rules:
+        ad_rs = rules["geosite-ad"]
+        ad_lines = [s.lstrip('.') for s in sorted(ad_rs.domain_suffixes) if s.lstrip('.')]
+        legacy_ad_path = os.path.join(output_dir, "ad_domain_list.txt")
+        with open(legacy_ad_path, 'w', encoding='utf-8') as f:
+            f.write("\n".join(ad_lines) + ("\n" if ad_lines else ""))
+
+    print("✅ [MosDNS] 全部规则集构建完成！")
+
+
+def run_all(rules: Optional[Dict[str, RuleSet]] = None):
+    if rules is None:
+        from core.manager import load_all_rules
+        rules = load_all_rules()
+    build_mosdns_rules(rules)
+
+
+if __name__ == '__main__':
+    run_all()

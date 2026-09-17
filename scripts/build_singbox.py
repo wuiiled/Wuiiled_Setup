@@ -1,125 +1,52 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+Sing-box Rule-set Exporter.
+Fully decoupled: receives canonical RuleSet IR and exports .srs and .json files.
+Guarantees 100% Zero-Diff alignment with Tianling Shen for all Tianling rulesets.
+"""
+
 import os
 import sys
 import json
 import subprocess
-import re
-import ipaddress
-from glob import glob
 import shutil
+from typing import Dict, Optional
+
 import utils
+from core.models import RuleSet
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-def check_singbox():
+
+def check_singbox() -> bool:
     has_sb = shutil.which("sing-box") is not None
     if not has_sb and sys.platform == "win32" and shutil.which("wsl"):
         has_sb = True
     if not has_sb and os.environ.get("GITHUB_ACTIONS") == "true":
-        print("❌ 错误: 在 GitHub Actions 环境中未找到 'sing-box' 编译器！必须中断任务以防生成残缺规则集。")
+        print("❌ 错误: 在 GitHub Actions 环境中未找到 'sing-box' 编译器！")
         sys.exit(1)
-    if has_sb:
-        try:
-            cmd = utils._resolve_cmd(["sing-box", "version"])
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            print(f"📋 sing-box 版本: {result.stdout.strip().splitlines()[0]}")
-        except Exception:
-            pass
     return has_sb
 
-def compact_regexes(regex_set):
-    """
-    终极版正则压缩器：安全过滤 + 智能聚合
-    仅在 Fake-IP 列表中被调用
-    """
-    if not regex_set:
-        return []
 
-    regex_set.discard(".*")
-    regex_set.discard("^.*$")
-    regex_set.discard("^(.*\\.)?.*$")
-    
-    step1 = set()
-    for r in regex_set:
-        while r'\..*\..*' in r:
-            r = r.replace(r'\..*\..*', r'\..*')
-        while r'-.*-.*' in r:
-            r = r.replace(r'-.*-.*', r'-.*')
-        step1.add(r)
-        
-    step2 = set()
-    num_pattern = re.compile(r'^(\^?[a-zA-Z_-]+)(\d*)(\\..*)$')
-    groups = {}
-    for r in step1:
-        m = num_pattern.match(r)
-        if m:
-            prefix, num, suffix = m.groups()
-            key = (prefix, suffix)
-            if key not in groups:
-                groups[key] = set()
-            groups[key].add(num)
-        else:
-            step2.add(r)
-            
-    for (prefix, suffix), nums in groups.items():
-        if len(nums) > 1:
-            step2.add(f"{prefix}\\d*{suffix}")
-        else:
-            step2.add(f"{prefix}{nums.pop()}{suffix}")
-            
-    step3 = set()
-    time_bases = {}
-    nip_sslip_bases = set()
-    
-    time_prefix_regex = re.compile(r'^(\^time(?:\\d*)?\\..*\\.)([^.]+\$)$')
-    
-    for r in step2:
-        m = time_prefix_regex.match(r)
-        if m:
-            base, tld_with_dollar = m.groups()
-            tld = tld_with_dollar[:-1]
-            if base not in time_bases:
-                time_bases[base] = set()
-            time_bases[base].add(tld)
-        elif r.endswith("nip\\.io$") or r.endswith("sslip\\.io$"):
-            base = r.replace("nip\\.io$", "").replace("sslip\\.io$", "")
-            nip_sslip_bases.add(base)
-        else:
-            step3.add(r)
-            
-    for base, tlds in time_bases.items():
-        if len(tlds) > 1:
-            tld_str = "|".join(sorted(list(tlds)))
-            step3.add(f"{base}({tld_str})$")
-        else:
-            step3.add(f"{base}{tlds.pop()}$")
-            
-    for base in nip_sslip_bases:
-        step3.add(f"{base}(nip|sslip)\\.io$")
-        
-    return sorted(list(step3))
-
-def convert_txt_to_json(txt_path, json_path):
+def convert_txt_to_json(txt_path: str, json_path: str) -> bool:
+    """Helper to convert Mihomo text format to Sing-box JSON format."""
+    import ipaddress
+    import re
     domains = set()
     domain_suffixes = set()
     domain_regexes = set()
     ip_cidrs = set()
-    
-    base_name = os.path.splitext(os.path.basename(txt_path))[0]
 
     with open(txt_path, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith('#'): continue
-            
             line = line.split('#')[0].strip()
             if not line: continue
 
-            # 拦截 1: 严格 IP 与 CIDR 提取
             try:
                 net = ipaddress.ip_network(line, strict=False)
                 ip_cidrs.add(str(net))
@@ -127,24 +54,17 @@ def convert_txt_to_json(txt_path, json_path):
             except ValueError:
                 pass
 
-            # 拦截 2: 过滤包含空格或冒号的脏数据
             if ' ' in line or ':' in line:
                 continue
 
-            # 拦截 3: 安全转义处理与前缀剥离
             if line.startswith('+.'):
                 suffix = line[2:]
-                if not suffix: continue 
+                if not suffix: continue
                 if '*' in suffix:
                     escaped = re.escape(suffix).replace(r'\*', '.*')
                     domain_regexes.add(f"^(.*\\.)?{escaped}$")
                 else:
-                    if suffix == 'cn':
-                        domain_suffixes.add('cn')
-                    elif '.' not in suffix:
-                        domain_suffixes.add('.' + suffix)
-                    else:
-                        domain_suffixes.add(suffix)
+                    domain_suffixes.add(suffix)
             elif line.startswith('.'):
                 suffix = line[1:]
                 if not suffix: continue
@@ -152,24 +72,14 @@ def convert_txt_to_json(txt_path, json_path):
                     escaped = re.escape(suffix).replace(r'\*', '.*')
                     domain_regexes.add(f"^(.*\\.)?{escaped}$")
                 else:
-                    if suffix == 'cn':
-                        domain_suffixes.add('cn')
-                    elif '.' not in suffix:
-                        domain_suffixes.add('.' + suffix)
-                    else:
-                        domain_suffixes.add(suffix)
+                    domain_suffixes.add(suffix)
             elif '*' in line:
                 if line == '*':
                     pass
                 elif line.startswith('*.') and line.count('*') == 1:
                     suffix = line[2:]
                     if suffix:
-                        if suffix == 'cn':
-                            domain_suffixes.add('cn')
-                        elif '.' not in suffix:
-                            domain_suffixes.add('.' + suffix)
-                        else:
-                            domain_suffixes.add(suffix)
+                        domain_suffixes.add(suffix)
                 else:
                     escaped = re.escape(line).replace(r'\*', '.*')
                     domain_regexes.add(f"^{escaped}$")
@@ -177,144 +87,92 @@ def convert_txt_to_json(txt_path, json_path):
                 domains.add(line)
 
     rule_dict = {}
-    
     if domains: rule_dict["domain"] = sorted(list(domains))
     if domain_suffixes: rule_dict["domain_suffix"] = sorted(list(domain_suffixes))
     if ip_cidrs: rule_dict["ip_cidr"] = sorted(list(ip_cidrs))
-    
-    if domain_regexes:
-        is_fake_ip = "fake_ip" in base_name.lower() or "fake-ip" in base_name.lower()
-        if is_fake_ip:
-            optimized_regexes = compact_regexes(domain_regexes)
-            if optimized_regexes:
-                rule_dict["domain_regex"] = optimized_regexes
-        else:
-            rule_dict["domain_regex"] = sorted(list(domain_regexes))
+    if domain_regexes: rule_dict["domain_regex"] = sorted(list(domain_regexes))
 
-    total_rules = len(domains) + len(domain_suffixes) + len(ip_cidrs) + len(rule_dict.get("domain_regex", []))
-    
-    if total_rules == 0: 
+    total = len(domains) + len(domain_suffixes) + len(ip_cidrs) + len(domain_regexes)
+    if total == 0:
         return False
 
-    print(f"✅ [Sing-box] {base_name:<26} | 规则总数: {total_rules:,} (正则: {len(rule_dict.get('domain_regex', [])):,}, 后缀: {len(domain_suffixes):,}, 域名: {len(domains):,}, IP: {len(ip_cidrs):,})")
-
-    json_data = {
-        "version": 5,
-        "rules": [rule_dict]
-    }
-
     with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(json_data, f, indent=2, ensure_ascii=False)
+        json.dump({"version": 5, "rules": [rule_dict]}, f, indent=2, ensure_ascii=False)
     return True
 
-def run_all():
-    os.makedirs("output/singbox/geosite", exist_ok=True)
-    os.makedirs("output/singbox/geoip", exist_ok=True)
-    has_sb = check_singbox()
-    
-    # 1. 复合规则 (既有域名又有 IP)，合体编译为 geosite-custom-*
-    # Sing-box 规则集原生支持同时包含 domain 与 ip_cidr
-    composite_configs = [
-        ("geosite-custom-direct", 
-         ["output/mihomo/geosite/geosite-custom-direct.txt", "output/mihomo/geosite-custom-direct.txt", "rules/Custom_Direct_DOMAIN.txt"], 
-         ["output/mihomo/geoip/geoip-custom-direct.txt", "output/mihomo/geoip-custom-direct.txt", "rules/Custom_Direct_IP.txt"]),
-        ("geosite-custom-dns", 
-         ["output/mihomo/geosite/geosite-custom-dns.txt", "output/mihomo/geosite-custom-dns.txt", "rules/Custom_DNS_DOMAIN.txt"], 
-         ["output/mihomo/geoip/geoip-custom-dns.txt", "output/mihomo/geoip-custom-dns.txt", "rules/Custom_DNS_IP.txt"]),
-    ]
-    
-    for comp_name, domain_candidates, ip_candidates in composite_configs:
-        domain_src = next((p for p in domain_candidates if os.path.exists(p)), None)
-        ip_src = next((p for p in ip_candidates if os.path.exists(p)), None)
-        
-        merged_lines = []
-        if domain_src:
-            with open(domain_src, 'r', encoding='utf-8') as f:
-                merged_lines.extend(f.readlines())
-        if ip_src:
-            with open(ip_src, 'r', encoding='utf-8') as f:
-                merged_lines.extend(f.readlines())
-                
-        temp_dir = utils.get_work_dir()
-        temp_f_path = os.path.join(temp_dir, f"{comp_name}.txt")
-        with open(temp_f_path, 'w', encoding='utf-8') as temp_f:
-            temp_f.writelines(merged_lines)
-            
-        try:
-            json_path = os.path.join("output/singbox", "geosite", f"{comp_name}.json")
-            srs_path = os.path.join("output/singbox", "geosite", f"{comp_name}.srs")
-            if convert_txt_to_json(temp_f_path, json_path):
-                if has_sb:
-                    utils.compile_ruleset(
-                        ["sing-box", "rule-set", "compile", json_path, "-o", srs_path],
-                        f"{comp_name}.srs"
-                    )
-        finally:
-            if os.path.exists(temp_f_path):
-                os.remove(temp_f_path)
-                
-    # 自定义单向规则
-    custom_standalone = [
-        ("geosite-custom-download", ["output/mihomo/geosite/geosite-custom-download.txt", "output/mihomo/geosite-custom-download.txt", "rules/Custom_Download.txt"]),
-        ("geosite-custom-emby", ["output/mihomo/geosite/geosite-custom-emby.txt", "output/mihomo/geosite-custom-emby.txt", "rules/Custom_Emby.txt"]),
-        ("geosite-custom-proxy", ["output/mihomo/geosite/geosite-custom-proxy.txt", "output/mihomo/geosite-custom-proxy.txt", "rules/Custom_Proxy.txt"]),
-    ]
-    for c_name, candidates in custom_standalone:
-        src = next((p for p in candidates if os.path.exists(p)), None)
-        if src:
-            json_path = os.path.join("output/singbox", "geosite", f"{c_name}.json")
-            srs_path = os.path.join("output/singbox", "geosite", f"{c_name}.srs")
-            if convert_txt_to_json(src, json_path):
-                if has_sb:
-                    utils.compile_ruleset(
-                        ["sing-box", "rule-set", "compile", json_path, "-o", srs_path],
-                        f"{c_name}.srs"
-                    )
 
-    # 2. 编译所有标准规则 (geosite-* 和 geoip-* 以及特定独立规则)
-    all_txts = glob("output/mihomo/**/*.txt", recursive=True)
-    
-    excluded_names = {
-        "geosite-custom-direct", "geosite-custom-dns", "geosite-custom-download", 
-        "geosite-custom-emby", "geosite-custom-proxy",
-        "geoip-custom-direct", "geoip-custom-dns",
-        # 排除所有旧命名与别名
-        "telegram", "twitter", "facebook", "cn", "cnip", "gfw", "proxy",
-        "download", "microsoft_cdn", "apple_services", "apple_cn", "apple_cdn",
-        "stream_ip", "apple_services_ip", "private", "CN_merged", "Custom_ADs_merged",
-        "Custom_Direct_DOMAIN", "Custom_Direct_IP", "Custom_DNS_DOMAIN", "Custom_DNS_IP",
-        "Custom_Direct", "Custom_DNS", "Custom_Download", "Custom_Emby", "Custom_Proxy",
-        "Custom-Direct", "Custom-DNS", "Custom-Download", "Custom-Emby", "Custom-Proxy",
-        "ADs_merged", "AIs_merged", "Fake_IP_Filter_merged", "Reject_Drop_merged",
-        "LocationDKS", "gfwip", "Httpdns",
-        "alibaba", "baidu", "bilibili", "bytedance", "domestic", "qihoo360", "tencent", "xiaomi"
-    }
-    
-    for txt_path in all_txts:
-        base_name = os.path.splitext(os.path.basename(txt_path))[0]
-        
-        if base_name in excluded_names:
+def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/singbox"):
+    """
+    Export all RuleSets to Sing-box format (.srs and .json).
+    """
+    geosite_out = os.path.join(output_dir, "geosite")
+    geoip_out = os.path.join(output_dir, "geoip")
+    os.makedirs(geosite_out, exist_ok=True)
+    os.makedirs(geoip_out, exist_ok=True)
+
+    has_sb = check_singbox()
+    print(f"\n📦 [Sing-box] 正在构建所有规则集并输出至 {output_dir}...")
+
+    # 1. Handle composite custom rules (domains + IPs together)
+    composite_specs = [
+        ("geosite-custom-direct", "geosite-custom-direct", "geoip-custom-direct"),
+        ("geosite-custom-dns", "geosite-custom-dns", "geoip-custom-dns"),
+    ]
+
+    for comp_name, domain_key, ip_key in composite_specs:
+        comp_domains = set()
+        comp_suffixes = set()
+        comp_ips = set()
+
+        if domain_key in rules:
+            comp_domains.update(rules[domain_key].domains)
+            comp_suffixes.update(rules[domain_key].domain_suffixes)
+        if ip_key in rules:
+            comp_ips.update(rules[ip_key].ip_cidrs)
+
+        comp_rs = RuleSet(
+            name=comp_name,
+            category="geosite",
+            description="复合自定义规则 (域名 + IP)",
+            domains=comp_domains,
+            domain_suffixes=comp_suffixes,
+            ip_cidrs=comp_ips
+        )
+        rules[comp_name] = comp_rs
+
+    # 2. Build each ruleset
+    for name, rs in rules.items():
+        # Do not output raw geoip-custom-* into singbox if already merged into geosite-custom-*
+        if name in ("geoip-custom-direct", "geoip-custom-dns"):
             continue
-            
-        is_standard_geosite = base_name.startswith("geosite-")
-        is_standard_geoip = base_name.startswith("geoip-")
-        
-        if not (is_standard_geosite or is_standard_geoip):
-            continue
-            
-        sub_dir = "geoip" if is_standard_geoip else "geosite"
-        json_path = os.path.join("output/singbox", sub_dir, f"{base_name}.json")
-        srs_path = os.path.join("output/singbox", sub_dir, f"{base_name}.srs")
-        
-        if convert_txt_to_json(txt_path, json_path):
+
+        sub_dir = geoip_out if rs.is_geoip else geosite_out
+        srs_path = os.path.join(sub_dir, f"{name}.srs")
+        json_path = os.path.join(sub_dir, f"{name}.json")
+
+        if rs.raw_srs:
+            # Authoritative Tianling rule: write raw SRS directly (100% binary match!)
+            with open(srs_path, "wb") as f:
+                f.write(rs.raw_srs)
+            if has_sb:
+                try:
+                    cmd = utils._resolve_cmd(["sing-box", "rule-set", "decompile", srs_path, "-o", json_path])
+                    subprocess.run(cmd, check=True, capture_output=True, text=True)
+                except Exception as e:
+                    print(f"⚠️ 反编译 {name}.srs 失败: {e}")
+        else:
+            # Generated rule: export json, compile to srs
+            json_dict = rs.to_singbox_dict(version=5)
+            with open(json_path, "w", encoding="utf-8") as jf:
+                json.dump(json_dict, jf, indent=2, ensure_ascii=False)
+
             if has_sb:
                 utils.compile_ruleset(
                     ["sing-box", "rule-set", "compile", json_path, "-o", srs_path],
-                    f"{base_name}.srs"
+                    f"{name}.srs"
                 )
-                
-    # 3. 仅保留用户 singbox {tag} 标签别名 (支持 {tag}.srs 直连)
-    # 彻底杜绝 ADs_merged, Custom-DNS 等老旧名字
+
+    # 3. Create convenient standard aliases (e.g. geosite-emby -> geosite-custom-emby)
     aliases = {
         "geosite-emby": "geosite-custom-emby",
         "geosite-game": "geosite-games",
@@ -324,18 +182,28 @@ def run_all():
         "geosite-applecn": "geosite-apple-cn",
         "geosite-applecdn": "geosite-apple-cdn",
     }
-    
+
     for alias_name, target_name in aliases.items():
-        sub_dir = "geoip" if alias_name.startswith("geoip-") else "geosite"
-        target_srs = os.path.join("output/singbox", sub_dir, f"{target_name}.srs")
-        target_json = os.path.join("output/singbox", sub_dir, f"{target_name}.json")
-        alias_srs = os.path.join("output/singbox", sub_dir, f"{alias_name}.srs")
-        alias_json = os.path.join("output/singbox", sub_dir, f"{alias_name}.json")
-        
+        sub_dir = geoip_out if alias_name.startswith("geoip-") else geosite_out
+        target_srs = os.path.join(sub_dir, f"{target_name}.srs")
+        target_json = os.path.join(sub_dir, f"{target_name}.json")
+        alias_srs = os.path.join(sub_dir, f"{alias_name}.srs")
+        alias_json = os.path.join(sub_dir, f"{alias_name}.json")
+
         if os.path.exists(target_srs):
             utils.safe_copy(target_srs, alias_srs)
         if os.path.exists(target_json):
             utils.safe_copy(target_json, alias_json)
+
+    print("✅ [Sing-box] 全部规则集构建完成！")
+
+
+def run_all(rules: Optional[Dict[str, RuleSet]] = None):
+    if rules is None:
+        from core.manager import load_all_rules
+        rules = load_all_rules()
+    build_singbox_rules(rules)
+
 
 if __name__ == '__main__':
     run_all()

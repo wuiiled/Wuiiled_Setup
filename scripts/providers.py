@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-import os
+"""
+Upstream URL definitions and custom rule mappings.
+All local addons and custom rules are loaded directly from disk in manager.py.
+"""
 
 ALLOW_URLS = [
     # Cats-Team dns-allowlist
@@ -13,8 +16,6 @@ ALLOW_URLS = [
 ADS_BLOCK_URLS = [
     # EasyMosdns ad_domain_list
     "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt",
-    # Reject-addon
-    "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/scripts/Reject-addon.txt",
     # AdGuard DNS Filter
     "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt",
     # Peter Lowe's Blocklist
@@ -38,13 +39,11 @@ AI_URLS = [
 FAKE_IP_URLS = [
     "https://raw.githubusercontent.com/vernesong/OpenClash/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list",
     "https://raw.githubusercontent.com/juewuy/ShellCrash/dev/public/fake_ip_filter.list",
-    "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/scripts/fake-ip-addon.txt",
     "https://ruleset.skk.moe/Internal/clash_fake_ip_filter.yaml"
 ]
 
 DROP_URLS = [
     "https://ruleset.skk.moe/Clash/non_ip/reject-drop.txt",
-    "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/master/rules/Custom_Reject-drop.txt"
 ]
 
 CUSTOM_RULES = {
@@ -98,7 +97,4 @@ GFW_IPV6_LIST = [
     "3ffe::/16",
     "100::/64",
     "2a03:2880:f100::/40",
-    "2001:db8::/32",
-    "::1",
-    "::",
 ]
