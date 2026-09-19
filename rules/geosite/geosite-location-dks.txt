@@ -1,0 +1,5 @@
+domain:amemv.com
+domain:apissl.ksapisrv.com
+domain:douyinvod.com
+domain:edith.xiaohongshu.com
+domain:gifshow.com

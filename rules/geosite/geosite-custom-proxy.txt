@@ -1,0 +1,4 @@
+domain:arduino.cc
+domain:outlands.eu.org
+domain:platformio.org
+full:dash.xns.one
