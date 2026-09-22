@@ -61,6 +61,7 @@ def build_mihomo_rules(rules: Dict[str, RuleSet], output_dir: str = "output/miho
     work_dir = utils.get_work_dir()
     blocklist_b_path = os.path.join(work_dir, "ads", "blocklist_b.txt")
     whitelist_b_path = os.path.join(work_dir, "ads", "whitelist_b.txt")
+    bl_b, wl_b = [], []
     if os.path.exists(blocklist_b_path):
         with open(blocklist_b_path, "r", encoding="utf-8") as f:
             bl_b = sorted({l.strip() for l in f if l.strip() and not l.startswith("#")})
@@ -85,6 +86,8 @@ def build_mihomo_rules(rules: Dict[str, RuleSet], output_dir: str = "output/miho
                 ["mihomo", "convert-ruleset", "domain", "text", a_txt, os.path.join(geosite_out, "geosite-ad-allow.mrs")],
                 "geosite-ad-allow.mrs"
             )
+
+    if bl_b or wl_b:
         print(f"  [Mihomo] 黑加白 precise={len(bl_b):,} allow={len(wl_b):,}")
 
     # 2. Aliases (e.g. geosite-emby -> geosite-custom-emby)

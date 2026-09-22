@@ -209,14 +209,13 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
             lines.append("")
             lines.append("| 规则文件 | 条数 | 订阅 |")
             lines.append("| :--- | ---: | :---: |")
-            for bname in base_names:
-                for f in files:
-                    if f.startswith(bname + "."):
-                        txt_p = os.path.join(sub_dir, f)
-                        count = count_file_rules(txt_p)
-                        count_str = f"{count:,}" if count > 0 else "-"
-                        url = f"https://raw.githubusercontent.com/{repo}/{target}/rules/{rel_sub}/{f}"
-                        lines.append(f"| **`{f}`** | `{count_str}` | [📥 直链]({url}) |")
+            # 每个文件本身就是完整规则文件, 直接 O(N) 遍历即可
+            for f in files:
+                txt_p = os.path.join(sub_dir, f)
+                count = count_file_rules(txt_p)
+                count_str = f"{count:,}" if count > 0 else "-"
+                url = f"https://raw.githubusercontent.com/{repo}/{target}/rules/{rel_sub}/{f}"
+                lines.append(f"| **`{f}`** | `{count_str}` | [📥 直链]({url}) |")
             lines.append("")
 
     _render_dual_table("GeoSite 域名规则集", geosite_dir, "geosite")

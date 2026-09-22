@@ -103,6 +103,7 @@ def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sm
     work_dir = utils.get_work_dir()
     blocklist_b_path = os.path.join(work_dir, "ads", "blocklist_b.txt")
     whitelist_b_path = os.path.join(work_dir, "ads", "whitelist_b.txt")
+    bl_b, wl_b = [], []
     if os.path.exists(blocklist_b_path):
         with open(blocklist_b_path, "r", encoding="utf-8") as f:
             bl_b = sorted({l.strip() for l in f if l.strip() and not l.startswith("#")})
@@ -115,6 +116,8 @@ def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sm
         with open(os.path.join(geosite_out, "geosite-ad-allow.txt"), "w", encoding="utf-8") as f:
             for d in wl_b:
                 f.write(d + chr(10))
+
+    if bl_b or wl_b:
         print(f"  [SmartDNS] 黑加白 precise={len(bl_b):,} allow={len(wl_b):,}")
 
     # Aliases
