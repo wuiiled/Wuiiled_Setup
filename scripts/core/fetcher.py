@@ -24,9 +24,12 @@ UA = "Mozilla/5.0 (compatible; WuiiledSetupRuleEngine/2.0)"
 
 
 def _get_target_urls(url: str) -> List[str]:
+    """Return deduped candidate URLs (origin + ghfast mirror for github)."""
     urls = [url]
-    if "raw.githubusercontent.com" in url or "github.com" in url:
-        urls.append(f"https://ghfast.top/{url}")
+    if ("raw.githubusercontent.com" in url or "github.com" in url) and "ghfast.top" not in url:
+        mirror = f"https://ghfast.top/{url}"
+        if mirror not in urls:
+            urls.append(mirror)
     return urls
 
 

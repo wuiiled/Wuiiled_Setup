@@ -72,6 +72,12 @@
 > **🛡️ 智能白名单防误杀机制**：
 > `geosite-ad` 与 `geosite-reject-drop` 预先经过 `Cats-Team/AdRules` Allowlist、`AdGuard SDNS Filter` Exceptions 以及本地 `rules/addons/exclude-keyword.txt`、`rules/Custom_Direct_DOMAIN.txt` 的多层差集扣除，杜绝正常购物、网银与工作网站断流。
 
+> [!NOTE]
+> **🔀 白名单策略按平台分叉**：
+> Mihomo / Sing-box 规则集为单集合格式，无法表达“拦截父域但放行子域”的例外，因此采用 Option A（含白名单子域的父域整体放行，宁放过勿错杀）；
+> **OxiDNS**（消费 smartdns 分支）支持 matcher 否定与 sequence 短路，故 smartdns 分支额外输出 `geosite-ad-allow.txt`（独立白名单）配合 `geosite-ad.txt`（精确黑名单），实现真正的“父域拦截 + 子域放行”。
+
+
 ---
 
 ### 3. 知名生态服务与上游分类 (SKK 维护)
@@ -142,7 +148,7 @@ Wuiiled_Setup/
 │   ├── test_tianling_zero_diff.py # 0-Diff 绝对对齐天灵自动化测试
 │   └── ...
 ├── singbox/config.json         # Sing-box 参考配置示例
-└── readme.md                   # 本文档
+└── README.md                   # 本文档
 ```
 
 ---

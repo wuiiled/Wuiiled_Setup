@@ -58,6 +58,12 @@ jobs:
 
     - name: Deploy to Orphan Branches
       run: |
+        # Sanity check: abort deploy if key artifacts are missing/empty to avoid
+        # pushing broken rule-sets to subscription branches.
+        for f in output/singbox/geosite/geosite-cn.srs output/mihomo/geosite/geosite-cn.txt output/smartdns/geosite/geosite-ad.txt; do
+          if [ ! -s "$f" ]; then echo "::error::Missing/empty artifact: $f"; exit 1; fi
+        done
+
         git config --global user.name 'github-actions[bot]'
         git config --global user.email 'github-actions[bot]@users.noreply.github.com'
         

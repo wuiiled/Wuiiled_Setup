@@ -94,10 +94,10 @@ GFW_IPV6_LIST = [
     "2001:252:0:1::/64",
     "2001:470:20::2",
     "2001:7fa::1",
-    "3ffe::/16",
-    "100::/64",
     "2a03:2880:f100::/40",
-    "2001:db8::/32",
-    "::1",
-    "::",
+    # NOTE: 3ffe::/20 is the mihomo fake-ip v6 range paired with this engine
+    # (network topology v4.4+). Kept so OxiDNS resp_ip fallback can identify
+    # fake-ip answers. Do NOT widen to 3ffe::/16 or it overflows and wrongly
+    # drops legitimate non-fake-ip v6 answers.
+    "3ffe::/20",
 ]

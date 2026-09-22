@@ -62,8 +62,10 @@ def safe_copy(src, dst):
 def download_file(url, timeout=15, retries=3):
     ua = "Mozilla/5.0 (compatible; MihomoRuleConverter/1.0)"
     candidates = [url]
-    if "raw.githubusercontent.com" in url or "github.com" in url:
-        candidates.append(f"https://ghfast.top/{url}")
+    if ("raw.githubusercontent.com" in url or "github.com" in url) and "ghfast.top" not in url:
+        mirror = f"https://ghfast.top/{url}"
+        if mirror not in candidates:
+            candidates.append(mirror)
 
     for target in candidates:
         req = urllib.request.Request(target, headers={'User-Agent': ua})

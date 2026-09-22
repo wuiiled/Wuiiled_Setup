@@ -148,6 +148,32 @@ def load_ads_rules() -> RuleSet:
     utils.optimize_smart_self(clean_allow_path, opt_allow_path)
     utils.apply_advanced_whitelist_filter(opt_ads_path, opt_allow_path, final_ads_path)
 
+    # Persist shared optimized allowlist so downstream consumers (reject-drop)
+    # reuse it instead of reading a nonexistent path.
+    shared_allow_path = os.path.join(work_dir, "shared", "opt_allow.txt")
+    os.makedirs(os.path.dirname(shared_allow_path), exist_ok=True)
+    if os.path.exists(opt_allow_path):
+        with open(opt_allow_path, "r", encoding="utf-8") as src, open(
+            shared_allow_path, "w", encoding="utf-8"
+        ) as dst:
+            dst.write(src.read())
+
+    # SmartDNS/OxiDNS uses two-set (block + allow-exception) semantics, so it can
+    # consume a precise blocklist without Option-A parent-domain exemption.
+    # Compute optional_release = domains released by Option A for smartdns re-add.
+    optional_release_path = os.path.join(mod_dir, "optional_release.txt")
+    try:
+        with open(opt_ads_path, "r", encoding="utf-8") as f:
+            before = {l.strip() for l in f if l.strip() and not l.startswith("#")}
+        with open(final_ads_path, "r", encoding="utf-8") as f:
+            after = {l.strip() for l in f if l.strip() and not l.startswith("#")}
+        released = sorted(before - after)
+        with open(optional_release_path, "w", encoding="utf-8") as f:
+            if released:
+                f.write(chr(10).join(released) + chr(10))
+    except OSError:
+        pass
+
     domain_suffixes = set()
     if os.path.exists(final_ads_path):
         with open(final_ads_path, "r", encoding="utf-8") as f:
@@ -304,12 +330,17 @@ def load_reject_drop_rules() -> RuleSet:
     with open(clean_rd, 'w', encoding='utf-8') as f:
         f.write('\n'.join(sorted(rd_lines)) + '\n')
 
-    raw_allow_temp = os.path.join(work_dir, "shared", "raw_allow.txt")
-    clean_rd_allow = os.path.join(mod_dir, "clean_rd_allow.txt")
+    # Reuse the shared optimized allowlist produced by load_ads_rules instead of
+    # a nonexistent shared/raw_allow.txt (which silently disabled the whitelist).
+    clean_rd_allow = os.path.join(work_dir, "shared", "opt_allow.txt")
     final_rd = os.path.join(mod_dir, "final_rd.txt")
 
-    utils.process_normalize_domain(raw_allow_temp, clean_rd_allow, skip_allow_rules=False)
-    utils.apply_advanced_whitelist_filter(clean_rd, clean_rd_allow, final_rd)
+    if os.path.exists(clean_rd_allow) and os.path.getsize(clean_rd_allow) > 0:
+        utils.apply_advanced_whitelist_filter(clean_rd, clean_rd_allow, final_rd)
+    else:
+        print("  [Reject-Drop] WARNING: shared allowlist missing/empty, whitelist filter skipped")
+        with open(clean_rd, "r", encoding="utf-8") as src, open(final_rd, "w", encoding="utf-8") as dst:
+            dst.write(src.read())
 
     domains = set()
     domain_suffixes = set()
