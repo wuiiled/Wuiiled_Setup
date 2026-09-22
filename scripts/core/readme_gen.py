@@ -102,9 +102,10 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
     lines.append("")
     lines.append(f'![规则总数](https://img.shields.io/badge/%E8%A7%84%E5%88%99%E6%80%BB%E6%95%B0-{total}-blue)')
     lines.append(f'![格式](https://img.shields.io/badge/%E6%A0%BC%E5%BC%8F-{fmt_badge.replace(" ", "%20").replace("/", "%2F")}-informational)')
-    lines.append(f'![更新时间](https://img.shields.io/badge/%E6%9B%B4%E6%96%B0-{now_str.replace(" ", "%20").replace(":", "%3A")}-success)')
+
     lines.append("")
-    lines.append('<i>由 <a href="https://github.com/' + repo + '">Wuiiled_Setup</a> 规则自动化引擎实时构建分发</i>')
+    lines.append('<i>由 <a href="https://github.com/' + repo + '">Wuiiled_Setup</a> 规则自动化引擎实时构建分发</i><br>')
+    lines.append(f'<sub>🕐 最后更新：{now_str} (Asia/Shanghai)</sub>')
     lines.append("")
     lines.append("</div>")
     lines.append("")
@@ -120,10 +121,10 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
         lines.append('<details>')
         lines.append('<summary><b>🛠️ Sing-box 配置示例</b>（点击展开）</summary>')
         lines.append("")
-        lines.append("在 `config.json` 的 `route.rule_set` 中配置远程规则集（推荐优先使用高效的二进制 `.srs`）：")
+        lines.append("在 `config.json` 的 `route.rule_set` 中配置远程规则集。将下方 `{tag}` 替换为表格中的规则名（推荐优先使用高效的二进制 `.srs`）：")
         lines.append("")
         lines.append("```json")
-        lines.append('{\n  "tag": "geosite-cn",\n  "type": "remote",\n  "format": "binary",\n  "url": "' + f"https://raw.githubusercontent.com/{repo}/singbox/rules/geosite/geosite-cn.srs" + '",\n  "download_detour": "direct"\n}')
+        lines.append('{\n  "tag": "{tag}",\n  "type": "remote",\n  "format": "binary",\n  "url": "' + f"https://raw.githubusercontent.com/{repo}/singbox/rules/geosite/{{tag}}.srs" + '",\n  "download_detour": "direct"\n}')
         lines.append("```")
         lines.append("")
         lines.append("</details>")
@@ -174,7 +175,7 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
         if target == "singbox":
             lines.append(f"## 🌐 {category_name}")
             lines.append("")
-            lines.append("| 规则名称 | 条数 | ⚡ 二进制 (.srs) | 📄 明文 (.json) |")
+            lines.append("| 规则名称 | 条数 | SRS | JSON |")
             lines.append("| :--- | ---: | :---: | :---: |")
             for bname in base_names:
                 json_p = os.path.join(sub_dir, f"{bname}.json")
@@ -183,14 +184,14 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
                 count_str = f"{count:,}" if count > 0 else "-"
                 srs_url = f"https://raw.githubusercontent.com/{repo}/{target}/rules/{rel_sub}/{bname}.srs"
                 json_url = f"https://raw.githubusercontent.com/{repo}/{target}/rules/{rel_sub}/{bname}.json"
-                srs_link = f"[📥 复制 SRS]({srs_url})" if os.path.exists(srs_p) else "-"
-                json_link = f"[📄 查看 JSON]({json_url})" if os.path.exists(json_p) else "-"
+                srs_link = f"[📥 SRS]({srs_url})" if os.path.exists(srs_p) else "-"
+                json_link = f"[📄 JSON]({json_url})" if os.path.exists(json_p) else "-"
                 lines.append(f"| **`{bname}`** | `{count_str}` | {srs_link} | {json_link} |")
             lines.append("")
         elif target == "mihomo":
             lines.append(f"## 🌐 {category_name}")
             lines.append("")
-            lines.append("| 规则名称 | 条数 | ⚡ 二进制 (.mrs) | 📄 明文 (.txt) |")
+            lines.append("| 规则名称 | 条数 | MRS | TXT |")
             lines.append("| :--- | ---: | :---: | :---: |")
             for bname in base_names:
                 txt_p = os.path.join(sub_dir, f"{bname}.txt")
@@ -199,14 +200,14 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
                 count_str = f"{count:,}" if count > 0 else "-"
                 mrs_url = f"https://raw.githubusercontent.com/{repo}/{target}/rules/{rel_sub}/{bname}.mrs"
                 txt_url = f"https://raw.githubusercontent.com/{repo}/{target}/rules/{rel_sub}/{bname}.txt"
-                mrs_link = f"[📥 复制 MRS]({mrs_url})" if os.path.exists(mrs_p) else "-"
-                txt_link = f"[📄 查看 TXT]({txt_url})" if os.path.exists(txt_p) else "-"
+                mrs_link = f"[📥 MRS]({mrs_url})" if os.path.exists(mrs_p) else "-"
+                txt_link = f"[📄 TXT]({txt_url})" if os.path.exists(txt_p) else "-"
                 lines.append(f"| **`{bname}`** | `{count_str}` | {mrs_link} | {txt_link} |")
             lines.append("")
         else:
             lines.append(f"## 🌐 {category_name}")
             lines.append("")
-            lines.append("| 规则文件 | 条数 | 订阅链接 |")
+            lines.append("| 规则文件 | 条数 | 订阅 |")
             lines.append("| :--- | ---: | :---: |")
             for bname in base_names:
                 for f in files:
@@ -215,7 +216,7 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
                         count = count_file_rules(txt_p)
                         count_str = f"{count:,}" if count > 0 else "-"
                         url = f"https://raw.githubusercontent.com/{repo}/{target}/rules/{rel_sub}/{f}"
-                        lines.append(f"| **`{f}`** | `{count_str}` | [📥 获取直链]({url}) |")
+                        lines.append(f"| **`{f}`** | `{count_str}` | [📥 直链]({url}) |")
             lines.append("")
 
     _render_dual_table("GeoSite 域名规则集", geosite_dir, "geosite")
@@ -225,14 +226,14 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
     if root_files:
         lines.append("## 📌 独立规则集")
         lines.append("")
-        lines.append("| 规则文件 | 条数 | 订阅链接 |")
+        lines.append("| 规则文件 | 条数 | 订阅 |")
         lines.append("| :--- | ---: | :---: |")
         for f in sorted(root_files):
             p = os.path.join(target_dir, f)
             count = count_file_rules(p)
             count_str = f"{count:,}" if count > 0 else "-"
             url = f"https://raw.githubusercontent.com/{repo}/{target}/rules/{f}"
-            lines.append(f"| **`{f}`** | `{count_str}` | [📥 获取直链]({url}) |")
+            lines.append(f"| **`{f}`** | `{count_str}` | [📥 直链]({url}) |")
         lines.append("")
 
     lines.append("---")

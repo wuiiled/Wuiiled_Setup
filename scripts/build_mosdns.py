@@ -50,14 +50,6 @@ def build_mosdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/mosd
         with open(out_path, 'w', encoding='utf-8') as f:
             f.write("\n".join(mos_lines) + ("\n" if mos_lines else ""))
 
-    # Backward compatibility: ad_domain_list.txt in root
-    if "geosite-ad" in rules:
-        ad_rs = rules["geosite-ad"]
-        ad_lines = [s.lstrip('.') for s in sorted(ad_rs.domain_suffixes) if s.lstrip('.')]
-        legacy_ad_path = os.path.join(output_dir, "ad_domain_list.txt")
-        with open(legacy_ad_path, 'w', encoding='utf-8') as f:
-            f.write("\n".join(ad_lines) + ("\n" if ad_lines else ""))
-
     print("✅ [MosDNS] 全部规则集构建完成！")
 
 

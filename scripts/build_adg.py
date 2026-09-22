@@ -44,10 +44,8 @@ def build_adg_rules(rules: Dict[str, RuleSet], output_dir: str = "output/adg"):
                     adg_lines.append(f"@@||{domain}^")
 
     ad_out_path = os.path.join(output_dir, "geosite-ad.txt")
-    legacy_ad_path = os.path.join(output_dir, "ADs_merged_adg.txt")
-    for p in (ad_out_path, legacy_ad_path):
-        with open(p, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(adg_lines) + '\n')
+    with open(ad_out_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(adg_lines) + '\n')
     print(f"  [AdGuard] {'geosite-ad':<24} | 规则数: {len(adg_lines):,} (黑加白 ||拦截 + @@||放行)")
 
     # 2. Httpdns
@@ -58,7 +56,7 @@ def build_adg_rules(rules: Dict[str, RuleSet], output_dir: str = "output/adg"):
             clean = d.lstrip('.').strip()
             if clean:
                 httpdns_lines.append(f"||{clean}^")
-    for fname in ("geosite-httpdns.txt", "Httpdns.txt"):
+    for fname in ("geosite-httpdns.txt",):
         with open(os.path.join(output_dir, fname), 'w', encoding='utf-8') as f:
             f.write('\n'.join(httpdns_lines) + ('\n' if httpdns_lines else ''))
     print(f"  ✅ [AdGuard] {'geosite-httpdns':<24} | 规则数: {len(httpdns_lines):,}")
@@ -74,7 +72,7 @@ def build_adg_rules(rules: Dict[str, RuleSet], output_dir: str = "output/adg"):
         if cleaned:
             domain = cleaned.lstrip('+.')
             pcdn_lines.append(f"||{domain}^")
-    for fname in ("geosite-pcdn.txt", "PCDN.txt"):
+    for fname in ("geosite-pcdn.txt",):
         with open(os.path.join(output_dir, fname), 'w', encoding='utf-8') as f:
             f.write('\n'.join(pcdn_lines) + ('\n' if pcdn_lines else ''))
     print(f"  ✅ [AdGuard] {'geosite-pcdn':<24} | 规则数: {len(pcdn_lines):,}")
