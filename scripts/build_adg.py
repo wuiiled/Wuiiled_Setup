@@ -23,41 +23,32 @@ def build_adg_rules(rules: Dict[str, RuleSet], output_dir: str = "output/adg"):
     print(f"\n📦 [AdGuard Home] 正在构建所有规则集并输出至 {output_dir}...")
 
     # 1. geosite-ad / ADs_merged_adg
+    # AdGuard Home natively supports mixing block (||d^) and exception (@@||d^) in one
+    # list, so it uses the precise 黑加白模式: 黑名单B as ||..^ plus 白名单B as @@||..^.
     work_dir = utils.get_work_dir()
-    opt_ads_path = os.path.join(work_dir, "ads", "opt_ads.txt")
-    opt_allow_path = os.path.join(work_dir, "ads", "opt_allow.txt")
+    blocklist_b_path = os.path.join(work_dir, "ads", "blocklist_b.txt")
+    whitelist_b_path = os.path.join(work_dir, "ads", "whitelist_b.txt")
 
     adg_lines = []
-    if os.path.exists(opt_ads_path):
-        with open(opt_ads_path, 'r', encoding='utf-8') as f:
+    if os.path.exists(blocklist_b_path):
+        with open(blocklist_b_path, 'r', encoding='utf-8') as f:
             for line in f.read().splitlines():
-                domain = line.strip()
-                if not domain or domain.startswith('#'):
-                    continue
-                if domain.startswith("+."):
-                    domain = domain[2:]
-                elif domain.startswith("."):
-                    domain = domain[1:]
-                adg_lines.append(f"||{domain}^")
-
-    if os.path.exists(opt_allow_path):
-        with open(opt_allow_path, 'r', encoding='utf-8') as f:
+                domain = line.strip().lstrip('+.').lstrip('.')
+                if domain and not domain.startswith('#'):
+                    adg_lines.append(f"||{domain}^")
+    if os.path.exists(whitelist_b_path):
+        with open(whitelist_b_path, 'r', encoding='utf-8') as f:
             for line in f.read().splitlines():
-                domain = line.strip()
-                if not domain or domain.startswith('#'):
-                    continue
-                if domain.startswith("+."):
-                    domain = domain[2:]
-                elif domain.startswith("."):
-                    domain = domain[1:]
-                adg_lines.append(f"@@||{domain}^")
+                domain = line.strip().lstrip('+.').lstrip('.')
+                if domain and not domain.startswith('#'):
+                    adg_lines.append(f"@@||{domain}^")
 
     ad_out_path = os.path.join(output_dir, "geosite-ad.txt")
     legacy_ad_path = os.path.join(output_dir, "ADs_merged_adg.txt")
     for p in (ad_out_path, legacy_ad_path):
         with open(p, 'w', encoding='utf-8') as f:
             f.write('\n'.join(adg_lines) + '\n')
-    print(f"  ✅ [AdGuard] {'geosite-ad':<24} | 规则数: {len(adg_lines):,} (含白名单例外)")
+    print(f"  [AdGuard] {'geosite-ad':<24} | 规则数: {len(adg_lines):,} (黑加白 ||拦截 + @@||放行)")
 
     # 2. Httpdns
     httpdns_lines = []

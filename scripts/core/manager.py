@@ -18,7 +18,9 @@ from core.cleaner import (
     clean_ip_line,
     is_valid_ip_or_cidr,
     clean_mihomo_domain_line,
-    compact_regexes
+    compact_regexes,
+    build_blocklist_b,
+    build_whitelist_b
 )
 from core.fetcher import (
     fetch_text_url,
@@ -158,19 +160,23 @@ def load_ads_rules() -> RuleSet:
         ) as dst:
             dst.write(src.read())
 
-    # SmartDNS/OxiDNS uses two-set (block + allow-exception) semantics, so it can
-    # consume a precise blocklist without Option-A parent-domain exemption.
-    # Compute optional_release = domains released by Option A for smartdns re-add.
-    optional_release_path = os.path.join(mod_dir, "optional_release.txt")
+    # 黑加白模式: compute precise blocklist B + allow exception list B via pure
+    # functions, persist for platform exporters (smartdns/mihomo/adg).
+    # 黑名单A (Option A, final_ads.txt) remains the backward-compatible default.
+    blocklist_b_path = os.path.join(mod_dir, "blocklist_b.txt")
+    whitelist_b_path = os.path.join(mod_dir, "whitelist_b.txt")
     try:
         with open(opt_ads_path, "r", encoding="utf-8") as f:
-            before = {l.strip() for l in f if l.strip() and not l.startswith("#")}
-        with open(final_ads_path, "r", encoding="utf-8") as f:
-            after = {l.strip() for l in f if l.strip() and not l.startswith("#")}
-        released = sorted(before - after)
-        with open(optional_release_path, "w", encoding="utf-8") as f:
-            if released:
-                f.write(chr(10).join(released) + chr(10))
+            raw_block = {l.strip() for l in f if l.strip() and not l.startswith("#")}
+        with open(opt_allow_path, "r", encoding="utf-8") as f:
+            raw_allow = {l.strip() for l in f if l.strip() and not l.startswith("#")}
+        bl_b = build_blocklist_b(raw_block, raw_allow)
+        wl_b = build_whitelist_b(raw_allow, raw_block, bl_b)
+        with open(blocklist_b_path, "w", encoding="utf-8") as f:
+            f.write(chr(10).join(sorted(bl_b)) + chr(10))
+        with open(whitelist_b_path, "w", encoding="utf-8") as f:
+            f.write(chr(10).join(sorted(wl_b)) + chr(10))
+        print(f"  [黑加白] 黑名单B={len(bl_b):,} 白名单B={len(wl_b):,}")
     except OSError:
         pass
 

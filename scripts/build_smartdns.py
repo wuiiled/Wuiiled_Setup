@@ -96,34 +96,26 @@ def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sm
             f.write("\n".join(smartdns_lines) + ("\n" if smartdns_lines else ""))
 
     # ---------------------------------------------------------------
-    # OxiDNS two-set ad rules (precise block + separate allow exception)
-    # Mihomo/Sing-box keep Option-A parent-domain exemption because their
-    # rule-set format cannot express 'block parent but allow child'. OxiDNS
-    # CAN via matcher negation + sequence short-circuit, so for smartdns we
-    # emit a precise blocklist (re-adding Option-A-released domains) plus a
-    # separate allowlist file.
+    # 黑加白模式 (smartdns / OxiDNS): emit precise blocklist B + allow exception B
+    # as SEPARATE files.  geosite-ad.txt itself stays as Option A (backward-compat).
+    # OxiDNS consumes precise + allow via matcher-negation / sequence short-circuit.
     # ---------------------------------------------------------------
     work_dir = utils.get_work_dir()
-    optional_release_path = os.path.join(work_dir, "ads", "optional_release.txt")
-    opt_allow_path = os.path.join(work_dir, "ads", "opt_allow.txt")
-    if "geosite-ad" in rules:
-        ad_rs = rules["geosite-ad"]
-        precise_suffixes = set(ad_rs.domain_suffixes)
-        if os.path.exists(optional_release_path):
-            with open(optional_release_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip().lstrip("+.").lstrip(".")
-                    if line:
-                        precise_suffixes.add(line)
-        precise_path = os.path.join(geosite_out, "geosite-ad.txt")
-        with open(precise_path, "w", encoding="utf-8") as f:
-            for d in sorted(precise_suffixes):
-                if d:
-                    f.write(d + chr(10))
-        allow_path = os.path.join(geosite_out, "geosite-ad-allow.txt")
-        if os.path.exists(opt_allow_path):
-            utils.safe_copy(opt_allow_path, allow_path)
-        print(f"  [SmartDNS] geosite-ad (OxiDNS two-set) precise={len(precise_suffixes):,}")
+    blocklist_b_path = os.path.join(work_dir, "ads", "blocklist_b.txt")
+    whitelist_b_path = os.path.join(work_dir, "ads", "whitelist_b.txt")
+    if os.path.exists(blocklist_b_path):
+        with open(blocklist_b_path, "r", encoding="utf-8") as f:
+            bl_b = sorted({l.strip() for l in f if l.strip() and not l.startswith("#")})
+        with open(os.path.join(geosite_out, "geosite-ad-precise.txt"), "w", encoding="utf-8") as f:
+            for d in bl_b:
+                f.write(d + chr(10))
+    if os.path.exists(whitelist_b_path):
+        with open(whitelist_b_path, "r", encoding="utf-8") as f:
+            wl_b = sorted({l.strip() for l in f if l.strip() and not l.startswith("#")})
+        with open(os.path.join(geosite_out, "geosite-ad-allow.txt"), "w", encoding="utf-8") as f:
+            for d in wl_b:
+                f.write(d + chr(10))
+        print(f"  [SmartDNS] 黑加白 precise={len(bl_b):,} allow={len(wl_b):,}")
 
     # Aliases
     aliases = {"geosite-emby": "geosite-custom-emby"}

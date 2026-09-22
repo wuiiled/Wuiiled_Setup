@@ -73,10 +73,21 @@
 > `geosite-ad` 与 `geosite-reject-drop` 预先经过 `Cats-Team/AdRules` Allowlist、`AdGuard SDNS Filter` Exceptions 以及本地 `rules/addons/exclude-keyword.txt`、`rules/Custom_Direct_DOMAIN.txt` 的多层差集扣除，杜绝正常购物、网银与工作网站断流。
 
 > [!NOTE]
-> **🔀 白名单策略按平台分叉**：
-> **Sing-box** 规则集为单集合格式，无法在集合内表达“拦截父域但放行子域”的例外，因此采用 Option A（含白名单子域的父域整体放行，宁放过勿错杀）。
-> **Mihomo** 虽同为单集合 `.mrs`，但可在配置层用规则顺序表达例外——将 `RULE-SET,geosite-ad-allow,DIRECT` 置于 `RULE-SET,geosite-ad,REJECT` 之前短路即可。故 mihomo 分支同样输出精确黑名单 `geosite-ad` 与独立白名单 `geosite-ad-allow`。
-> **OxiDNS**（消费 smartdns 分支）支持 matcher 否定与 sequence 短路，smartdns 分支输出 `geosite-ad-allow.txt`（独立白名单）配合 `geosite-ad.txt`（精确黑名单），实现真正的“父域拦截 + 子域放行”。
+> **🔀 去广告规则的三套产物（黑名单A / 黑加白 / AdGuard 混合）**：
+> 上游黑名单经清洗去重后，与上游白名单做差集。规则如下：凡与上游白名单**同名或为其后代**的拦截项一律剔除（方向1）。
+> - **黑名单A（Option A，单集合保守版）**：额外把“白名单子域的父域”也剔除（方向2），宁放过勿错杀。对应 `geosite-ad`，是各平台默认产物，向后兼容。
+> - **黑名单B + 白名单B（黑加白精确双集合）**：黑名单B 仅做方向1剔除（保留含白名单子域的父域），白名单B 收录“会被黑名单B命中且自身不在上游黑名单”的上游白名单项。对应 `geosite-ad-precise` + `geosite-ad-allow`，需配合支持例外的客户端使用。
+> - **AdGuard Home（单文件混合）**：原生支持 `@@` 例外，故 `geosite-ad` / `ADs_merged_adg` 直接输出 `||黑名单B^` + `@@||白名单B^` 混合单文件。
+> 
+> **各分支产物对照**：
+> | 分支 | `geosite-ad` | `geosite-ad-precise` | `geosite-ad-allow` |
+> | :--- | :--- | :--- | :--- |
+> | **smartdns** (供 OxiDNS) | 黑名单A | 黑名单B | 白名单B |
+> | **mihomo** | 黑名单A | 黑名单B | 白名单B |
+> | **sing-box** | 黑名单A | — (单集合不支持例外) | — |
+> | **adg** | 黑名单B+白名单B 混合 (`@@` 例外) | — | — |
+> 
+> **使用方式**：OxiDNS 在 sequence 中先 `qname $allow → return` 再 `qname $precise → drop`；mihomo 在 `rules:` 中将 `RULE-SET,geosite-ad-allow,DIRECT` 置于 `RULE-SET,geosite-ad-precise,REJECT` 之前短路。
 
 
 ---

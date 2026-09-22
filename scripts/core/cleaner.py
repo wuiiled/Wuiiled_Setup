@@ -156,3 +156,53 @@ def compact_regexes(regex_set: Set[str]) -> List[str]:
         step3.add(f"{base}(nip|sslip)\\.io$")
 
     return sorted(list(step3))
+
+
+def _domain_ancestors(d: str) -> List[str]:
+    """Return all ancestor domains including itself: a.b.com -> [a.b.com, b.com, com]."""
+    parts = d.split(".")
+    return [".".join(parts[i:]) for i in range(len(parts))]
+
+
+def build_blocklist_b(raw_block: Set[str], raw_allow: Set[str]) -> Set[str]:
+    """
+    Precise blocklist (黑加白模式 黑名单B).
+    Remove ONLY blocklist entries that share an exact name or an ancestor with the
+    upstream allowlist (direction-1).  Unlike Option A we do NOT remove a parent
+    domain merely because the allowlist contains one of its children.  Finally
+    collapse redundant subdomains already covered by a kept parent (prefix-tree absorb).
+    """
+    allow_set = {a for a in (x.strip().lower().lstrip('+.').lstrip('.') for x in raw_allow) if a}
+    kept = set()
+    for b in raw_block:
+        b = b.strip().lower().lstrip('+.').lstrip('.')
+        if not b:
+            continue
+        if any(anc in allow_set for anc in _domain_ancestors(b)):
+            continue
+        kept.add(b)
+    final = set()
+    for b in kept:
+        parts = b.split(".")
+        if any(".".join(parts[i:]) in kept for i in range(1, len(parts))):
+            continue
+        final.add(b)
+    return final
+
+
+def build_whitelist_b(raw_allow: Set[str], raw_block: Set[str], blocklist_b: Set[str]) -> Set[str]:
+    """
+    Allow exception list (黑加白模式 白名单B).
+    Keep an upstream allowlist entry iff it would be hit by blocklist_b (i.e. its exact
+    name or one of its ancestors is in blocklist_b) AND it does NOT itself appear in the
+    upstream blocklist (such entries are intentionally not blocked, so they need no exception).
+    """
+    block_set = {b for b in (x.strip().lower().lstrip('+.').lstrip('.') for x in raw_block) if b}
+    out = set()
+    for a in raw_allow:
+        a = a.strip().lower().lstrip('+.').lstrip('.')
+        if not a or a in block_set:
+            continue
+        if any(a == blk or a.endswith("." + blk) for blk in blocklist_b):
+            out.add(a)
+    return out

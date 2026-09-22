@@ -54,51 +54,38 @@ def build_mihomo_rules(rules: Dict[str, RuleSet], output_dir: str = "output/miho
             )
 
     # ---------------------------------------------------------------
-    # geosite-ad precise blocklist + allow exception (mirrors smartdns/OxiDNS).
-    # Mihomo cannot express 'block parent but allow child' inside a single .mrs,
-    # but it CAN at the config level: users place a RULE-SET,geosite-ad-allow,DIRECT
-    # rule BEFORE RULE-SET,geosite-ad,REJECT so whitelisted domains short-circuit.
-    # Therefore mihomo also ships the precise blocklist (re-adding Option-A-released
-    # domains) plus a separate allow rule-set.
+    # 黑加白模式 (mihomo): emit precise blocklist B + allow exception B as SEPARATE
+    # rule-sets.  geosite-ad stays as Option A (backward-compat).  Users opt in via
+    # config: RULE-SET,geosite-ad-allow,DIRECT placed BEFORE RULE-SET,geosite-ad-precise,REJECT.
     # ---------------------------------------------------------------
     work_dir = utils.get_work_dir()
-    optional_release_path = os.path.join(work_dir, "ads", "optional_release.txt")
-    opt_allow_path = os.path.join(work_dir, "ads", "opt_allow.txt")
-    if "geosite-ad" in rules:
-        ad_rs = rules["geosite-ad"]
-        precise_suffixes = set(ad_rs.domain_suffixes)
-        if os.path.exists(optional_release_path):
-            with open(optional_release_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip().lstrip("+.").lstrip(".")
-                    if line:
-                        precise_suffixes.add(line)
-        # Overwrite precise blocklist txt (+ mrs)
-        ad_txt = os.path.join(geosite_out, "geosite-ad.txt")
-        with open(ad_txt, "w", encoding="utf-8") as f:
-            for d in sorted(precise_suffixes):
-                if d:
-                    f.write("+." + d + chr(10))
+    blocklist_b_path = os.path.join(work_dir, "ads", "blocklist_b.txt")
+    whitelist_b_path = os.path.join(work_dir, "ads", "whitelist_b.txt")
+    if os.path.exists(blocklist_b_path):
+        with open(blocklist_b_path, "r", encoding="utf-8") as f:
+            bl_b = sorted({l.strip() for l in f if l.strip() and not l.startswith("#")})
+        p_txt = os.path.join(geosite_out, "geosite-ad-precise.txt")
+        with open(p_txt, "w", encoding="utf-8") as f:
+            for d in bl_b:
+                f.write("+." + d + chr(10))
         if has_m:
             utils.compile_ruleset(
-                ["mihomo", "convert-ruleset", "domain", "text", ad_txt, os.path.join(geosite_out, "geosite-ad.mrs")],
-                "geosite-ad.mrs"
+                ["mihomo", "convert-ruleset", "domain", "text", p_txt, os.path.join(geosite_out, "geosite-ad-precise.mrs")],
+                "geosite-ad-precise.mrs"
             )
-        # Allow rule-set: bare domains emitted with '+. ' suffix semantics so that
-        # whitelisted parents also cover their subdomains.
-        if os.path.exists(opt_allow_path):
-            allow_txt = os.path.join(geosite_out, "geosite-ad-allow.txt")
-            with open(opt_allow_path, "r", encoding="utf-8") as fin, open(allow_txt, "w", encoding="utf-8") as fout:
-                for line in fin:
-                    d = line.strip().lstrip("+.").lstrip(".")
-                    if d and not d.startswith("#"):
-                        fout.write("+." + d + chr(10))
-            if has_m:
-                utils.compile_ruleset(
-                    ["mihomo", "convert-ruleset", "domain", "text", allow_txt, os.path.join(geosite_out, "geosite-ad-allow.mrs")],
-                    "geosite-ad-allow.mrs"
-                )
-        print(f"  [Mihomo] geosite-ad precise={len(precise_suffixes):,} (+ allow rule-set)")
+    if os.path.exists(whitelist_b_path):
+        with open(whitelist_b_path, "r", encoding="utf-8") as f:
+            wl_b = sorted({l.strip() for l in f if l.strip() and not l.startswith("#")})
+        a_txt = os.path.join(geosite_out, "geosite-ad-allow.txt")
+        with open(a_txt, "w", encoding="utf-8") as f:
+            for d in wl_b:
+                f.write("+." + d + chr(10))
+        if has_m:
+            utils.compile_ruleset(
+                ["mihomo", "convert-ruleset", "domain", "text", a_txt, os.path.join(geosite_out, "geosite-ad-allow.mrs")],
+                "geosite-ad-allow.mrs"
+            )
+        print(f"  [Mihomo] 黑加白 precise={len(bl_b):,} allow={len(wl_b):,}")
 
     # 2. Aliases (e.g. geosite-emby -> geosite-custom-emby)
     aliases = {
