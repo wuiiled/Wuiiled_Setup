@@ -24,6 +24,9 @@ jobs:
       with:
         python-version: '3.x'
 
+    - name: Install Python dependencies
+      run: pip install "protobuf>=4.25.1"
+
     - name: Install Tools (Mihomo & Sing-box)
       run: |
         echo "Downloading latest mihomo binary..."
