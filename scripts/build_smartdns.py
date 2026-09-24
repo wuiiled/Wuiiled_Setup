@@ -9,6 +9,7 @@ import sys
 from typing import Dict, Optional
 
 import utils
+import providers
 from core.models import RuleSet
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -67,7 +68,12 @@ def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sm
     os.makedirs(geosite_out, exist_ok=True)
     os.makedirs(geoip_out, exist_ok=True)
 
-    print(f"\n📦 [SmartDNS] 正在构建所有规则集并输出至 {output_dir}...")
+    # OxiDNS 白名单: smartdns 分支只同步 DNS 服务器实际订阅的规则集
+    # (清单与 OxiDNS 配置 downloads 段一致, 见 providers.OXIDNS_RULE_FILES)
+    whitelist = set(providers.OXIDNS_RULE_FILES.values())
+    rules = {name: rs for name, rs in rules.items() if name in whitelist}
+
+    print(f"\n📦 [SmartDNS] 正在构建 {len(rules)} 个 OxiDNS 订阅规则集并输出至 {output_dir}...")
 
     for name, rs in rules.items():
         sub_dir = geoip_out if rs.is_geoip else geosite_out
@@ -95,41 +101,18 @@ def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sm
         with open(out_path, 'w', encoding='utf-8') as f:
             f.write("\n".join(smartdns_lines) + ("\n" if smartdns_lines else ""))
 
-    # ---------------------------------------------------------------
-    # 黑加白模式 (smartdns / OxiDNS): emit precise blocklist B + allow exception B
-    # as SEPARATE files.  geosite-ad.txt itself stays as Option A (backward-compat).
-    # OxiDNS consumes precise + allow via matcher-negation / sequence short-circuit.
-    # ---------------------------------------------------------------
-    work_dir = utils.get_work_dir()
-    blocklist_b_path = os.path.join(work_dir, "ads", "blocklist_b.txt")
-    whitelist_b_path = os.path.join(work_dir, "ads", "whitelist_b.txt")
-    bl_b, wl_b = [], []
-    if os.path.exists(blocklist_b_path):
-        with open(blocklist_b_path, "r", encoding="utf-8") as f:
-            bl_b = sorted({l.strip() for l in f if l.strip() and not l.startswith("#")})
-        with open(os.path.join(geosite_out, "geosite-ad-precise.txt"), "w", encoding="utf-8") as f:
-            for d in bl_b:
-                f.write(d + chr(10))
-    if os.path.exists(whitelist_b_path):
-        with open(whitelist_b_path, "r", encoding="utf-8") as f:
-            wl_b = sorted({l.strip() for l in f if l.strip() and not l.startswith("#")})
-        with open(os.path.join(geosite_out, "geosite-ad-allow.txt"), "w", encoding="utf-8") as f:
-            for d in wl_b:
-                f.write(d + chr(10))
-
-    if bl_b or wl_b:
-        print(f"  [SmartDNS] 黑加白 precise={len(bl_b):,} allow={len(wl_b):,}")
-
-    # Aliases
-    aliases = {"geosite-emby": "geosite-custom-emby"}
-    for alias_name, target_name in aliases.items():
-        sub_dir = geoip_out if alias_name.startswith("geoip-") else geosite_out
-        src = os.path.join(sub_dir, f"{target_name}.txt")
-        dst = os.path.join(sub_dir, f"{alias_name}.txt")
+    # OxiDNS 兼容副本: 以 OxiDNS 配置期望的历史文件名在 rules/ 根目录落一份,
+    # 保证线上订阅直链 (smartdns/rules/CN_merged.txt 等) 持续可用
+    for legacy_name, ruleset_name in providers.OXIDNS_RULE_FILES.items():
+        rs = rules.get(ruleset_name)
+        if rs is None:
+            continue
+        sub_dir = geoip_out if rs.is_geoip else geosite_out
+        src = os.path.join(sub_dir, f"{ruleset_name}.txt")
         if os.path.exists(src):
-            utils.safe_copy(src, dst)
+            utils.safe_copy(src, os.path.join(output_dir, legacy_name))
 
-    print("✅ [SmartDNS] 全部规则集构建完成！")
+    print("✅ [SmartDNS] OxiDNS 订阅规则集构建完成！")
 
 
 def run_all(rules: Optional[Dict[str, RuleSet]] = None):

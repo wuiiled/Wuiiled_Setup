@@ -1,0 +1,16 @@
+# geosite-cn 本地补丁与列表合并
+# 格式说明:
+#   纯文本      -> domain_suffix (如 example.com)
+#   full:       -> domain       (如 full:www.example.com)
+#   keyword:    -> domain_keyword
+#   regexp:     -> domain_regex
+#   include:url:<URL>       下载外部列表并清洗合并 (裸域名->后缀, domain-suffix:/domain:->原语义)
+#   include:dat:<分类码>     合并 dat 解析出的其他分类 (如 category-games)
+#   include:local:<相对路径> 合并本地文件 (相对仓库根)
+#   以 # 开头为注释
+# 手动补丁行: 上游收录后会自动注释并标注日期, 无需手动删除
+# include 行属于整表合并, 随上游自行更新, 不参与自动注释
+
+# —— 自有 cn 上游列表 (原 providers.CN_URLS_1/2, 源自 04699e9 版本 gen_cn) ——
+include:url:https://static-file-global.353355.xyz/rules/cn-additional-list.txt
+include:url:https://ruleset.skk.moe/Clash/non_ip/domestic.txt

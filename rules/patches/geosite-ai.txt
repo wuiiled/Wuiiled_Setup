@@ -1,0 +1,7 @@
+# geosite-ai 本地补丁与列表合并
+# 基座: scripts/providers.AI_URLS 清洗合成的自研 AI 列表
+# 本文件可追加手动域名补丁 (格式同 geosite-porn.txt) 与 include 合并指令
+# 格式说明见 rules/patches/geosite-porn.txt
+
+# —— dat 生成的 AI 分类 (与自研列表合并为最终 geosite-ai) ——
+include:dat:category-ai-!cn

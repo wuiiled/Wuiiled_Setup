@@ -42,6 +42,14 @@ def build_mihomo_rules(rules: Dict[str, RuleSet], output_dir: str = "output/miho
         mrs_path = os.path.join(sub_dir, f"{name}.mrs")
 
         lines = rs.to_mihomo_lines()
+        # mihomo 的 domain behavior (txt/mrs) 只有 domain/+.suffix/*.wildcard 三种表达，
+        # 无法承载 keyword/regex 规则：直接编译会把这类行当字面域名塞进 trie（垃圾条目）。
+        # 参照 sing-geosite 系转换产物对 mihomo 形态的统一处理，剥离之；
+        # keyword/regex 语义仍完整保留在 singbox 分支的 .srs (domain_regex/domain_keyword) 中。
+        pattern_lines = [l for l in lines if l.startswith(("DOMAIN-KEYWORD,", "DOMAIN-REGEX,"))]
+        if pattern_lines:
+            lines = [l for l in lines if not l.startswith(("DOMAIN-KEYWORD,", "DOMAIN-REGEX,"))]
+            print(f"  [Mihomo] {name:<26} | 剥离 {len(pattern_lines)} 条 keyword/regex 规则 (domain 格式不支持, 已保留于 singbox .srs)")
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + ("\n" if lines else ""))
 

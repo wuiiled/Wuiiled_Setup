@@ -14,6 +14,7 @@ from typing import Dict, Optional
 
 import utils
 from core.models import RuleSet
+from core.patcher import get_active_patch_count
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -150,8 +151,8 @@ def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sin
         srs_path = os.path.join(sub_dir, f"{name}.srs")
         json_path = os.path.join(sub_dir, f"{name}.json")
 
-        if rs.raw_srs:
-            # Authoritative Tianling rule: write raw SRS directly (100% binary match!)
+        if rs.raw_srs and get_active_patch_count(name) == 0:
+            # Authoritative Tianling rule (no local patches): write raw SRS directly (100% binary match!)
             with open(srs_path, "wb") as f:
                 f.write(rs.raw_srs)
             if has_sb:
@@ -176,7 +177,6 @@ def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sin
     aliases = {
         "geosite-emby": "geosite-custom-emby",
         "geosite-game": "geosite-games",
-        "geosite-!cn": "geosite-geolocation-!cn",
         "geosite-microsoftcdn": "geosite-microsoft-cdn",
         "geosite-appleservice": "geosite-apple-services",
         "geosite-applecn": "geosite-apple-cn",

@@ -1,0 +1,10 @@
+# geosite-porn 本地补丁
+# 格式说明: 每行一条域名，支持 v2ray 风格前缀
+#   纯文本      -> domain_suffix (如 example.com)
+#   full:       -> domain       (如 full:www.example.com)
+#   keyword:    -> domain_keyword
+#   regexp:     -> domain_regex
+#   以 # 开头为注释
+# 上游收录后自动注释并标记，无需手动删除
+
+surrit.com

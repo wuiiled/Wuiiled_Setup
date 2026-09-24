@@ -7,7 +7,7 @@ Extracted and purified from utils.py to ensure testability and high cohesion.
 import os
 import re
 import ipaddress
-from typing import Set, List, Optional
+from typing import Set, List, Optional, Tuple, Dict
 
 
 def normalize_domain_line(line: str) -> Optional[str]:
@@ -156,6 +156,56 @@ def compact_regexes(regex_set: Set[str]) -> List[str]:
         step3.add(f"{base}(nip|sslip)\\.io$")
 
     return sorted(list(step3))
+
+
+def absorb_covered_domains(domains: Set[str], suffixes: Set[str]) -> Tuple[Set[str], Set[str], int]:
+    """
+    覆盖吸收: 删除被更短后缀语义涵盖的条目。仅用于 include 合并集 (cn/ai 等),
+    dat 派生集合不做吸收 (保持与天灵 0-Diff 同构)。
+      - 后缀 s: 其祖先链上存在另一个后缀时删除 (如 a.b.cn 被 cn 覆盖);
+      - 同标签的前导点形式 ('.anquan') 与裸形式 ('anquan') 并存时, 保留更广的裸形式;
+      - 精确域名 d: 其自身或祖先链命中任一后缀时删除 (sing-box 语义: suffix 覆盖自身+子域);
+      - keyword/regex 不参与。
+    宽松规范化 (lower + 去前后缀点号) 仅用于比较, 保留条目维持原字面。
+    返回 (kept_domains, kept_suffixes, removed_count)。
+    """
+    kept_suffixes: Set[str] = set()
+    removed = 0
+    label_map: Dict[str, str] = {}
+    dup_labels = 0
+    for s in suffixes:
+        key = s.strip().lower().lstrip(".").rstrip(".")
+        if not key:
+            continue
+        if key in label_map:
+            dup_labels += 1
+            # 同标签重复: 裸形式匹配面更广, 优先作为代表
+            cur = label_map[key]
+            if cur.startswith(".") and not s.strip().startswith("."):
+                label_map[key] = s
+            continue
+        label_map[key] = s
+
+    covered_suffixes = 0
+    for key, orig in label_map.items():
+        parts = key.split(".")
+        if any(".".join(parts[i:]) in label_map for i in range(1, len(parts))):
+            covered_suffixes += 1
+        else:
+            kept_suffixes.add(orig)
+    removed = dup_labels + covered_suffixes
+
+    kept_domains: Set[str] = set()
+    for d in domains:
+        key = d.strip().lower().lstrip(".")
+        parts = key.split(".")
+        covered = key in label_map or any(".".join(parts[i:]) in label_map for i in range(1, len(parts)))
+        if not covered:
+            kept_domains.add(d)
+        else:
+            removed += 1
+
+    return kept_domains, kept_suffixes, removed
 
 
 def _domain_ancestors(d: str) -> List[str]:

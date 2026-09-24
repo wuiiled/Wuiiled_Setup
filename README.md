@@ -6,6 +6,8 @@
 
 [![Build](https://github.com/wuiiled/Wuiiled_Setup/actions/workflows/merge.yaml/badge.svg)](https://github.com/wuiiled/Wuiiled_Setup/actions/workflows/merge.yaml)
 [![Tests](https://github.com/wuiiled/Wuiiled_Setup/actions/workflows/test.yaml/badge.svg)](https://github.com/wuiiled/Wuiiled_Setup/actions/workflows/test.yaml)
+![Rulesets](https://img.shields.io/badge/%E6%A0%87%E5%87%86%E8%A7%84%E5%88%99%E9%9B%86-118%2B-blue)
+![0-Diff](https://img.shields.io/badge/0--Diff%20%E6%B5%8B%E8%AF%95-100%25%20PASS-brightgreen)
 ![Branches](https://img.shields.io/badge/%E8%AE%A2%E9%98%85%E5%88%86%E6%94%AF-5-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -35,41 +37,23 @@
 ## 🌐 规则生态全景体系
 
 规则集统一采用 **`geosite/`**（域名集）与 **`geoip/`**（IP/CIDR 集）两级目录隔离，命名保留 `geosite-` / `geoip-` 标准前缀。
+基于 **Loyalsoldier 官方源头 `geosite.dat`（v2ray Protobuf 原生解析）** 与多源深度清洗构建，涵盖 **118+ 个标准规则集**，在 Sing-box 平台达成 **100% 语义级/差集为 0 的权威对齐（0-Diff 严格自动化测试验证）**。
 
 <details open>
-<summary><b>1️⃣ 官方权威提纯规则集</b>（与上游 100% 0-Diff 一致，点击展开）</summary>
+<summary><b>1️⃣ 官方权威提纯规则集</b>（原生 Protobuf 源头构建，100% 0-Diff 对齐，点击展开）</summary>
 
-直接对齐上游核心仓库 [`1715173329/sing-geosite`](https://github.com/1715173329/sing-geosite) 与 [`1715173329/sing-geoip`](https://github.com/1715173329/sing-geoip) 的 `rule-set` 分支，由官方预编译二进制直接导入，在 Sing-box 平台达成 **100% 字节级/语义级一致（差集为 0）**，并无损导出至全平台生态。
+GeoSite 规则直接拉取并解析 Loyalsoldier 官方最新 `geosite.dat` 二进制源文件（融合本地热补丁），杜绝传统反编译过程中的规则丢失；`geosite-cn` 以天灵 sing-geosite 配方本地合成精编 cn（`geolocation-cn` + `category-*@cn` + `category-*-cn` + `.cn`）为基座，再经 `rules/patches/geosite-cn.txt` 合并自有上游列表（`cn-additional-list` + SKK `domestic`）；`geosite-ai` 为自研多源清洗列表 ∪ dat `category-ai-!cn`；`sing-geoip` 系列原样同步：
 
-| 规则名称 | 描述 | 上游 |
+| 分类 | 包含规则名称 | 核心服务与特点 |
 | :--- | :--- | :--- |
-| **`geosite-cn`** | 🇨🇳 中国大陆域名直连合集 | `sing-geosite` |
-| **`geosite-geolocation-!cn`** | 🌐 非中国大陆节点域名合集 | `sing-geosite` |
-| **`geosite-gfw`** | 🧱 GFW 域名列表 | `sing-geosite` |
-| **`geosite-google`** | 🔍 Google 全球全系服务 | `sing-geosite` |
-| **`geosite-youtube`** | 📺 YouTube 影音流媒体 | `sing-geosite` |
-| **`geosite-github`** | 🐙 GitHub 开发者服务与资产 | `sing-geosite` |
-| **`geosite-onedrive`** | ☁️ Microsoft OneDrive 存储服务 | `sing-geosite` |
-| **`geosite-microsoft`** | 🪟 Microsoft 全球产品与服务 | `sing-geosite` |
-| **`geosite-tiktok`** | 🎵 TikTok 国际版短视频 | `sing-geosite` |
-| **`geosite-spotify`** | 🎧 Spotify 音乐流媒体 | `sing-geosite` |
-| **`geosite-netflix`** | 🎬 Netflix 奈飞影音 | `sing-geosite` |
-| **`geosite-disney`** | 🏰 Disney+ 迪士尼流媒体 | `sing-geosite` |
-| **`geosite-porn`** | 🔞 成人内容与不良网站 | `sing-geosite` |
-| **`geosite-media`** | 📻 全球多媒体与流媒体服务 | `sing-geosite` |
-| **`geosite-communication`** | 💬 全球即时通讯与在线会议 | `sing-geosite` |
-| **`geosite-social-media`** | 📱 全球社交网络与媒体平台 | `sing-geosite` |
-| **`geosite-games`** | 🎮 全球热门游戏与平台联机服务 | `sing-geosite` |
-| **`geosite-games-cn`** | 🎮 国内热门网络游戏与加速服务 | `sing-geosite` |
-| **`geosite-private`** | 🔒 局域网与内部保留域名 | `sing-geosite` |
-| **`geosite-apple-tvplus`** | 🍏 Apple TV+ 影音分流 | `sing-geosite` |
-| **`geosite-httpdns`** | 🛡️ 国内 APP 内置 HTTPDNS 解析劫持拦截 | `sing-geosite` |
-| **`geoip-cn`** | 🇨🇳 中国大陆三大运营商 IPv4/IPv6 网段 | `sing-geoip` |
-| **`geoip-google`** | 🔍 Google 官方全网 IPv4/IPv6 网段 | `sing-geoip` |
-| **`geoip-telegram`** | ✈️ Telegram 官方网段 | `sing-geoip` |
-| **`geoip-twitter`** | 🐦 Twitter / X 官方网段 | `sing-geoip` |
-| **`geoip-facebook`** | 📘 Meta / Facebook 官方网段 | `sing-geoip` |
-| **`geoip-private`** | 🔒 局域网保留与私有 IP 地址 | `sing-geoip` |
+| 🤖 **AI 与开发者** | `geosite-openai` · `geosite-anthropic` · `geosite-gemini` · `geosite-github` · `geosite-gitlab` · `geosite-docker` · `geosite-stackoverflow` · `geosite-npm` | ChatGPT / Claude / Gemini / GitHub / Docker / StackOverflow 等官方接口与资产 |
+| 💬 **社交与通讯** | `geosite-telegram` · `geosite-discord` · `geosite-whatsapp` · `geosite-signal` · `geosite-line` · `geosite-x` · `geosite-instagram` · `geosite-threads` · `geosite-reddit` · `geosite-bluesky` · `geosite-tiktok` · `geosite-communication` · `geosite-social-media` | 全球主流即时通讯与社媒平台全覆盖 |
+| 🎬 **影音流媒体** | `geosite-youtube` · `geosite-netflix` · `geosite-disney` · `geosite-spotify` · `geosite-apple-tvplus` · `geosite-hbo` · `geosite-hulu` · `geosite-primevideo` · `geosite-twitch` · `geosite-bahamut` · `geosite-abema` · `geosite-niconico` · `geosite-dmm` · `geosite-pixiv` · `geosite-vimeo` · `geosite-dailymotion` · `geosite-deezer` · `geosite-soundcloud` · `geosite-tidal` · `geosite-media` · `geosite-entertainment` | 覆盖全球 20+ 顶级影音流媒体服务及动画疯/Abema等区域特色媒体 |
+| 🎮 **游戏与联机** | `geosite-steam` · `geosite-epicgames` · `geosite-playstation` · `geosite-xbox` · `geosite-nintendo` · `geosite-ea` · `geosite-ubisoft` · `geosite-rockstar` · `geosite-blizzard` · `geosite-riotgames` · `geosite-mihoyo` · `geosite-hoyoverse` · `geosite-games` · `geosite-games-cn` · `geosite-games-!cn` | Steam/Epic/PSN/Xbox/Switch及各大游戏发行商官方联机服务加速 |
+| 💰 **金融与支付** | `geosite-paypal` · `geosite-stripe` · `geosite-wise` · `geosite-binance` · `geosite-okx` | 全球主流跨国支付、结算网关与顶级加密货币交易所 |
+| 🌐 **基建与办公** | `geosite-cloudflare` · `geosite-fastly` · `geosite-akamai` · `geosite-vercel` · `geosite-netlify` · `geosite-microsoft` · `geosite-microsoft-cdn` · `geosite-onedrive` · `geosite-google` · `geosite-apple-services` · `geosite-apple-cdn` · `geosite-notion` · `geosite-figma` · `geosite-canva` · `geosite-zoom` | 全球顶级 CDN、云基础设施、前端云平台与现代协同办公软件 |
+| 🇨🇳 **国内基础路由** | `geosite-cn` · `geosite-!cn` · `geosite-gfw` · `geosite-private` · `geosite-httpdns` · `geosite-porn` | 大陆直连 (天灵精编+自有列表 双源合并)、境外分流 (2.7万条)、GFW列表 (4300+条)、私有局域网、防HTTPDNS劫持、成人内容过滤 |
+| 🌍 **GeoIP 地址集** | `geoip-cn` · `geoip-google` · `geoip-telegram` · `geoip-twitter` · `geoip-facebook` · `geoip-private` | 国内运营商 IPv4/IPv6 网段 (9940+条)、Google官方网段 (8360+条)、各巨头官方数据中心网段 |
 
 </details>
 
@@ -81,7 +65,7 @@
 | 规则名称 | 作用 | 上游数据源 |
 | :--- | :--- | :--- |
 | **`geosite-ad`** | **终极去广告 / 防追踪**<br>*(剔除数十万重复项与误杀项)* | `pmkol/easymosdns` · AdGuard 官方列表 (1/3/4) · Dan Pollock · Pi-hole · `Cats-Team/AdRules` · AWAvenue · OISD Small · 本地补丁 |
-| **`geosite-ai`** | **全球主流 AI 服务合集**<br>*(ChatGPT/Claude/Gemini/Copilot 等)* | `MetaCubeX` · `skk.moe` · `DustinWin` |
+| **`geosite-ai`** | **全球主流 AI 服务合集**<br>*(自研列表 ∪ dat category-ai-!cn)* | `MetaCubeX` · `skk.moe` · `DustinWin` · dat `category-ai-!cn` |
 | **`geosite-fakeip-filter`** | **Fake-IP 排除名单**<br>*(正则压缩，消除冗余)* | `OpenClash` · `ShellCrash` · `DustinWin` · `skk.moe` · 本地补丁 |
 | **`geosite-reject-drop`** | **高危垃圾流量直接丢弃** | `skk.moe` · 本地名单 |
 | **`geoip-gfw`** | **GFW 投毒 IP 与靶心网段** | ChinaDNS 投毒 IPv4 · EasyMosdns 投毒 CIDR · GFW 假 IPv6 靶心 |
@@ -104,7 +88,7 @@
 
 | 分支 | `geosite-ad` | `geosite-ad-precise` | `geosite-ad-allow` |
 | :--- | :--- | :--- | :--- |
-| **smartdns**（供 OxiDNS） | 黑名单A | 黑名单B | 白名单B |
+| **smartdns**（供 OxiDNS） | 黑名单A | —（OxiDNS 白名单外） | —（OxiDNS 白名单外） |
 | **mihomo** | 黑名单A | 黑名单B | 白名单B |
 | **sing-box** | 黑名单A | —（单集合不支持例外） | — |
 | **adg** | 黑名单B + 白名单B 混合（`@@` 例外） | — | — |
@@ -151,6 +135,7 @@ Wuiiled_Setup/
 ├── .github/workflows/      # GitHub Actions：定时构建 + 测试 + 分发
 ├── rules/                  # 规则源文件与静态补丁（代码与数据物理隔离）
 │   ├── addons/             # 白名单关键字 / Fake-IP / 广告 补丁
+│   ├── patches/            # 热补丁: 手动域名 + include 列表/分类合并 (geosite-porn / geosite-cn / geosite-ai ...)
 │   └── Custom_*.txt        # 各类自定义分流名单
 ├── scripts/                # 构建引擎源码（三层解耦架构）
 │   ├── core/               # 核心：models / cleaner / fetcher / manager / readme_gen

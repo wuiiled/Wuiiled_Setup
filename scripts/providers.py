@@ -33,18 +33,27 @@ ADS_BLOCK_URLS = [
 ]
 
 AI_URLS = [
+    # MetaCubeX 海外 AI 分类 (classical list)
+    "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/category-ai-!cn.list",
     "https://ruleset.skk.moe/List/non_ip/ai.conf",
+    # DustinWin AI 规则
+    "https://github.com/DustinWin/ruleset_geodata/raw/mihomo-ruleset/ai.list",
 ]
 
 FAKE_IP_URLS = [
     "https://raw.githubusercontent.com/vernesong/OpenClash/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list",
     "https://raw.githubusercontent.com/juewuy/ShellCrash/dev/public/fake_ip_filter.list",
+    # DustinWin Fake-IP 过滤
+    "https://raw.githubusercontent.com/DustinWin/ruleset_geodata/mihomo-ruleset/fakeip-filter.list",
     "https://ruleset.skk.moe/Internal/clash_fake_ip_filter.yaml"
 ]
 
 DROP_URLS = [
     "https://ruleset.skk.moe/Clash/non_ip/reject-drop.txt",
 ]
+
+# 注: 原 CN_URLS_1/CN_URLS_2 (cn-additional-list + SKK domestic) 已迁移至
+# rules/patches/geosite-cn.txt 的 include 指令, 与天灵配方 cn 统一经补丁通道合并。
 
 CUSTOM_RULES = {
     "geosite-custom-direct": "rules/Custom_Direct_DOMAIN.txt",
@@ -77,6 +86,29 @@ MIHOMO_SKK = {
 
 ADG_URLS = {
     "PCDN": "https://raw.githubusercontent.com/wuiiled/PCDN-mihomo-list/main/pcdn.list"
+}
+
+# OxiDNS (mosdns 分支) 从 smartdns 分支拉取的规则文件清单，
+# 与 OxiDNS 配置文件中 downloads 段的 URL 一一对应。
+# smartdns / mosdns-x 分支只同步这些规则集；同时在 rules/ 根目录以 OxiDNS
+# 期望的历史文件名落一份兼容副本，保证线上 OxiDNS 配置的订阅直链持续可用。
+OXIDNS_RULE_FILES = {
+    "CN_merged.txt": "geosite-cn",
+    "ADs_merged.txt": "geosite-ad",
+    "Custom_Emby.txt": "geosite-custom-emby",
+    "proxy.txt": "geosite-!cn",
+    "cnip.txt": "geoip-cn",
+    "apple_cdn.txt": "geosite-apple-cdn",
+    "apple_cn.txt": "geosite-apple-cn",
+    "apple_services.txt": "geosite-apple-services",
+    "microsoft_cdn.txt": "geosite-microsoft-cdn",
+    "alibaba.txt": "geosite-alibaba",
+    "baidu.txt": "geosite-baidu",
+    "bilibili.txt": "geosite-bilibili",
+    "bytedance.txt": "geosite-bytedance",
+    "qihoo360.txt": "geosite-qihoo360",
+    "tencent.txt": "geosite-tencent",
+    "xiaomi.txt": "geosite-xiaomi",
 }
 
 GFW_IP_URLS = [
