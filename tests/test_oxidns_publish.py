@@ -5,6 +5,9 @@
 背景事故 (2026-09-25~26): OxiDNS 白名单把 geosite-ad-precise / geosite-ad-allow /
 geoip-gfw 排除、且未提供 geosite-geolocation-!cn 旧命名别名, 导致线上
 10.0.0.2 的 4 个下载 URL 404、规则文件停更。本测试防止白名单再次与线上漂移。
+
+注意: 黑加白双集合不在主 IR 中, 导出器需从 manager 产出的
+work_dir/ads/blocklist_b.txt + whitelist_b.txt 合成——本测试同时锁定该注入路径。
 """
 import importlib
 import os
@@ -12,6 +15,7 @@ import os
 import pytest
 
 import providers
+import utils
 from core.models import RuleSet
 
 BUILDERS = [
@@ -20,13 +24,25 @@ BUILDERS = [
 ]
 
 
+def _seed_blackwhite_files():
+    """在共享 work_dir 里伪造 manager 产出的黑加白文件 (导出器注入的数据源)。"""
+    ads_dir = os.path.join(utils.get_work_dir(), "ads")
+    os.makedirs(ads_dir, exist_ok=True)
+    with open(os.path.join(ads_dir, "blocklist_b.txt"), "w", encoding="utf-8") as f:
+        f.write("ads-bad.example\nblock.me.example\n")
+    with open(os.path.join(ads_dir, "whitelist_b.txt"), "w", encoding="utf-8") as f:
+        f.write("allow.me.example\n")
+
+
 def _published_rules():
-    """构造恰好覆盖发布清单 (白名单 + 额外订阅 + 别名目标) 的最小 IR。"""
+    """构造主 IR: 恰好覆盖白名单+别名目标, 但不含黑加白双集合 (与真实 all_rules 一致)。"""
     names = (set(providers.OXIDNS_RULE_FILES.values())
              | providers.OXIDNS_EXTRA_RULESETS
              | set(providers.OXIDNS_SUBDIR_ALIASES.values()))
     rules = {}
     for name in names:
+        if name in ("geosite-ad-precise", "geosite-ad-allow"):
+            continue  # 黑加白走文件注入, 不在主 IR
         if name.startswith("geoip-"):
             rules[name] = RuleSet(name=name, category="geoip", ip_cidrs={"203.0.113.0/24"})
         else:
@@ -36,13 +52,19 @@ def _published_rules():
 
 @pytest.mark.parametrize("modname,func", BUILDERS)
 def test_publish_covers_oxidns_downloads(tmp_path, modname, func):
+    _seed_blackwhite_files()
     mod = importlib.import_module(modname)
     getattr(mod, func)(_published_rules(), str(tmp_path))
 
-    # 1. 线上额外订阅的集合必须发布 (上次事故的 4 个中的 3 个)
+    # 1. 线上额外订阅的集合必须发布 (上次事故的 4 个中的 3 个);
+    #    黑加白双集合由文件注入合成
     for name in providers.OXIDNS_EXTRA_RULESETS:
         sub = "geoip" if name.startswith("geoip-") else "geosite"
         assert (tmp_path / sub / f"{name}.txt").exists(), f"线上订阅但未发布: {name}"
+    prec = (tmp_path / "geosite" / "geosite-ad-precise.txt").read_text(encoding="utf-8")
+    allow = (tmp_path / "geosite" / "geosite-ad-allow.txt").read_text(encoding="utf-8")
+    assert "ads-bad.example" in prec and "block.me.example" in prec
+    assert "allow.me.example" in allow
 
     # 2. 旧命名别名副本必须存在于 geosite/ 子目录 (线上 URL 的确切相对路径)
     for rel in providers.OXIDNS_SUBDIR_ALIASES:

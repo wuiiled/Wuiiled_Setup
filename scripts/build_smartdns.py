@@ -28,6 +28,10 @@ def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sm
     # (清单与 OxiDNS 配置 downloads 段一致, 见 providers.OXIDNS_RULE_FILES / EXTRA / ALIASES)
     whitelist = set(providers.OXIDNS_RULE_FILES.values()) | providers.OXIDNS_EXTRA_RULESETS
     rules = {name: rs for name, rs in rules.items() if name in whitelist}
+    # 黑加白双集合不在主 IR 中, 由 manager 产出的文件按需合成 (线上 OxiDNS 订阅)
+    for _name, _bw in utils.load_blackwhite_rulesets().items():
+        if _name in whitelist:
+            rules[_name] = _bw
 
     print(f"\n📦 [SmartDNS] 正在构建 {len(rules)} 个 OxiDNS 订阅规则集并输出至 {output_dir}...")
 

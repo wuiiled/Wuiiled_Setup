@@ -16,6 +16,7 @@ from core.cleaner import (
     clean_ip_line,
     clean_mihomo_domain_line,
 )
+from core.models import RuleSet
 
 WORK_DIR = None
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -262,3 +263,33 @@ def is_valid_ip_or_cidr(line):
     需容忍 classical 规则装饰, 故基于 clean_ip_line 的清洗结果判定。
     """
     return clean_ip_line(line) is not None
+
+def load_blackwhite_rulesets(work_dir=None):
+    """从 manager.load_ads_rules 产出的黑加白文件构造 ad-precise / ad-allow IR。
+
+    这两个集合不在主 IR (all_rules) 中——它们是构建期差集产物; mihomo/adg
+    各自有文件渲染路径, DNS 分支 (smartdns/mosdns-x, 线上 OxiDNS 订阅黑加白
+    双集合) 通过本函数按需合成。
+    """
+    work_dir = work_dir or get_work_dir()
+    specs = (
+        ("geosite-ad-precise", "blocklist_b.txt", "去广告黑名单精确版 (双集合黑名单B)"),
+        ("geosite-ad-allow", "whitelist_b.txt", "去广告防误杀白名单 (双集合白名单B)"),
+    )
+    out = {}
+    for name, fname, desc in specs:
+        path = os.path.join(work_dir, "ads", fname)
+        if not os.path.exists(path) or os.path.getsize(path) == 0:
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            entries = {l.strip() for l in f if l.strip() and not l.startswith("#")}
+        if entries:
+            out[name] = RuleSet(
+                name=name,
+                category="geosite",
+                description=desc,
+                domain_suffixes=entries,
+                source_kind="self",
+                sources=["上游黑名单 ∪ 上游白名单 (黑加白差集)"],
+            )
+    return out
