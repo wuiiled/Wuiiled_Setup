@@ -8,6 +8,11 @@ on:
     - cron: '0 0,12 * * *'
   workflow_dispatch:
 
+# 定时与 push 触发可能并发; 串行化部署, 避免两个 run 同时 force-push 订阅分支
+concurrency:
+  group: rules-deploy
+  cancel-in-progress: false
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -25,7 +30,7 @@ jobs:
         python-version: '3.x'
 
     - name: Install Python dependencies
-      run: pip install "protobuf>=4.25.1"
+      run: pip install -r requirements.txt
 
     - name: Install Tools (Mihomo & Sing-box)
       run: |
@@ -73,42 +78,55 @@ jobs:
         deploy_branch() {
           local TARGET=$1
           echo "🚀 Starting deploy process for: $TARGET"
-          
+
           local DEPLOY_DIR=$(mktemp -d)
-          cd $DEPLOY_DIR
+          cd "$DEPLOY_DIR" || return 1
           git init -q
-          git checkout -q --orphan $TARGET
-          
+          git checkout -q --orphan "$TARGET"
+
           mkdir -p rules
           # 拷贝分类子目录
-          cp -a $GITHUB_WORKSPACE/output/$TARGET/geosite rules/ 2>/dev/null || true
-          cp -a $GITHUB_WORKSPACE/output/$TARGET/geoip rules/ 2>/dev/null || true
+          cp -a "$GITHUB_WORKSPACE/output/$TARGET/geosite" rules/ 2>/dev/null || true
+          cp -a "$GITHUB_WORKSPACE/output/$TARGET/geoip" rules/ 2>/dev/null || true
           # 拷贝根目录兼容文件 (如 ad_domain_list.txt 等)
-          find $GITHUB_WORKSPACE/output/$TARGET -maxdepth 1 -type f ! -name "README.md" -exec cp {} rules/ \; 2>/dev/null || true
-          
+          find "$GITHUB_WORKSPACE/output/$TARGET" -maxdepth 1 -type f ! -name "README.md" -exec cp {} rules/ \; 2>/dev/null || true
+
           # 直接使用 Python 生成的精美独立 README.md
           if [ -f "$GITHUB_WORKSPACE/output/$TARGET/README.md" ]; then
-            cp $GITHUB_WORKSPACE/output/$TARGET/README.md README.md
+            cp "$GITHUB_WORKSPACE/output/$TARGET/README.md" README.md
           fi
-          
+
           git add rules/ README.md
           git commit -q -m "Auto Update $TARGET $(date +"%Y-%m-%d %H:%M")" || true
           case "$TARGET" in
             mihomo|adg|mosdns-x|singbox|smartdns) ;;
-            *) echo "Invalid target: $TARGET" && exit 1 ;;
+            *) echo "Invalid target: $TARGET" && return 1 ;;
           esac
-          git push -f -q https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git $TARGET
-          
+          if ! git push -f -q https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git "$TARGET"; then
+            echo "❌ Deploy FAILED for: $TARGET"
+            return 1
+          fi
+
           echo "✅ Deploy completed for: $TARGET"
         }
 
-        deploy_branch mihomo &
-        deploy_branch adg &
-        deploy_branch mosdns-x &
-        deploy_branch singbox &
-        deploy_branch smartdns &
-        
-        wait
+        # 逐个等待后台部署任务: 裸 `wait` 恒返回 0 会吞掉 push 失败,
+        # 必须收集 PID 并显式检查退出码, 任何分支部署失败都让 step 变红。
+        pids=()
+        deploy_branch mihomo &    pids+=($!)
+        deploy_branch adg &       pids+=($!)
+        deploy_branch mosdns-x &  pids+=($!)
+        deploy_branch singbox &   pids+=($!)
+        deploy_branch smartdns &  pids+=($!)
+
+        fail=0
+        for pid in "${pids[@]}"; do
+          wait "$pid" || fail=1
+        done
+        if [ "$fail" -ne 0 ]; then
+          echo "::error::One or more branch deploys failed; subscription branches may be stale."
+          exit 1
+        fi
 
     - name: Delete workflow runs
       uses: Mattraks/delete-workflow-runs@0cf693bc9909e5e867ee8f27b813224ba862939c

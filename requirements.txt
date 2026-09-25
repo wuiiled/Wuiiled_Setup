@@ -1,0 +1,3 @@
+# 运行时依赖 (CI merge.yaml 与本地构建共用)
+# protobuf: common_pb2 (geosite.dat 解析) 的运行时依赖; 上界防未来大版本破坏
+protobuf>=4.25.1,<7
