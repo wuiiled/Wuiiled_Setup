@@ -18,50 +18,6 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 
-def convert_txt_to_smartdns(src_path: str, dst_path: str, is_ip: bool) -> int:
-    """Helper to convert Mihomo text format to SmartDNS syntax."""
-    smartdns_lines = []
-    with open(src_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith('#'):
-                smartdns_lines.append(line)
-                continue
-            parts = line.split('#')
-            rule = parts[0].strip()
-            comment = f" #{parts[1]}" if len(parts) > 1 else ""
-            if not rule:
-                continue
-            if is_ip:
-                cleaned_ip = utils.clean_ip_line(rule)
-                if cleaned_ip and utils.is_valid_ip_or_cidr(cleaned_ip):
-                    smartdns_lines.append(cleaned_ip + comment)
-            else:
-                if utils.is_valid_ip_or_cidr(rule):
-                    continue
-                if rule.startswith('+.'):
-                    converted = rule[2:]
-                elif rule.startswith('.'):
-                    converted = rule[1:]
-                elif rule.startswith('*.'):
-                    converted = rule
-                elif rule.startswith('-.'):
-                    converted = rule
-                else:
-                    converted = "-." + rule
-                smartdns_lines.append(converted + comment)
-
-    rules_count = sum(1 for l in smartdns_lines if l.strip() and not l.strip().startswith('#'))
-    if rules_count == 0:
-        return False
-
-    with open(dst_path, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(smartdns_lines) + '\n')
-    return True
-
-
 def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/smartdns"):
     geosite_out = os.path.join(output_dir, "geosite")
     geoip_out = os.path.join(output_dir, "geoip")

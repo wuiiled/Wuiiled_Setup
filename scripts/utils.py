@@ -2,25 +2,25 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
-import ssl
 import shutil
 import tempfile
-import time
-import re
 import atexit
-import ipaddress
-import urllib.request
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+
+# 清洗/规范化函数统一收敛到 core/cleaner (单一实现, 防止两份副本语义漂移);
+# utils 保留原函数名作为薄委托, 兼容既有调用方与测试。
+from core.cleaner import (
+    normalize_domain_line,
+    clean_ip_line,
+    clean_mihomo_domain_line,
+)
 
 WORK_DIR = None
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 EXCLUDE_FILE = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "rules", "addons", "exclude-keyword.txt"))
 os.environ["LC_ALL"] = "C"
-
-# Security: explicit SSL context to ensure certificate verification is always enabled
-_SSL_CONTEXT = ssl.create_default_context()
 
 def get_work_dir():
     global WORK_DIR
@@ -39,14 +39,19 @@ def cleanup():
         finally:
             WORK_DIR = None
 
-def check_mihomo():
-    has_mihomo = shutil.which("mihomo") is not None
-    if not has_mihomo and sys.platform == "win32" and shutil.which("wsl"):
-        has_mihomo = True
-    if not has_mihomo and os.environ.get("GITHUB_ACTIONS") == "true":
-        print("❌ 错误: 在 GitHub Actions 环境中未找到 'mihomo' 编译器！必须中断任务以防生成残缺规则集。")
+def check_tool(binary: str) -> bool:
+    """检查编译器二进制是否可用; 在 GitHub Actions 上缺失时直接中断流程。"""
+    if shutil.which(binary):
+        return True
+    if sys.platform == "win32" and shutil.which("wsl"):
+        return True
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print(f"❌ 错误: 在 GitHub Actions 环境中未找到 '{binary}' 编译器！必须中断任务以防生成残缺规则集。")
         sys.exit(1)
-    return has_mihomo
+    return False
+
+def check_mihomo():
+    return check_tool("mihomo")
 
 def safe_copy(src, dst):
     """跨平台安全复制文件，自动规避 Windows 不区分大小写导致的 SameFileError。"""
@@ -60,24 +65,13 @@ def safe_copy(src, dst):
         print(f"⚠️ 复制文件失败: {src} -> {dst}: {e}")
 
 def download_file(url, timeout=15, retries=3):
-    ua = "Mozilla/5.0 (compatible; MihomoRuleConverter/1.0)"
-    candidates = [url]
-    if ("raw.githubusercontent.com" in url or "github.com" in url) and "ghfast.top" not in url:
-        mirror = f"https://ghfast.top/{url}"
-        if mirror not in candidates:
-            candidates.append(mirror)
+    """文本下载统一走 core.fetcher (镜像回退+重试的单一实现)。
 
-    for target in candidates:
-        req = urllib.request.Request(target, headers={'User-Agent': ua})
-        for attempt in range(retries):
-            try:
-                with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as response:
-                    return response.read().decode('utf-8', errors='ignore')
-            except Exception:
-                if attempt < retries - 1:
-                    time.sleep(0.5 * (attempt + 1))
-    print(f"⚠️ 下载失败 (所有镜像源均失败): {url}")
-    return ""
+    延迟导入: core.fetcher 顶层 import utils (get_work_dir/_resolve_cmd),
+    调用时导入可避免模块加载期的循环依赖。
+    """
+    import core.fetcher as fetcher
+    return fetcher.fetch_text_url(url, timeout=timeout, retries=retries)
 
 def download_files_parallel(output_file, urls):
     with ThreadPoolExecutor(max_workers=min(len(urls) + 1, 10)) as executor:
@@ -101,20 +95,6 @@ def download_files_parallel(output_file, urls):
         print(f"📥 下载完成: {success_count} 成功, {fail_count} 失败 (共 {len(urls)} 源)")
     with open(output_file, 'w', encoding='utf-8') as f:
         if results: f.write("".join(results))
-
-def normalize_domain_line(line):
-    line = line.strip()
-    line = re.sub(r'[\$#].*', '', line)
-    line = re.sub(r'^(0\.0\.0\.0|127\.0\.0\.1)\s+', '', line)
-    if line.startswith("!"): return None
-    if line.startswith("@@"): line = line[2:]
-    line = line.replace("||", "").replace("^", "").replace("|", "")
-    line = re.sub(r'^(domain-keyword|domain-suffix|domain),', '', line)
-    if ',' in line: line = line.split(',')[0]
-    line = re.sub(r'^(\+\.|\.)', '', line)
-    line = line.rstrip('.')
-    if '.' not in line or '*' in line or not re.match(r'^[a-z0-9_]', line) or re.match(r'^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$', line) or '/' in line: return None
-    return line
 
 def process_normalize_domain(input_file, output_file, skip_allow_rules=False):
     if not os.path.exists(input_file):
@@ -161,7 +141,7 @@ def optimize_smart_self(input_file, output_file):
         if clean.startswith("+."): clean, is_wildcard = clean[2:], True
         elif clean.startswith("."): clean, is_wildcard = clean[1:], True
         parts = clean.split(".")
-        parts.reverse() 
+        parts.reverse()
         if parts: data.append({'parts': parts, 'is_wildcard': is_wildcard, 'original': line})
     data.sort(key=lambda x: (x['parts'], not x['is_wildcard']))
     result_lines = []
@@ -179,7 +159,7 @@ def optimize_smart_self(input_file, output_file):
 def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
     allow_set = set()
     allow_parents_set = set()
-    
+
     if os.path.exists(allow_in):
         with open(allow_in, 'r', encoding='utf-8') as f:
             for line in f:
@@ -188,13 +168,13 @@ def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
                 if line.startswith("+."): line = line[2:]
                 elif line.startswith("."): line = line[1:]
                 allow_set.add(line)
-                
+
                 # 构建白名单域名的所有父域名集合，用于 Option A 的子域防误杀检测
                 parts = line.split('.')
                 for i in range(1, len(parts)):
                     parent = ".".join(parts[i:])
                     allow_parents_set.add(parent)
-                    
+
     final_lines = []
     if os.path.exists(block_in):
         with open(block_in, 'r', encoding='utf-8') as f:
@@ -204,9 +184,9 @@ def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
                 pure = original.lower()
                 if pure.startswith("+."): pure = pure[2:]
                 elif pure.startswith("."): pure = pure[1:]
-                
+
                 is_allowed = False
-                
+
                 # 1. 检查当前拦截域名（或其父域名）是否在白名单中
                 parts = pure.split('.')
                 for i in range(len(parts)):
@@ -214,16 +194,16 @@ def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
                     if parent in allow_set:
                         is_allowed = True
                         break
-                        
+
                 # 2. 检查是否有任何白名单域名属于当前拦截域名的子域。
                 # 如果有，为了避免拦截父域时误杀白名单子域，当前拦截域也必须放行（Option A 策略）
                 if not is_allowed:
                     if pure in allow_parents_set:
                         is_allowed = True
-                        
+
                 if not is_allowed:
                     final_lines.append(original)
-                    
+
     with open(final_out, 'w', encoding='utf-8') as f:
         if final_lines:
             f.write('\n'.join(final_lines) + '\n')
@@ -233,8 +213,8 @@ def _resolve_cmd(cmd):
     if shutil.which(binary):
         return cmd
     if sys.platform == "win32" and shutil.which("wsl"):
-        wsl_bin = f"/mnt/f/antigravity/debian13/bin/{binary}"
-        wsl_cmd = ["wsl", wsl_bin]
+        wsl_bin_dir = os.environ.get("WUIILED_BIN_DIR", "/mnt/f/antigravity/debian13/bin")
+        wsl_cmd = ["wsl", f"{wsl_bin_dir}/{binary}"]
         for arg in cmd[1:]:
             if isinstance(arg, str) and (":\\" in arg or ":/" in arg or arg.startswith("output/") or arg.startswith("rules/")):
                 abs_path = os.path.abspath(arg)
@@ -260,7 +240,7 @@ def finalize_output(src, dst_dir, base_name, mode):
     with open(src, 'r', encoding='utf-8') as f: lines = list(set(f.read().splitlines()))
     lines.sort()
     if mode == "add_prefix": lines = ["+." + line if not line.startswith("+.") else line for line in lines]
-    
+
     rule_count = len(lines)
     print(f"✅ [Mihomo] {base_name:<25} | 规则数: {rule_count:,}")
 
@@ -275,67 +255,10 @@ def finalize_output(src, dst_dir, base_name, mode):
             f"{base_name}.mrs"
         )
 
-def clean_mihomo_domain_line(line):
-    """
-    将 Clash/Mihomo 规则行统一清洗为标准域名格式。
-    如果包含非 domain/domain-suffix 规则（如 IP-CIDR, PROCESS-NAME 等）则过滤掉。
-    """
-    line = line.strip()
-    if not line or line.startswith('#'):
-        return None
-    # 剥离尾部注释
-    line = line.split('#')[0].strip()
-    if not line:
-        return None
-    
-    lower = line.lower()
-    if lower.startswith("domain-suffix,"):
-        val = line.split(',')[1].strip()
-        return "+." + val if val else None
-    elif lower.startswith("domain,"):
-        val = line.split(',')[1].strip()
-        return val if val else None
-    
-    # 如果包含逗号，说明是具有其它前缀修饰的行，且没被上面的 DOMAIN 匹配到，属非域名规则，过滤掉
-    if ',' in line:
-        return None
-        
-    # 如果是纯 IP 或 CIDR 地址，也过滤掉
-    try:
-        ipaddress.ip_network(line, strict=False)
-        return None
-    except ValueError:
-        pass
-        
-    return line
-
-def clean_ip_line(line):
-    """
-    清洗 IP/CIDR 规则行，返回纯 IP/CIDR，如果无效则返回 None。
-    """
-    line = line.strip()
-    if not line or line.startswith('#'):
-        return None
-    line = line.split('#')[0].strip()
-    if not line:
-        return None
-    
-    parts = line.split(',')
-    for part in parts:
-        part = part.strip()
-        if not part:
-            continue
-        if part.lower() in ("ip-cidr", "ip-cidr6", "no-resolve", "force-remote", "direct", "reject"):
-            continue
-        try:
-            ipaddress.ip_network(part, strict=False)
-            return part
-        except ValueError:
-            pass
-    return None
-
 def is_valid_ip_or_cidr(line):
     """
-    判断一行内容是否为有效的 IP 或 CIDR (可包含 IP-CIDR 前缀等)
+    判断一行内容是否为有效的 IP 或 CIDR (可包含 IP-CIDR 前缀等装饰)。
+    与 core.cleaner.is_valid_ip_or_cidr (严格模式) 语义不同: 本函数用于行分类,
+    需容忍 classical 规则装饰, 故基于 clean_ip_line 的清洗结果判定。
     """
     return clean_ip_line(line) is not None

@@ -6,8 +6,6 @@ Fully decoupled: receives canonical RuleSet IR and exports .txt and .mrs files.
 
 import os
 import sys
-import shutil
-from glob import glob
 from typing import Dict, Optional
 
 import utils
@@ -76,7 +74,7 @@ def build_mihomo_rules(rules: Dict[str, RuleSet], output_dir: str = "output/miho
         p_txt = os.path.join(geosite_out, "geosite-ad-precise.txt")
         with open(p_txt, "w", encoding="utf-8") as f:
             for d in bl_b:
-                f.write("+." + d + chr(10))
+                f.write("+." + d + "\n")
         if has_m:
             utils.compile_ruleset(
                 ["mihomo", "convert-ruleset", "domain", "text", p_txt, os.path.join(geosite_out, "geosite-ad-precise.mrs")],
@@ -88,7 +86,7 @@ def build_mihomo_rules(rules: Dict[str, RuleSet], output_dir: str = "output/miho
         a_txt = os.path.join(geosite_out, "geosite-ad-allow.txt")
         with open(a_txt, "w", encoding="utf-8") as f:
             for d in wl_b:
-                f.write("+." + d + chr(10))
+                f.write("+." + d + "\n")
         if has_m:
             utils.compile_ruleset(
                 ["mihomo", "convert-ruleset", "domain", "text", a_txt, os.path.join(geosite_out, "geosite-ad-allow.mrs")],

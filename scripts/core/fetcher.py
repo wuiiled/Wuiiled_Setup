@@ -5,16 +5,12 @@ local repo file loader, and Tianling authoritative rule-set synchronizer.
 """
 
 import os
-import sys
 import ssl
 import json
 import time
-import shutil
-import tempfile
 import urllib.request
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional, Tuple, Any
+from typing import List, Optional
 
 import utils
 from core.models import RuleSet
@@ -63,23 +59,6 @@ def fetch_bytes_url(url: str, timeout: int = 15, retries: int = 3) -> bytes:
                     time.sleep(0.5 * (attempt + 1))
     print(f"⚠️ 下载二进制失败 (所有镜像源均失败): {url}")
     return b""
-
-
-def fetch_parallel_texts(urls: List[str]) -> List[str]:
-    """Fetch multiple text URLs in parallel."""
-    if not urls:
-        return []
-    results = []
-    with ThreadPoolExecutor(max_workers=min(len(urls), 8)) as executor:
-        futures = {executor.submit(fetch_text_url, u): u for u in urls}
-        for fut in futures:
-            try:
-                txt = fut.result()
-                if txt.strip():
-                    results.append(txt)
-            except Exception as e:
-                print(f"⚠️ 并行下载异常: {futures[fut]} -> {e}")
-    return results
 
 
 def read_local_file(rel_path: str) -> str:

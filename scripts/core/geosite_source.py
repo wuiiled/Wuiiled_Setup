@@ -13,7 +13,7 @@ if _PROTO_DIR not in sys.path:
 
 import common_pb2  # noqa: E402
 
-from typing import Dict, Optional
+from typing import Dict
 from core.models import RuleSet  # noqa: E402
 
 
@@ -151,13 +151,3 @@ def build_tianling_style_cn(results: Dict[str, RuleSet]) -> RuleSet:
         _union(rs)
     cn.domain_suffixes.add("cn")
     return cn
-
-
-def load_geosite_dat(dat_path: Optional[str] = None) -> Dict[str, RuleSet]:
-    """Load geosite.dat, downloading from Loyalsoldier if not cached."""
-    if dat_path is None:
-        dat_path = os.path.join(os.path.dirname(__file__), "..", "..", "geosite.dat")
-        dat_path = os.path.abspath(dat_path)
-    if not os.path.exists(dat_path):
-        raise FileNotFoundError(f"geosite.dat not found at {dat_path}")
-    return parse_geosite_dat(dat_path)
