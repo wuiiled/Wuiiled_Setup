@@ -29,7 +29,7 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 _BRANCH_META = {
     "singbox":  ("📦", "Sing-box",  ".srs / .json",  "binary"),
     "mihomo":   ("📦", "Mihomo (Clash Meta)", ".mrs / .txt", "mrs"),
-    "smartdns": ("📦", "SmartDNS",  "domain-set / ip-set", "txt"),
+    "smartdns": ("📦", "SmartDNS",  "OxiDNS mosdns syntax", "txt"),
     "mosdns-x": ("📦", "MosDNS-X",  "domain: / full:", "txt"),
     "adg":      ("📦", "AdGuard Home", "AdGuard filter", "txt"),
 }
@@ -595,12 +595,16 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
         lines.append("")
     elif target == "smartdns":
         lines.append('<details>')
-        lines.append('<summary><b>🛠️ SmartDNS 配置示例</b>（点击展开）</summary>')
+        lines.append('<summary><b>🛠️ OxiDNS / MosDNS 配置示例</b>（点击展开）</summary>')
         lines.append("")
-        lines.append("在 `smartdns.conf` 中引入规则集文件：")
+        lines.append("规则文件为 OxiDNS/MosDNS 语法：裸域名=后缀匹配，`full:`=精确匹配，`keyword:`/`regexp:`=子串/正则。在 `domain_set` 插件中引用：")
         lines.append("")
-        lines.append("```conf")
-        lines.append("domain-set -name geosite-cn -file /etc/smartdns/rules/geosite-cn.txt")
+        lines.append("```yaml")
+        lines.append("  - tag: provider_cn_domains")
+        lines.append("    type: domain_set")
+        lines.append("    args:")
+        lines.append("      files:")
+        lines.append('        - "/etc/oxidns/rules/geosite-cn.txt"')
         lines.append("```")
         lines.append("")
         lines.append("</details>")

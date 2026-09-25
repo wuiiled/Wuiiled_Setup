@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-SmartDNS Rule Exporter.
-Decoupled: receives canonical RuleSet IR and generates SmartDNS domain-set and ip-set rules.
+SmartDNS Branch Rule Exporter.
+Decoupled: receives canonical RuleSet IR and generates rules for the smartdns
+branch. 实际消费端为 OxiDNS (mosdns 系语法): 裸域名=后缀, full:=精确,
+keyword:/regexp:=子串/正则; IP 文件为裸 CIDR (单主机剥 /32、/128)。
 """
 
 import os
@@ -49,6 +51,10 @@ def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sm
                 else:
                     smartdns_lines.append(cidr)
         else:
+            # OxiDNS/MosDNS 语法 (消费端为 OxiDNS, 见 rule_matcher/domain.rs:
+            # 仅识别 full:/domain:/keyword:/regexp: 四种前缀, 裸行=后缀;
+            # SmartDNS 的 -./+. 语法会被 OxiDNS 当字面后缀而成为死条目):
+            #   后缀 -> 裸域名; 精确 -> full:; keyword/regexp 原样保留语义
             for s in sorted(rs.domain_suffixes):
                 clean_s = s.lstrip('.')
                 if clean_s:
@@ -56,7 +62,11 @@ def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sm
             for d in sorted(rs.domains):
                 clean_d = d.strip()
                 if clean_d and clean_d not in rs.domain_suffixes:
-                    smartdns_lines.append(f"-.{clean_d}")
+                    smartdns_lines.append(f"full:{clean_d}")
+            for k in sorted(rs.domain_keywords):
+                smartdns_lines.append(f"keyword:{k}")
+            for r in sorted(rs.domain_regexes):
+                smartdns_lines.append(f"regexp:{r}")
 
         with open(out_path, 'w', encoding='utf-8') as f:
             f.write("\n".join(smartdns_lines) + ("\n" if smartdns_lines else ""))

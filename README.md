@@ -28,7 +28,7 @@
 | :---: | :---: | :--- |
 | 📦 **Sing-box** | [`singbox`](../../tree/singbox) | 高性能 `.srs` 二进制 + `.json`（Version 5，兼容 1.14.x） |
 | 📦 **Mihomo (Clash Meta)** | [`mihomo`](../../tree/mihomo) | 高性能 `.mrs` 二进制 + `.txt` |
-| 📦 **SmartDNS** | [`smartdns`](../../tree/smartdns) | 标准 `domain-set` / `ip-set` 语法 |
+| 📦 **SmartDNS** | [`smartdns`](../../tree/smartdns) | OxiDNS/MosDNS 兼容语法（裸域名=后缀 + `full:` 精确 + `keyword:`/`regexp:`），供 OxiDNS 订阅 |
 | 📦 **MosDNS** | [`mosdns-x`](../../tree/mosdns-x) | MosDNS-X 适配的 `domain:` / `full:` 语法 |
 | 📦 **AdGuard Home** | [`adg`](../../tree/adg) | 标准 AdGuard 过滤语法（`\|\|拦截^` + `@@\|\|放行^`） |
 

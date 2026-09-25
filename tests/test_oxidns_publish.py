@@ -85,3 +85,28 @@ def test_oxidns_lists_are_consistent():
     for rel, target in providers.OXIDNS_SUBDIR_ALIASES.items():
         assert target in published, f"别名 {rel} 的目标集合 {target} 不在发布清单内"
         assert os.path.splitext(os.path.basename(rel))[0] != target
+
+
+def test_smartdns_output_format_is_oxidns_syntax(tmp_path):
+    """smartdns 分支行文法: 裸=后缀, full:=精确, keyword:/regexp:=原语义。
+
+    消费端 OxiDNS (rule_matcher/domain.rs) 只识别这四种形式;
+    SmartDNS 的 -./+. 语法会被 OxiDNS 当字面后缀而成为永不命中的死条目。
+    """
+    mod = importlib.import_module("build_smartdns")
+    rs = RuleSet(
+        name="geosite-cn",  # 白名单内, 否则会被发布过滤剔除
+        category="geosite",
+        domains={"exact.example"},
+        domain_suffixes={"suffix.example", ".single"},
+        domain_keywords={"somebrand"},
+        domain_regexes={r"^ad[0-9]+\.example$"},
+    )
+    mod.build_smartdns_rules({"geosite-cn": rs}, str(tmp_path))
+    lines = (tmp_path / "geosite" / "geosite-cn.txt").read_text(encoding="utf-8").splitlines()
+    assert "suffix.example" in lines
+    assert "single" in lines
+    assert "full:exact.example" in lines
+    assert "keyword:somebrand" in lines
+    assert r"regexp:^ad[0-9]+\.example$" in lines
+    assert not any(l.startswith("-.") or l.startswith("+.") for l in lines), lines
