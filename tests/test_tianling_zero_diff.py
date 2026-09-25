@@ -8,7 +8,6 @@ Ensures that all generated Sing-box rules match Tianling's upstream 100% exactly
 import os
 import sys
 import json
-import urllib.request
 import subprocess
 try:
     import pytest
@@ -26,94 +25,15 @@ except ImportError:
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts")))
 import utils
 
-# Key Tianling rules to verify
-# 注意: geosite-cn 不在此列 —— 它不走 dat 解析，而是原样同步天灵 srs，
-# 由下方 test_tianling_raw_srs_zero_diff 单独比对上游。
-TIANLING_TEST_SITES = [
-    ("geosite-geolocation-!cn", "geosite-!cn"),
-    ("geosite-gfw", "geosite-gfw"),
-    ("geosite-google", "geosite-google"),
-    ("geosite-youtube", "geosite-youtube"),
-    ("geosite-github", "geosite-github"),
-    ("geosite-onedrive", "geosite-onedrive"),
-    ("geosite-microsoft", "geosite-microsoft"),
-    ("geosite-tiktok", "geosite-tiktok"),
-    ("geosite-spotify", "geosite-spotify"),
-    ("geosite-netflix", "geosite-netflix"),
-    ("geosite-disney", "geosite-disney"),
-    ("geosite-category-games-cn", "geosite-games-cn"),
-    ("geosite-private", "geosite-private"),
-    ("geosite-apple-tvplus", "geosite-apple-tvplus"),
-    ("geosite-category-httpdns-cn", "geosite-httpdns"),
-    ("geosite-category-entertainment", "geosite-entertainment"),
-    ("geosite-category-games-!cn", "geosite-games-!cn"),
-    ("geosite-openai", "geosite-openai"),
-    ("geosite-anthropic", "geosite-anthropic"),
-    ("geosite-google-gemini", "geosite-gemini"),
-    ("geosite-gitlab", "geosite-gitlab"),
-    ("geosite-docker", "geosite-docker"),
-    ("geosite-stackexchange", "geosite-stackoverflow"),
-    ("geosite-npmjs", "geosite-npm"),
-    ("geosite-telegram", "geosite-telegram"),
-    ("geosite-discord", "geosite-discord"),
-    ("geosite-whatsapp", "geosite-whatsapp"),
-    ("geosite-signal", "geosite-signal"),
-    ("geosite-line", "geosite-line"),
-    ("geosite-x", "geosite-x"),
-    ("geosite-instagram", "geosite-instagram"),
-    ("geosite-reddit", "geosite-reddit"),
-    ("geosite-threads", "geosite-threads"),
-    ("geosite-bluesky", "geosite-bluesky"),
-    ("geosite-twitch", "geosite-twitch"),
-    ("geosite-hbo", "geosite-hbo"),
-    ("geosite-hulu", "geosite-hulu"),
-    ("geosite-primevideo", "geosite-primevideo"),
-    ("geosite-bahamut", "geosite-bahamut"),
-    ("geosite-abema", "geosite-abema"),
-    ("geosite-niconico", "geosite-niconico"),
-    ("geosite-dmm", "geosite-dmm"),
-    ("geosite-pixiv", "geosite-pixiv"),
-    ("geosite-vimeo", "geosite-vimeo"),
-    ("geosite-dailymotion", "geosite-dailymotion"),
-    ("geosite-deezer", "geosite-deezer"),
-    ("geosite-soundcloud", "geosite-soundcloud"),
-    ("geosite-tidal", "geosite-tidal"),
-    ("geosite-steam", "geosite-steam"),
-    ("geosite-epicgames", "geosite-epicgames"),
-    ("geosite-playstation", "geosite-playstation"),
-    ("geosite-xbox", "geosite-xbox"),
-    ("geosite-nintendo", "geosite-nintendo"),
-    ("geosite-ea", "geosite-ea"),
-    ("geosite-ubisoft", "geosite-ubisoft"),
-    ("geosite-rockstar", "geosite-rockstar"),
-    ("geosite-blizzard", "geosite-blizzard"),
-    ("geosite-riot", "geosite-riotgames"),
-    ("geosite-mihoyo", "geosite-mihoyo"),
-    ("geosite-hoyoverse", "geosite-hoyoverse"),
-    ("geosite-paypal", "geosite-paypal"),
-    ("geosite-stripe", "geosite-stripe"),
-    ("geosite-wise", "geosite-wise"),
-    ("geosite-binance", "geosite-binance"),
-    ("geosite-okx", "geosite-okx"),
-    ("geosite-cloudflare", "geosite-cloudflare"),
-    ("geosite-fastly", "geosite-fastly"),
-    ("geosite-akamai", "geosite-akamai"),
-    ("geosite-vercel", "geosite-vercel"),
-    ("geosite-netlify", "geosite-netlify"),
-    ("geosite-notion", "geosite-notion"),
-    ("geosite-figma", "geosite-figma"),
-    ("geosite-canva", "geosite-canva"),
-    ("geosite-zoom", "geosite-zoom"),
-]
+# 0-Diff 覆盖直接取自 core.manager 的权威映射, 消除手工清单与构建映射的漂移
+# (曾因此漏测 geosite-porn/media/communication/social-media/games/netdisk-!cn 六个集合)。
+# 注意: geosite-cn 不在此列 —— 它以天灵配方合成 + rules/patches/geosite-cn.txt
+# include 合并构建, 无法静态比对单一上游分类,
+# 由下方 test_tianling_cn_superset 单独做"上游全覆盖"语义校验。
+from core.manager import TIANLING_GEOSITES, TIANLING_GEOIPS
 
-TIANLING_TEST_IPS = [
-    ("geoip-cn", "geoip-cn"),
-    ("geoip-google", "geoip-google"),
-    ("geoip-telegram", "geoip-telegram"),
-    ("geoip-twitter", "geoip-twitter"),
-    ("geoip-facebook", "geoip-facebook"),
-    ("geoip-private", "geoip-private"),
-]
+TIANLING_TEST_SITES = sorted(TIANLING_GEOSITES.items())
+TIANLING_TEST_IPS = sorted(TIANLING_GEOIPS.items())
 
 
 import tempfile
@@ -170,8 +90,9 @@ def test_tianling_geosite_zero_diff(upstream_tag, local_name):
     loc_rule = _decompile_srs(local_srs, os.path.join(work_dir, f"loc_{local_name}.json"))
 
     # Allow local patches: entries we added on top of source are expected extras.
-    from core.patcher import get_active_patch_count, has_patch_includes
-    expected_extra = get_active_patch_count(local_name)
+    # 补丁文件在构建期保持只读 (auto-comment 已退役), 因此期望 extra 数 = 补丁行中
+    # 未被上游收录的条数 (已收录的行运行期跳过, 不会产生 extra)。
+    from core.patcher import load_patch_file, has_patch_includes
     has_inc = has_patch_includes(local_name)
 
     src_map = {
@@ -180,6 +101,16 @@ def test_tianling_geosite_zero_diff(upstream_tag, local_name):
         "domain_keyword": src_rs.domain_keywords,
         "domain_regex": src_rs.domain_regexes,
     }
+    up_normalized = {
+        key: {x.lower().lstrip(".") for x in values}
+        for key, values in src_map.items()
+    }
+    expected_extra = 0
+    for kind, rtype, value, _raw in load_patch_file(local_name):
+        if kind != "rule":
+            continue
+        if value.lower().lstrip(".") not in up_normalized.get(rtype, set()):
+            expected_extra += 1
     extra_total = 0
     missing_report = []
     for key in ("domain", "domain_suffix", "domain_keyword", "domain_regex"):

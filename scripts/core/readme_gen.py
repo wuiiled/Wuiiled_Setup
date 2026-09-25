@@ -24,8 +24,6 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     except Exception:
         pass
 
-NL = chr(10)
-
 
 # Branch display metadata: (emoji, title, format badge text, primary format)
 _BRANCH_META = {
@@ -209,7 +207,7 @@ RULE_METADATA: Dict[str, Dict[str, str]] = {
     "geosite-porn": {"desc": "成人内容与不良网站拦截 (含本地补丁)"},
     "geosite-httpdns": {"desc": "国内 APP 内置 HTTPDNS 解析防劫持"},
     "geosite-private": {"desc": "局域网保留与私有/路由器后台域名"},
-    "geosite-pcdn": {"desc": "PCDN 边缘上传业务拦截过滤 (ADG 格式)", "note": "上游: wuiiled/PCDN-mihomo-list · AdGuard 规则格式"},
+    "geosite-pcdn": {"desc": "PCDN 边缘上传业务拦截过滤", "note": "上游: wuiiled/PCDN-mihomo-list"},
 
     # 🛠️ Custom Routing
     "geosite-custom-direct": {"desc": "本地自定义直连域名与服务", "note": "用户本地规则: rules/Custom_Direct_DOMAIN.txt"},
@@ -789,7 +787,7 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
 
     readme_path = os.path.join(target_dir, "README.md")
     with open(readme_path, "w", encoding="utf-8") as f:
-        f.write(NL.join(lines) + NL)
+        f.write("\n".join(lines) + "\n")
     print(f"  📄 [README] 为分支 {target:<10} 成功生成订阅导航 (包含 {total_sets} 个规则集, 共 {total_items:,} 条规则)")
 
 

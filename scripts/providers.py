@@ -84,9 +84,10 @@ MIHOMO_SKK = {
     "geoip-apple": "https://ruleset.skk.moe/List/ip/apple_services.conf",
 }
 
-ADG_URLS = {
-    "PCDN": "https://raw.githubusercontent.com/wuiiled/PCDN-mihomo-list/main/pcdn.list"
-}
+# PCDN 拦截列表: 统一经 IR 装载 (manager.load_pcdn_rules), 各平台导出并进入来源画像
+PCDN_URLS = [
+    "https://raw.githubusercontent.com/wuiiled/PCDN-mihomo-list/main/pcdn.list"
+]
 
 # OxiDNS (mosdns 分支) 从 smartdns 分支拉取的规则文件清单，
 # 与 OxiDNS 配置文件中 downloads 段的 URL 一一对应。

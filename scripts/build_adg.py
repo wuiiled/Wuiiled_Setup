@@ -9,7 +9,6 @@ import sys
 from typing import Dict, Optional
 
 import utils
-import providers
 from core.models import RuleSet
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -56,22 +55,21 @@ def build_adg_rules(rules: Dict[str, RuleSet], output_dir: str = "output/adg"):
             clean = d.lstrip('.').strip()
             if clean:
                 httpdns_lines.append(f"||{clean}^")
+        if rs.domain_keywords:
+            print(f"  [AdGuard] geosite-httpdns | 跳过 {len(rs.domain_keywords)} 条 keyword 规则 (AdGuard 无对应语义)")
     for fname in ("geosite-httpdns.txt",):
         with open(os.path.join(output_dir, fname), 'w', encoding='utf-8') as f:
             f.write('\n'.join(httpdns_lines) + ('\n' if httpdns_lines else ''))
     print(f"  ✅ [AdGuard] {'geosite-httpdns':<24} | 规则数: {len(httpdns_lines):,}")
 
-    # 3. PCDN
-    pcdn_content = utils.download_file(providers.ADG_URLS.get("PCDN", ""))
+    # 3. PCDN: 已由 manager 统一装载为 IR (geosite-pcdn), 此处仅做 AdGuard 格式渲染
     pcdn_lines = []
-    for line in pcdn_content.splitlines():
-        line = line.strip()
-        if not line or line.startswith('#'):
-            continue
-        cleaned = utils.clean_mihomo_domain_line(line)
-        if cleaned:
-            domain = cleaned.lstrip('+.')
-            pcdn_lines.append(f"||{domain}^")
+    pcdn_rs = rules.get("geosite-pcdn")
+    if pcdn_rs:
+        for d in sorted(pcdn_rs.domains | pcdn_rs.domain_suffixes):
+            clean = d.lstrip('.').strip()
+            if clean:
+                pcdn_lines.append(f"||{clean}^")
     for fname in ("geosite-pcdn.txt",):
         with open(os.path.join(output_dir, fname), 'w', encoding='utf-8') as f:
             f.write('\n'.join(pcdn_lines) + ('\n' if pcdn_lines else ''))

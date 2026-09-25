@@ -5,6 +5,6 @@
 #   keyword:    -> domain_keyword
 #   regexp:     -> domain_regex
 #   以 # 开头为注释
-# 上游收录后自动注释并标记，无需手动删除
+# 上游已收录的行在构建日志中标注 (upstream included) 并自动跳过, 保留在文件中作为记录
 
 surrit.com

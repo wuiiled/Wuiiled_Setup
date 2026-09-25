@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 Local patch manager for Tianling rulesets.
-Reads per-ruleset patch files from rules/patches/, applies them after upstream fetch,
-and auto-comments entries that upstream has already included.
+Reads per-ruleset patch files from rules/patches/ and applies them after upstream fetch.
+Patch files are READ-ONLY during the build: entries that upstream already includes are
+skipped at runtime and reported in the log (上游已收录), never rewritten on disk.
 
 补丁文件格式 (rules/patches/<规则集名>.txt):
   纯文本        -> domain_suffix (如 example.com)
@@ -18,12 +19,13 @@ include 合并的清洗规则 (与 04699e9 版本 gen_cn 语义一致):
   裸域名 -> domain_suffix; '+.'/'.' 前缀 -> domain_suffix;
   'domain-suffix,'/'domain,' -> 原语义 (suffix/domain); 'full:' -> domain;
   'keyword:'/'regexp:' -> 对应类型; 空行/#注释/含 skk.moe 水印的行跳过。
-include 属于"整表合并", 不参与上游收录自动注释 (外部列表随上游自行更新)。
+include 属于"整表合并", 上游随其自行更新; 解析失败 (下载失败/分类不存在/合并 0 条)
+会在 apply_patches 的调用方处中止构建, 防止规则集静默缩水。
 """
 
 import os
 import re
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 from core.models import RuleSet
 
 
@@ -239,36 +241,3 @@ def apply_patches(rs: RuleSet, dat_map: Optional[Dict[str, RuleSet]] = None):
             include_stats.append((a, b, rs.total_count - before))
 
     return rs, active, upstream_included, include_stats
-
-
-def comment_out_upstream_included(ruleset_name: str, upstream_included: List[str]) -> None:
-    """
-    Rewrite the patch file, commenting out plain rule entries that upstream already includes.
-    Adds a header note with the date. include 行不受影响。
-    """
-    if not upstream_included:
-        return
-
-    path = os.path.join(PATCH_DIR, f"{ruleset_name}.txt")
-    if not os.path.exists(path):
-        return
-
-    with open(path, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-
-    from datetime import datetime
-    today = datetime.now().strftime("%Y-%m-%d")
-    new_lines = []
-    commented = set(v.lower() for v in upstream_included)
-
-    for line in lines:
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            kind, a, b = _parse_patch_line(stripped)
-            if kind == "rule" and b and b.lower().lstrip(".") in commented:
-                new_lines.append(f"# [upstream included {today}] {line}")
-                continue
-        new_lines.append(line)
-
-    with open(path, "w", encoding="utf-8") as f:
-        f.writelines(new_lines)

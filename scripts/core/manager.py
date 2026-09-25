@@ -9,7 +9,7 @@ import sys
 import re
 import ipaddress
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Set, Optional
+from typing import Dict
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     try:
@@ -26,9 +26,7 @@ import utils
 import providers
 from core.models import RuleSet
 from core.cleaner import (
-    normalize_domain_line,
     clean_ip_line,
-    is_valid_ip_or_cidr,
     clean_mihomo_domain_line,
     compact_regexes,
     build_blocklist_b,
@@ -37,11 +35,10 @@ from core.cleaner import (
 )
 from core.fetcher import (
     fetch_text_url,
-    fetch_parallel_texts,
     read_local_file,
     fetch_tianling_ruleset
 )
-from core.patcher import apply_patches, comment_out_upstream_included, load_patch_file
+from core.patcher import apply_patches, load_patch_file
 from core.geosite_source import parse_geosite_dat, build_tianling_style_cn
 
 TIANLING_GEOSITES = {
@@ -180,19 +177,22 @@ def _include_label(kind: str, value: str) -> str:
 def apply_rule_patches(all_rules: Dict[str, RuleSet]) -> None:
     """
     统一补丁通道: 对 rules/patches/<规则集名>.txt 存在的规则集应用:
-      - 手动补丁规则行 (支持上游收录自动注释);
+      - 手动补丁规则行 (上游已收录的行在运行期跳过并日志标注, 补丁文件保持只读);
       - include 指令 (dat 分类 / 外部 URL / 本地文件 的整表合并)。
     所有集合 (dat 派生 / 自研 / 自定义 / SKK) 共用同一条通道, 逻辑单一稳定。
+    include 解析失败 (下载失败/分类不存在/合并 0 条) 时中止构建, 防止规则集静默缩水。
     """
     print("\n🚀 [5/5] 应用本地补丁与列表合并 (rules/patches/)...")
     applied = 0
+    failed_includes = []
     for name, rs in all_rules.items():
         if not load_patch_file(name):
             continue
         rs, plain_n, upstream_included, includes = apply_patches(rs, dat_map=_DAT_SOURCE_MAP)
-        if upstream_included:
-            comment_out_upstream_included(name, upstream_included)
         applied += 1
+        for kind, target, merged in includes:
+            if merged == 0:
+                failed_includes.append((name, kind, target))
         # include 整表合并也是真实来源, 记入来源画像供 manifest/README 渲染
         inc_labels = [_include_label(k, v) for k, v, _n in includes if k in ("dat", "url", "local")]
         if inc_labels:
@@ -208,6 +208,12 @@ def apply_rule_patches(all_rules: Dict[str, RuleSet]) -> None:
         extra = f" | 上游已收录: {len(upstream_included)}" if upstream_included else ""
         print(f"  📝 [补丁] {name:<26} | 手动补丁: {plain_n} | include: {inc_str}{applied_str}{extra}")
     print(f"  ✅ 共应用 {applied} 个规则集的本地补丁")
+    if failed_includes:
+        detail = "; ".join(f"{n} <- include:{k}:{t}" for n, k, t in failed_includes)
+        raise RuntimeError(
+            "include 指令解析失败 (下载失败/来源不存在/合并 0 条), "
+            f"为防止规则集静默缩水中止构建: {detail}"
+        )
 
 
 def load_tianling_rules() -> Dict[str, RuleSet]:
@@ -358,12 +364,13 @@ def load_ads_rules() -> RuleSet:
         bl_b = build_blocklist_b(raw_block, raw_allow)
         wl_b = build_whitelist_b(raw_allow, raw_block, bl_b)
         with open(blocklist_b_path, "w", encoding="utf-8") as f:
-            f.write(chr(10).join(sorted(bl_b)) + chr(10))
+            f.write("\n".join(sorted(bl_b)) + "\n")
         with open(whitelist_b_path, "w", encoding="utf-8") as f:
-            f.write(chr(10).join(sorted(wl_b)) + chr(10))
+            f.write("\n".join(sorted(wl_b)) + "\n")
         print(f"  [黑加白] 黑名单B={len(bl_b):,} 白名单B={len(wl_b):,}")
-    except OSError:
-        pass
+    except OSError as e:
+        # 黑加白产物是 mihomo/adg 下游的输入, 写失败必须显式失败而非静默缺失
+        raise RuntimeError(f"黑加白 blocklist/whitelist B 写盘失败: {e}") from e
 
     domain_suffixes = set()
     if os.path.exists(final_ads_path):
@@ -630,6 +637,46 @@ def load_gfwip_rules() -> RuleSet:
         ip_cidrs=lines,
         source_kind="self",
         sources=["clowwindy/ChinaDNS", "pmkol/easymosdns", "自有 IPv6 靶心表"],
+        flatten_cidr_host=True,
+    )
+
+
+def load_pcdn_rules() -> RuleSet:
+    """Build geosite-pcdn from wuiiled/PCDN-mihomo-list (统一走 IR, 各平台导出+来源画像)."""
+    work_dir = utils.get_work_dir()
+    mod_dir = os.path.join(work_dir, "pcdn")
+    os.makedirs(mod_dir, exist_ok=True)
+    raw_pcdn = os.path.join(mod_dir, "raw_pcdn.txt")
+    utils.download_files_parallel(raw_pcdn, providers.PCDN_URLS)
+
+    domains = set()
+    domain_suffixes = set()
+    if os.path.exists(raw_pcdn):
+        with open(raw_pcdn, 'r', encoding='utf-8') as f:
+            for line in f:
+                cleaned = clean_mihomo_domain_line(line)
+                if not cleaned:
+                    continue
+                if cleaned.startswith('+.'):
+                    suffix = cleaned[2:].lstrip('.')
+                    if suffix:
+                        domain_suffixes.add(suffix)
+                elif cleaned.startswith('.'):
+                    suffix = cleaned[1:].lstrip('.')
+                    if suffix:
+                        domain_suffixes.add(suffix)
+                else:
+                    domains.add(cleaned)
+
+    print(f"  ✅ [PCDN]       {'geosite-pcdn':<26} | 规则数: {len(domains)+len(domain_suffixes):,}")
+    return RuleSet(
+        name="geosite-pcdn",
+        category="geosite",
+        description="PCDN 边缘上传业务拦截",
+        domains=domains,
+        domain_suffixes=domain_suffixes,
+        source_kind="self",
+        sources=["wuiiled/PCDN-mihomo-list"],
     )
 
 
@@ -741,14 +788,15 @@ def load_all_rules() -> Dict[str, RuleSet]:
     print("\n🚀 [1/5] 拉取权威规则 (Loyalsoldier dat 原生解析 GeoSites + 天灵配方 cn + GeoIPs)...")
     all_rules = load_tianling_rules()
 
-    print("\n🚀 [2/5] 构建原创复合提纯规则 (Ad / AI / Fake-IP / Drop / GFW-IP)...")
+    print("\n🚀 [2/5] 构建原创复合提纯规则 (Ad / AI / Fake-IP / Drop / GFW-IP / PCDN)...")
     ads = load_ads_rules()
     ai = load_ai_rules()
     fakeip = load_fakeip_rules()
     drop = load_reject_drop_rules()
     gfwip = load_gfwip_rules()
+    pcdn = load_pcdn_rules()
 
-    for r in (ads, ai, fakeip, drop, gfwip):
+    for r in (ads, ai, fakeip, drop, gfwip, pcdn):
         all_rules[r.name] = r
 
     print("\n🚀 [3/5] 加载本地自定义规则 (Custom_*)...")

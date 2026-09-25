@@ -9,8 +9,7 @@ import os
 import sys
 import json
 import subprocess
-import shutil
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Set
 
 import utils
 from core.models import RuleSet
@@ -23,83 +22,45 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 
 
 def check_singbox() -> bool:
-    has_sb = shutil.which("sing-box") is not None
-    if not has_sb and sys.platform == "win32" and shutil.which("wsl"):
-        has_sb = True
-    if not has_sb and os.environ.get("GITHUB_ACTIONS") == "true":
-        print("❌ 错误: 在 GitHub Actions 环境中未找到 'sing-box' 编译器！")
-        sys.exit(1)
-    return has_sb
+    return utils.check_tool("sing-box")
 
 
-def convert_txt_to_json(txt_path: str, json_path: str) -> bool:
-    """Helper to convert Mihomo text format to Sing-box JSON format."""
-    import ipaddress
-    import re
-    domains = set()
-    domain_suffixes = set()
-    domain_regexes = set()
-    ip_cidrs = set()
+def synthesize_composites(rules: Dict[str, RuleSet]) -> None:
+    """合成 sing-box 专属复合规则 (域名 + IP 同集)。
 
-    with open(txt_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#'): continue
-            line = line.split('#')[0].strip()
-            if not line: continue
+    必须在并行分发构建器之前、对主 rules 字典一次性完成: 原地替换共享字典
+    在多线程迭代下存在竞态 (新增 key 会触发 RuntimeError), 由 main.py 统一
+    预合成并为每个构建器传入独立快照来根除。
+    """
+    composite_specs = [
+        ("geosite-custom-direct", "geosite-custom-direct", "geoip-custom-direct"),
+        ("geosite-custom-dns", "geosite-custom-dns", "geoip-custom-dns"),
+    ]
 
-            try:
-                net = ipaddress.ip_network(line, strict=False)
-                ip_cidrs.add(str(net))
-                continue
-            except ValueError:
-                pass
+    for comp_name, domain_key, ip_key in composite_specs:
+        comp_domains: Set[str] = set()
+        comp_suffixes: Set[str] = set()
+        comp_ips: Set[str] = set()
+        sources: List[str] = []
 
-            if ' ' in line or ':' in line:
-                continue
+        if domain_key in rules:
+            comp_domains.update(rules[domain_key].domains)
+            comp_suffixes.update(rules[domain_key].domain_suffixes)
+            sources += list(rules[domain_key].sources)
+        if ip_key in rules:
+            comp_ips.update(rules[ip_key].ip_cidrs)
+            sources += list(rules[ip_key].sources)
 
-            if line.startswith('+.'):
-                suffix = line[2:]
-                if not suffix: continue
-                if '*' in suffix:
-                    escaped = re.escape(suffix).replace(r'\*', '.*')
-                    domain_regexes.add(f"^(.*\\.)?{escaped}$")
-                else:
-                    domain_suffixes.add(suffix)
-            elif line.startswith('.'):
-                suffix = line[1:]
-                if not suffix: continue
-                if '*' in suffix:
-                    escaped = re.escape(suffix).replace(r'\*', '.*')
-                    domain_regexes.add(f"^(.*\\.)?{escaped}$")
-                else:
-                    domain_suffixes.add(suffix)
-            elif '*' in line:
-                if line == '*':
-                    pass
-                elif line.startswith('*.') and line.count('*') == 1:
-                    suffix = line[2:]
-                    if suffix:
-                        domain_suffixes.add(suffix)
-                else:
-                    escaped = re.escape(line).replace(r'\*', '.*')
-                    domain_regexes.add(f"^{escaped}$")
-            else:
-                domains.add(line)
-
-    rule_dict = {}
-    if domains: rule_dict["domain"] = sorted(list(domains))
-    if domain_suffixes: rule_dict["domain_suffix"] = sorted(list(domain_suffixes))
-    if ip_cidrs: rule_dict["ip_cidr"] = sorted(list(ip_cidrs))
-    if domain_regexes: rule_dict["domain_regex"] = sorted(list(domain_regexes))
-
-    total = len(domains) + len(domain_suffixes) + len(ip_cidrs) + len(domain_regexes)
-    if total == 0:
-        return False
-
-    with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump({"version": 5, "rules": [rule_dict]}, f, indent=2, ensure_ascii=False)
-    return True
+        rules[comp_name] = RuleSet(
+            name=comp_name,
+            category="geosite",
+            description="复合自定义规则 (域名 + IP)",
+            domains=comp_domains,
+            domain_suffixes=comp_suffixes,
+            ip_cidrs=comp_ips,
+            source_kind="custom",
+            sources=sources,
+        )
 
 
 def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/singbox"):
@@ -114,34 +75,7 @@ def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sin
     has_sb = check_singbox()
     print(f"\n📦 [Sing-box] 正在构建所有规则集并输出至 {output_dir}...")
 
-    # 1. Handle composite custom rules (domains + IPs together)
-    composite_specs = [
-        ("geosite-custom-direct", "geosite-custom-direct", "geoip-custom-direct"),
-        ("geosite-custom-dns", "geosite-custom-dns", "geoip-custom-dns"),
-    ]
-
-    for comp_name, domain_key, ip_key in composite_specs:
-        comp_domains = set()
-        comp_suffixes = set()
-        comp_ips = set()
-
-        if domain_key in rules:
-            comp_domains.update(rules[domain_key].domains)
-            comp_suffixes.update(rules[domain_key].domain_suffixes)
-        if ip_key in rules:
-            comp_ips.update(rules[ip_key].ip_cidrs)
-
-        comp_rs = RuleSet(
-            name=comp_name,
-            category="geosite",
-            description="复合自定义规则 (域名 + IP)",
-            domains=comp_domains,
-            domain_suffixes=comp_suffixes,
-            ip_cidrs=comp_ips
-        )
-        rules[comp_name] = comp_rs
-
-    # 2. Build each ruleset
+    # 复合规则由 synthesize_composites 预合成 (main.py 在分发前统一调用)
     for name, rs in rules.items():
         # Do not output raw geoip-custom-* into singbox if already merged into geosite-custom-*
         if name in ("geoip-custom-direct", "geoip-custom-dns"):
@@ -181,6 +115,7 @@ def run_all(rules: Optional[Dict[str, RuleSet]] = None):
     if rules is None:
         from core.manager import load_all_rules
         rules = load_all_rules()
+        synthesize_composites(rules)
     build_singbox_rules(rules)
 
 

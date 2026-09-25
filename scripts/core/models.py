@@ -23,6 +23,7 @@ class RuleSet:
         source_kind: str = "",  # dat | recipe | self | skk | custom | geoip-srs
         sources: Optional[List[str]] = None,
         dat_code: str = "",
+        flatten_cidr_host: bool = False,
     ):
         self.name = name
         self.category = category.lower()
@@ -39,6 +40,9 @@ class RuleSet:
         self.source_kind: str = source_kind
         self.sources: List[str] = list(sources or [])
         self.dat_code: str = dat_code
+        # True 时 mihomo 输出剥掉单主机 CIDR 的 /32、/128 前缀
+        # (如 geoip-gfw 靶心表按裸 IP 表达), 替代旧的按集合名硬编码特判。
+        self.flatten_cidr_host: bool = flatten_cidr_host
 
     @property
     def is_geoip(self) -> bool:
@@ -90,7 +94,7 @@ class RuleSet:
         lines = []
         if self.is_geoip:
             for cidr in sorted(self.ip_cidrs):
-                if self.name == "geoip-gfw":
+                if self.flatten_cidr_host:
                     if "." in cidr and cidr.endswith("/32"):
                         lines.append(cidr[:-3])
                     elif ":" in cidr and cidr.endswith("/128"):

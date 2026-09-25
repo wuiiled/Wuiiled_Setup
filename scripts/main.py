@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
@@ -32,18 +31,23 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
-    # 阶段 2: 落来源画像 manifest (供各分支 README 渲染真实来源与已验证平台)
+    # 阶段 2: 预合成 sing-box 复合规则 (域名+IP), 对主字典一次完成,
+    # 避免并行构建期间原地改写共享 dict 的竞态
+    build_singbox.synthesize_composites(rules)
+
+    # 阶段 3: 落来源画像 manifest (供各分支 README 渲染真实来源与已验证平台)
     write_manifest(rules, "output")
 
-    # 阶段 3: 并行导出所有目标平台 (零耦合独立构建)
-    print("\n🚀 [阶段 3/4] 并行构建所有目标平台专属规则...")
+    # 阶段 4: 并行导出所有目标平台 (零耦合独立构建)
+    # 每个构建器拿到 dict(rules) 独立快照, 构建器之间互不可见写入
+    print("\n🚀 [阶段 4/5] 并行构建所有目标平台专属规则...")
     with ThreadPoolExecutor() as executor:
         futures = {
-            "Sing-box": executor.submit(build_singbox.run_all, rules),
-            "Mihomo": executor.submit(build_mihomo.run_all, rules),
-            "SmartDNS": executor.submit(build_smartdns.run_all, rules),
-            "MosDNS": executor.submit(build_mosdns.run_all, rules),
-            "AdGuard Home": executor.submit(build_adg.run_all, rules),
+            "Sing-box": executor.submit(build_singbox.run_all, dict(rules)),
+            "Mihomo": executor.submit(build_mihomo.run_all, dict(rules)),
+            "SmartDNS": executor.submit(build_smartdns.run_all, dict(rules)),
+            "MosDNS": executor.submit(build_mosdns.run_all, dict(rules)),
+            "AdGuard Home": executor.submit(build_adg.run_all, dict(rules)),
         }
         for name, fut in futures.items():
             try:
@@ -54,8 +58,8 @@ def main():
                 traceback.print_exc()
                 sys.exit(1)
 
-    # 阶段 4: 自动生成各平台规范 README 导航页
-    print("\n🚀 [阶段 4/4] 生成各平台发布分支订阅导航 (README.md)...")
+    # 阶段 5: 自动生成各平台规范 README 导航页
+    print("\n🚀 [阶段 5/5] 生成各平台发布分支订阅导航 (README.md)...")
     try:
         generate_all_readmes("output")
     except Exception as e:
