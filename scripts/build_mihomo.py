@@ -98,20 +98,7 @@ def build_mihomo_rules(rules: Dict[str, RuleSet], output_dir: str = "output/miho
     if bl_b or wl_b:
         print(f"  [Mihomo] 黑加白 precise={len(bl_b):,} allow={len(wl_b):,}")
 
-    # 2. Aliases (e.g. geosite-emby -> geosite-custom-emby)
-    aliases = {
-        "geosite-emby": "geosite-custom-emby",
-    }
-    for alias_name, target_name in aliases.items():
-        sub_dir = geoip_out if alias_name.startswith("geoip-") else geosite_out
-        src_txt = os.path.join(sub_dir, f"{target_name}.txt")
-        src_mrs = os.path.join(sub_dir, f"{target_name}.mrs")
-        dst_txt = os.path.join(sub_dir, f"{alias_name}.txt")
-        dst_mrs = os.path.join(sub_dir, f"{alias_name}.mrs")
-        if os.path.exists(src_txt):
-            utils.safe_copy(src_txt, dst_txt)
-        if os.path.exists(src_mrs):
-            utils.safe_copy(src_mrs, dst_mrs)
+    # 兼容别名机制已退役: 全部规则集统一使用标准名称 (geosite-custom-emby 等)
 
     print("✅ [Mihomo] 全部规则集构建完成！")
 

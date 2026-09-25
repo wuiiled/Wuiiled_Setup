@@ -10,7 +10,7 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 from core.manager import load_all_rules
-from core.readme_gen import generate_all_readmes
+from core.readme_gen import generate_all_readmes, write_manifest
 import build_singbox
 import build_mihomo
 import build_smartdns
@@ -32,8 +32,11 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
-    # 阶段 2: 并行导出所有目标平台 (零耦合独立构建)
-    print("\n🚀 [阶段 2/3] 并行构建所有目标平台专属规则...")
+    # 阶段 2: 落来源画像 manifest (供各分支 README 渲染真实来源与已验证平台)
+    write_manifest(rules, "output")
+
+    # 阶段 3: 并行导出所有目标平台 (零耦合独立构建)
+    print("\n🚀 [阶段 3/4] 并行构建所有目标平台专属规则...")
     with ThreadPoolExecutor() as executor:
         futures = {
             "Sing-box": executor.submit(build_singbox.run_all, rules),
@@ -51,8 +54,8 @@ def main():
                 traceback.print_exc()
                 sys.exit(1)
 
-    # 阶段 3: 自动生成各平台规范 README 导航页
-    print("\n🚀 [阶段 3/3] 生成各平台发布分支订阅导航 (README.md)...")
+    # 阶段 4: 自动生成各平台规范 README 导航页
+    print("\n🚀 [阶段 4/4] 生成各平台发布分支订阅导航 (README.md)...")
     try:
         generate_all_readmes("output")
     except Exception as e:

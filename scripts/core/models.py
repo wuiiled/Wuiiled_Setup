@@ -20,6 +20,9 @@ class RuleSet:
         ip_cidrs: Optional[Set[str]] = None,
         raw_srs: Optional[bytes] = None,
         raw_lines: Optional[List[str]] = None,
+        source_kind: str = "",  # dat | recipe | self | skk | custom | geoip-srs
+        sources: Optional[List[str]] = None,
+        dat_code: str = "",
     ):
         self.name = name
         self.category = category.lower()
@@ -31,6 +34,11 @@ class RuleSet:
         self.ip_cidrs: Set[str] = ip_cidrs or set()
         self.raw_srs: Optional[bytes] = raw_srs
         self.raw_lines: Optional[List[str]] = raw_lines
+        # 来源画像: 由各 loader 填写, 经 manifest 驱动 README "说明" 列渲染,
+        # 保证介绍永远反映真实构建路径而非手工文案。
+        self.source_kind: str = source_kind
+        self.sources: List[str] = list(sources or [])
+        self.dat_code: str = dat_code
 
     @property
     def is_geoip(self) -> bool:

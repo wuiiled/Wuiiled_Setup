@@ -71,6 +71,7 @@ TIANLING_GEOSITES = {
     # --- New additions ---
     "geosite-category-entertainment": "geosite-entertainment",
     "geosite-category-games-!cn": "geosite-games-!cn",
+    "geosite-category-netdisk-!cn": "geosite-netdisk-!cn",
     # AI & Dev
     "geosite-openai": "geosite-openai",
     "geosite-anthropic": "geosite-anthropic",
@@ -158,9 +159,22 @@ _DAT_SOURCE_MAP: Dict[str, RuleSet] = {}
 def _fetch_one_ip(tag, out_name):
     rs = fetch_tianling_ruleset(tag, category="geoip", out_name=out_name)
     if rs:
+        rs.source_kind = "geoip-srs"
+        rs.sources = ["1715173329/sing-geoip"]
         print(f"  ✅ [天灵 GeoIP]   {out_name:<26} | 规则数: {rs.total_count:,}")
         return out_name, rs
     return None
+
+
+def _include_label(kind: str, value: str) -> str:
+    """把 include 指令转成 manifest/README 说明列里的简短来源名。"""
+    if kind == "dat":
+        return f"dat 分类 {value}"
+    if kind == "local":
+        return f"本地 {os.path.basename(value)}"
+    base = os.path.basename(value.split("?")[0])
+    base = base.rsplit(".", 1)[0] if "." in base else base
+    return f"SKK {base}" if "skk.moe" in value else base
 
 
 def apply_rule_patches(all_rules: Dict[str, RuleSet]) -> None:
@@ -179,6 +193,10 @@ def apply_rule_patches(all_rules: Dict[str, RuleSet]) -> None:
         if upstream_included:
             comment_out_upstream_included(name, upstream_included)
         applied += 1
+        # include 整表合并也是真实来源, 记入来源画像供 manifest/README 渲染
+        inc_labels = [_include_label(k, v) for k, v, _n in includes if k in ("dat", "url", "local")]
+        if inc_labels:
+            rs.sources = list(rs.sources) + inc_labels
         # 含 include 整表合并的集合做覆盖吸收 (删除被更短后缀涵盖的条目);
         # 纯 dat 派生集合不吸收, 保持与天灵 0-Diff 同构。
         absorbed = 0
@@ -230,6 +248,9 @@ def load_tianling_rules() -> Dict[str, RuleSet]:
         rs.name = out_name
         rs.category = "geosite"
         rs.description = f"Loyalsoldier 权威提纯 ({code})"
+        rs.source_kind = "dat"
+        rs.sources = ["Loyalsoldier/v2ray-rules-dat"]
+        rs.dat_code = code
         print(f"  ✅ [源头 GeoSite] {out_name:<26} | 规则数: {rs.total_count:,}")
         results[out_name] = rs
 
@@ -237,6 +258,8 @@ def load_tianling_rules() -> Dict[str, RuleSet]:
     # 自有上游列表 (cn-additional-list / SKK domestic) 与手动补丁统一声明在
     # rules/patches/geosite-cn.txt, 由 apply_rule_patches 统一应用。
     recipe_cn = build_tianling_style_cn(source_map)
+    recipe_cn.source_kind = "recipe"
+    recipe_cn.sources = ["天灵配方精编 cn (geolocation-cn + category-*@cn + category-*-cn + .cn)"]
     print(f"  🧬 [天灵配方] geosite-cn                    | 配方合成: {recipe_cn.total_count:,} 条 (geolocation-cn + category-*@cn + category-*-cn)")
     results["geosite-cn"] = recipe_cn
 
@@ -355,7 +378,13 @@ def load_ads_rules() -> RuleSet:
         name="geosite-ad",
         category="geosite",
         description="终极去广告与防追踪规则",
-        domain_suffixes=domain_suffixes
+        domain_suffixes=domain_suffixes,
+        source_kind="self",
+        sources=[
+            "pmkol/easymosdns", "AdGuard Hostlists (1/3/4)", "Dan Pollock",
+            "isdumb/Pi-hole", "Cats-Team/AdRules", "AWAvenue", "OISD Small",
+            "本地 reject-addon",
+        ],
     )
 
 
@@ -385,7 +414,9 @@ def load_ai_rules() -> RuleSet:
         name="geosite-ai",
         category="geosite",
         description="全球主流 AI 域名合集",
-        domain_suffixes=domain_suffixes
+        domain_suffixes=domain_suffixes,
+        source_kind="self",
+        sources=["MetaCubeX/meta-rules-dat", "ruleset.skk.moe", "DustinWin/ruleset_geodata"],
     )
 
 
@@ -465,7 +496,9 @@ def load_fakeip_rules() -> RuleSet:
         domains=domains,
         domain_suffixes=domain_suffixes,
         domain_regexes=set(compacted_regexes),
-        raw_lines=raw_mihomo_lines
+        raw_lines=raw_mihomo_lines,
+        source_kind="self",
+        sources=["OpenClash", "ShellCrash", "DustinWin", "ruleset.skk.moe", "本地 fake-ip-addon"],
     )
 
 
@@ -537,7 +570,9 @@ def load_reject_drop_rules() -> RuleSet:
         description="高危/垃圾流量直接丢弃规则",
         domains=domains,
         domain_suffixes=domain_suffixes,
-        raw_lines=raw_rd_lines
+        raw_lines=raw_rd_lines,
+        source_kind="self",
+        sources=["ruleset.skk.moe", "本地 Custom_Reject-drop"],
     )
 
 
@@ -592,7 +627,9 @@ def load_gfwip_rules() -> RuleSet:
         name="geoip-gfw",
         category="geoip",
         description="GFW 投毒 IP 与网段拦截",
-        ip_cidrs=lines
+        ip_cidrs=lines,
+        source_kind="self",
+        sources=["clowwindy/ChinaDNS", "pmkol/easymosdns", "自有 IPv6 靶心表"],
     )
 
 
@@ -636,7 +673,9 @@ def load_custom_rules() -> Dict[str, RuleSet]:
             description=f"本地自定义规则 ({name})",
             domains=domains,
             domain_suffixes=domain_suffixes,
-            ip_cidrs=ip_cidrs
+            ip_cidrs=ip_cidrs,
+            source_kind="custom",
+            sources=[rel_path],
         )
         print(f"  ✅ [Custom]     {name:<26} | 规则数: {rs.total_count:,}")
         results[name] = rs
@@ -687,7 +726,9 @@ def load_skk_rules() -> Dict[str, RuleSet]:
             description=f"SKK 规则 ({name})",
             domains=domains,
             domain_suffixes=domain_suffixes,
-            ip_cidrs=ip_cidrs
+            ip_cidrs=ip_cidrs,
+            source_kind="skk",
+            sources=["ruleset.skk.moe"],
         )
         print(f"  ✅ [SKK]        {name:<26} | 规则数: {rs.total_count:,}")
         results[name] = rs

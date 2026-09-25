@@ -6,7 +6,7 @@
 
 [![Build](https://github.com/wuiiled/Wuiiled_Setup/actions/workflows/merge.yaml/badge.svg)](https://github.com/wuiiled/Wuiiled_Setup/actions/workflows/merge.yaml)
 [![Tests](https://github.com/wuiiled/Wuiiled_Setup/actions/workflows/test.yaml/badge.svg)](https://github.com/wuiiled/Wuiiled_Setup/actions/workflows/test.yaml)
-![Rulesets](https://img.shields.io/badge/%E6%A0%87%E5%87%86%E8%A7%84%E5%88%99%E9%9B%86-118%2B-blue)
+![Rulesets](https://img.shields.io/badge/%E6%A0%87%E5%87%86%E8%A7%84%E5%88%99%E9%9B%86-113%2B-blue)
 ![0-Diff](https://img.shields.io/badge/0--Diff%20%E6%B5%8B%E8%AF%95-100%25%20PASS-brightgreen)
 ![Branches](https://img.shields.io/badge/%E8%AE%A2%E9%98%85%E5%88%86%E6%94%AF-5-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -37,7 +37,7 @@
 ## 🌐 规则生态全景体系
 
 规则集统一采用 **`geosite/`**（域名集）与 **`geoip/`**（IP/CIDR 集）两级目录隔离，命名保留 `geosite-` / `geoip-` 标准前缀。
-基于 **Loyalsoldier 官方源头 `geosite.dat`（v2ray Protobuf 原生解析）** 与多源深度清洗构建，涵盖 **118+ 个标准规则集**，在 Sing-box 平台达成 **100% 语义级/差集为 0 的权威对齐（0-Diff 严格自动化测试验证）**。
+基于 **Loyalsoldier 官方源头 `geosite.dat`（v2ray Protobuf 原生解析）** 与多源深度清洗构建，涵盖 **113+ 个标准规则集**，在 Sing-box 平台达成 **100% 语义级/差集为 0 的权威对齐（0-Diff 严格自动化测试验证）**。
 
 <details open>
 <summary><b>1️⃣ 官方权威提纯规则集</b>（原生 Protobuf 源头构建，100% 0-Diff 对齐，点击展开）</summary>
@@ -51,7 +51,7 @@ GeoSite 规则直接拉取并解析 Loyalsoldier 官方最新 `geosite.dat` 二�
 | 🎬 **影音流媒体** | `geosite-youtube` · `geosite-netflix` · `geosite-disney` · `geosite-spotify` · `geosite-apple-tvplus` · `geosite-hbo` · `geosite-hulu` · `geosite-primevideo` · `geosite-twitch` · `geosite-bahamut` · `geosite-abema` · `geosite-niconico` · `geosite-dmm` · `geosite-pixiv` · `geosite-vimeo` · `geosite-dailymotion` · `geosite-deezer` · `geosite-soundcloud` · `geosite-tidal` · `geosite-media` · `geosite-entertainment` | 覆盖全球 20+ 顶级影音流媒体服务及动画疯/Abema等区域特色媒体 |
 | 🎮 **游戏与联机** | `geosite-steam` · `geosite-epicgames` · `geosite-playstation` · `geosite-xbox` · `geosite-nintendo` · `geosite-ea` · `geosite-ubisoft` · `geosite-rockstar` · `geosite-blizzard` · `geosite-riotgames` · `geosite-mihoyo` · `geosite-hoyoverse` · `geosite-games` · `geosite-games-cn` · `geosite-games-!cn` | Steam/Epic/PSN/Xbox/Switch及各大游戏发行商官方联机服务加速 |
 | 💰 **金融与支付** | `geosite-paypal` · `geosite-stripe` · `geosite-wise` · `geosite-binance` · `geosite-okx` | 全球主流跨国支付、结算网关与顶级加密货币交易所 |
-| 🌐 **基建与办公** | `geosite-cloudflare` · `geosite-fastly` · `geosite-akamai` · `geosite-vercel` · `geosite-netlify` · `geosite-microsoft` · `geosite-microsoft-cdn` · `geosite-onedrive` · `geosite-google` · `geosite-apple-services` · `geosite-apple-cdn` · `geosite-notion` · `geosite-figma` · `geosite-canva` · `geosite-zoom` | 全球顶级 CDN、云基础设施、前端云平台与现代协同办公软件 |
+| 🌐 **基建与办公** | `geosite-cloudflare` · `geosite-fastly` · `geosite-akamai` · `geosite-vercel` · `geosite-netlify` · `geosite-microsoft` · `geosite-microsoft-cdn` · `geosite-onedrive` · `geosite-google` · `geosite-apple-services` · `geosite-apple-cdn` · `geosite-notion` · `geosite-figma` · `geosite-canva` · `geosite-zoom` · `geosite-netdisk-!cn` | 全球顶级 CDN、云基础设施、前端云平台、现代协同办公软件与海外网盘 (Dropbox/MEGA 等) |
 | 🇨🇳 **国内基础路由** | `geosite-cn` · `geosite-!cn` · `geosite-gfw` · `geosite-private` · `geosite-httpdns` · `geosite-porn` | 大陆直连 (天灵精编+自有列表 双源合并)、境外分流 (2.7万条)、GFW列表 (4300+条)、私有局域网、防HTTPDNS劫持、成人内容过滤 |
 | 🌍 **GeoIP 地址集** | `geoip-cn` · `geoip-google` · `geoip-telegram` · `geoip-twitter` · `geoip-facebook` · `geoip-private` | 国内运营商 IPv4/IPv6 网段 (9940+条)、Google官方网段 (8360+条)、各巨头官方数据中心网段 |
 
@@ -105,7 +105,7 @@ GeoSite 规则直接拉取并解析 Loyalsoldier 官方最新 `geosite.dat` 二�
 - **`geosite-alibaba`**（阿里巴巴系）· **`geosite-tencent`**（腾讯系）· **`geosite-bilibili`**（哔哩哔哩）
 - **`geosite-xiaomi`**（小米系）· **`geosite-bytedance`**（字节跳动）· **`geosite-baidu`**（百度系）· **`geosite-qihoo360`**（奇虎360）
 - **`geosite-apple-services`** / **`geosite-apple-cn`** / **`geosite-apple-cdn`**（Apple 核心与 CDN 细分）
-- **`geosite-microsoft-cdn`**（微软 CDN）· **`geosite-domestic`**（国内常用服务）· **`geosite-download`**（应用商店与 P2P 下载）
+- **`geosite-microsoft-cdn`**（微软 CDN）· **`geosite-domestic`**（国内常用服务）· **`geosite-download`**（应用商店与大文件下载）
 - **`geoip-stream`**（流媒体 IP 网段）· **`geoip-apple`**（Apple 核心服务 IP 网段）
 
 </details>
@@ -121,7 +121,7 @@ GeoSite 规则直接拉取并解析 Loyalsoldier 官方最新 `geosite.dat` 二�
 | `Custom_DNS_DOMAIN.txt` / `Custom_DNS_IP.txt` | `geosite-custom-dns` | 自定义 DNS（Sing-box 智能合并） |
 | `Custom_Proxy.txt` | `geosite-custom-proxy` | 自定义代理分流 |
 | `Custom_Download.txt` | `geosite-custom-download` | 自定义下载分流 |
-| `Custom_Emby.txt` | `geosite-custom-emby` | 自定义 Emby（兼容别名 `geosite-emby`） |
+| `Custom_Emby.txt` | `geosite-custom-emby` | 自定义 Emby / Jellyfin 媒体服 |
 | `LocationDKS.txt` | `geosite-location-dks` | 抖音/快手/小红书 IP 归属地 |
 
 </details>

@@ -173,28 +173,7 @@ def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sin
                     f"{name}.srs"
                 )
 
-    # 3. Create convenient standard aliases (e.g. geosite-emby -> geosite-custom-emby)
-    aliases = {
-        "geosite-emby": "geosite-custom-emby",
-        "geosite-game": "geosite-games",
-        "geosite-microsoftcdn": "geosite-microsoft-cdn",
-        "geosite-appleservice": "geosite-apple-services",
-        "geosite-applecn": "geosite-apple-cn",
-        "geosite-applecdn": "geosite-apple-cdn",
-    }
-
-    for alias_name, target_name in aliases.items():
-        sub_dir = geoip_out if alias_name.startswith("geoip-") else geosite_out
-        target_srs = os.path.join(sub_dir, f"{target_name}.srs")
-        target_json = os.path.join(sub_dir, f"{target_name}.json")
-        alias_srs = os.path.join(sub_dir, f"{alias_name}.srs")
-        alias_json = os.path.join(sub_dir, f"{alias_name}.json")
-
-        if os.path.exists(target_srs):
-            utils.safe_copy(target_srs, alias_srs)
-        if os.path.exists(target_json):
-            utils.safe_copy(target_json, alias_json)
-
+    # 兼容别名机制已退役: 全部规则集统一使用标准名称 (geosite-games / geosite-apple-cdn 等)
     print("✅ [Sing-box] 全部规则集构建完成！")
 
 

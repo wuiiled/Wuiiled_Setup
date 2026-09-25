@@ -67,7 +67,7 @@ CATEGORY_DEFS = [
         "geosite-cloudflare", "geosite-fastly", "geosite-akamai", "geosite-vercel",
         "geosite-netlify", "geosite-microsoft", "geosite-microsoft-cdn", "geosite-onedrive",
         "geosite-google", "geosite-apple-services", "geosite-apple-cdn", "geosite-notion",
-        "geosite-figma", "geosite-canva", "geosite-zoom"
+        "geosite-figma", "geosite-canva", "geosite-zoom", "geosite-netdisk-!cn"
     ]),
     ("china", "🇨🇳 国内直连与核心大厂 (China & Ecosystem)", [
         "geosite-cn", "geosite-!cn", "geosite-alibaba", "geosite-tencent",
@@ -77,7 +77,7 @@ CATEGORY_DEFS = [
     ("security", "🛡️ 安全防护与过滤拦截 (Security & Blocking)", [
         "geosite-ad", "geosite-ad-precise", "geosite-ad-allow", "geosite-gfw",
         "geosite-reject-drop", "geosite-fakeip-filter", "geosite-porn", "geosite-httpdns",
-        "geosite-private"
+        "geosite-private", "geosite-pcdn"
     ]),
     ("custom", "🛠️ 本地自定义与特征分流 (Custom Routing)", [
         "geosite-custom-direct", "geosite-custom-dns", "geosite-custom-emby",
@@ -87,129 +87,129 @@ CATEGORY_DEFS = [
         "geoip-cn", "geoip-google", "geoip-telegram", "geoip-twitter",
         "geoip-facebook", "geoip-gfw", "geoip-private", "geoip-stream",
         "geoip-apple", "geoip-custom-direct", "geoip-custom-dns"
-    ]),
-    ("alias", "🔗 兼容别名规则集 (Compatibility Aliases)", [
-        "geosite-emby", "geosite-game", "geosite-microsoftcdn",
-        "geosite-appleservice", "geosite-applecn", "geosite-applecdn"
     ])
 ]
 
+# 人工服务描述表。"说明/包含" 列由构建期 manifest 动态渲染:
+#   dat 派生 -> "dat 分类 <code> · 含 <已验证平台>"; 合成/自研 -> "上游: <仓库列表>"。
+# 禁止在此写死条数或平台清单 —— 会随上游漂移 (由 tests/test_readme_gen.py 防护)。
 RULE_METADATA: Dict[str, Dict[str, str]] = {
     # 🤖 AI & Dev
-    "geosite-ai": {"desc": "全球主流 AI 服务合集 (自研列表 ∪ dat 分类)", "note": "AI_URLS 多源清洗 ∪ dat category-ai-!cn (经 rules/patches 声明)"},
-    "geosite-openai": {"desc": "OpenAI / ChatGPT 官方服务与 API", "note": "ChatGPT, API, Sora, CDN"},
-    "geosite-anthropic": {"desc": "Anthropic Claude 官方服务与 API", "note": "Claude.ai, API 接口"},
-    "geosite-gemini": {"desc": "Google Gemini / Bard 人工智能服务", "note": "Gemini Web & API 接口"},
-    "geosite-github": {"desc": "GitHub 代码托管平台与开发者资产", "note": "github.com, raw, assets, gist"},
-    "geosite-gitlab": {"desc": "GitLab 代码托管与 DevOps 云服务", "note": "gitlab.com 及全系生态"},
-    "geosite-docker": {"desc": "Docker Hub 容器镜像与注册表", "note": "docker.io, docker.com, registry"},
-    "geosite-stackoverflow": {"desc": "Stack Overflow 与开发者技术社区", "note": "Stack Exchange 网络问答社区"},
-    "geosite-npm": {"desc": "Node.js NPM 官方包管理器软件源", "note": "npmjs.org, npmjs.com 官方源"},
+    "geosite-ai": {"desc": "全球主流 AI 服务合集 (自研列表 ∪ dat 分类)"},
+    "geosite-openai": {"desc": "OpenAI / ChatGPT 官方服务与 API"},
+    "geosite-anthropic": {"desc": "Anthropic Claude 官方服务与 API"},
+    "geosite-gemini": {"desc": "Google Gemini / Bard 人工智能服务"},
+    "geosite-github": {"desc": "GitHub 代码托管平台与开发者资产"},
+    "geosite-gitlab": {"desc": "GitLab 代码托管与 DevOps 云服务"},
+    "geosite-docker": {"desc": "Docker Hub 容器镜像与注册表"},
+    "geosite-stackoverflow": {"desc": "Stack Overflow 与开发者技术社区"},
+    "geosite-npm": {"desc": "Node.js NPM 官方包管理器软件源"},
 
     # 💬 Social & IM
-    "geosite-communication": {"desc": "全球即时通讯与在线会议聚合", "note": "Telegram, Discord, WhatsApp 等 150+ 子类"},
-    "geosite-social-media": {"desc": "全球社交网络与媒体平台聚合", "note": "Twitter, Meta, Instagram, Reddit 等 600+ 子类"},
-    "geosite-telegram": {"desc": "Telegram 电报全系官方通讯服务", "note": "t.me, telegram.org, 各 DC 核心域名"},
-    "geosite-discord": {"desc": "Discord 语音与社群即时通讯平台", "note": "discord.com, discord.gg, cdn 资产"},
-    "geosite-whatsapp": {"desc": "WhatsApp 即时通讯与端到端加密", "note": "whatsapp.com, whatsapp.net"},
-    "geosite-signal": {"desc": "Signal 隐私加密即时通讯服务", "note": "signal.org, whispersystems.org"},
-    "geosite-line": {"desc": "LINE 亚洲流行即时通讯与生活服务", "note": "line.me, line-apps.com"},
-    "geosite-x": {"desc": "X (原 Twitter) 官方社交媒体平台", "note": "x.com, twitter.com, twimg.com"},
-    "geosite-instagram": {"desc": "Instagram 社交图像与短视频平台", "note": "instagram.com, cdninstagram.com"},
-    "geosite-threads": {"desc": "Threads 文本社交互动媒体平台", "note": "threads.net 官方域名"},
-    "geosite-reddit": {"desc": "Reddit 全球兴趣与新闻社区", "note": "reddit.com, redd.it, redditstatic.com"},
-    "geosite-bluesky": {"desc": "Bluesky 去中心化社交网络平台", "note": "bsky.app, bsky.social"},
-    "geosite-tiktok": {"desc": "TikTok 国际版短视频平台", "note": "tiktok.com, tiktokv.com, byteoversea.com"},
+    "geosite-communication": {"desc": "全球即时通讯与在线会议聚合"},
+    "geosite-social-media": {"desc": "全球社交网络与媒体平台聚合"},
+    "geosite-telegram": {"desc": "Telegram 电报全系官方通讯服务"},
+    "geosite-discord": {"desc": "Discord 语音与社群即时通讯平台"},
+    "geosite-whatsapp": {"desc": "WhatsApp 即时通讯与端到端加密"},
+    "geosite-signal": {"desc": "Signal 隐私加密即时通讯服务"},
+    "geosite-line": {"desc": "LINE 亚洲流行即时通讯与生活服务"},
+    "geosite-x": {"desc": "X (原 Twitter) 官方社交媒体平台"},
+    "geosite-instagram": {"desc": "Instagram 社交图像与短视频平台"},
+    "geosite-threads": {"desc": "Threads 文本社交互动媒体平台"},
+    "geosite-reddit": {"desc": "Reddit 全球兴趣与新闻社区"},
+    "geosite-bluesky": {"desc": "Bluesky 去中心化社交网络平台"},
+    "geosite-tiktok": {"desc": "TikTok 国际版短视频平台"},
 
     # 🎬 Media & Streaming
-    "geosite-media": {"desc": "全球多媒体与流媒体服务大合集", "note": "Netflix, Disney+, YouTube, Spotify 等 1500+ 子类"},
-    "geosite-entertainment": {"desc": "全球影音娱乐与流媒体聚合", "note": "涵盖游戏、影音、成人与流行媒体 (2100+ 条)"},
-    "geosite-youtube": {"desc": "YouTube 视频流媒体与 YouTube Music", "note": "youtube.com, youtu.be, googlevideo.com"},
-    "geosite-netflix": {"desc": "Netflix 奈飞全球影音流媒体平台", "note": "netflix.com, nflxvideo.net, nflxext.com"},
-    "geosite-disney": {"desc": "Disney+ 迪士尼流媒体播放服务", "note": "disneyplus.com, bamgrid.com"},
-    "geosite-spotify": {"desc": "Spotify 全球最大音乐流媒体服务", "note": "spotify.com, scdn.co, spoti.fi"},
-    "geosite-apple-tvplus": {"desc": "Apple TV+ 苹果原创影视流媒体", "note": "tv.apple.com 及全系分发"},
-    "geosite-hbo": {"desc": "HBO Max / HBO 全球影视服务", "note": "hbomax.com, hbo.com, max.com"},
-    "geosite-hulu": {"desc": "Hulu 影视点播流媒体平台", "note": "hulu.com, hulustream.com"},
-    "geosite-primevideo": {"desc": "Amazon Prime Video 亚马逊影音", "note": "primevideo.com, aiv-cdn.net"},
-    "geosite-twitch": {"desc": "Twitch 全球游戏与互动直播平台", "note": "twitch.tv, ttvnw.net"},
-    "geosite-bahamut": {"desc": "巴哈姆特动画疯 (台湾主流动漫平台)", "note": "gamer.com.tw 动漫播放与社区"},
-    "geosite-abema": {"desc": "AbemaTV 日本网络电视流媒体", "note": "abema.tv, ameba.jp"},
-    "geosite-niconico": {"desc": "Niconico (N站) 日本弹幕视频网站", "note": "nicovideo.jp, nimg.jp"},
-    "geosite-dmm": {"desc": "DMM.com 日本综合数字内容娱乐", "note": "dmm.com, dmm.co.jp"},
-    "geosite-pixiv": {"desc": "Pixiv (P站) 日本插画二次元艺术社区", "note": "pixiv.net, pximg.net"},
-    "geosite-vimeo": {"desc": "Vimeo 高清原创视频创作分享平台", "note": "vimeo.com, vimeocdn.com"},
-    "geosite-dailymotion": {"desc": "Dailymotion 国际视频共享服务", "note": "dailymotion.com, dmcdn.net"},
-    "geosite-deezer": {"desc": "Deezer 高保真音乐流媒体服务", "note": "deezer.com, dzcdn.net"},
-    "geosite-soundcloud": {"desc": "SoundCloud 原创音乐与音频分享", "note": "soundcloud.com, sndcdn.com"},
-    "geosite-tidal": {"desc": "TIDAL HiFi 无损高品质音乐流媒体", "note": "tidal.com, wimpmusic.com"},
+    "geosite-media": {"desc": "国际新闻媒体与区域电视台聚合 (新闻社/报媒/区域电视)"},
+    "geosite-entertainment": {"desc": "全球影音娱乐与流媒体聚合"},
+    "geosite-youtube": {"desc": "YouTube 视频流媒体与 YouTube Music"},
+    "geosite-netflix": {"desc": "Netflix 奈飞全球影音流媒体平台"},
+    "geosite-disney": {"desc": "Disney+ 迪士尼流媒体播放服务"},
+    "geosite-spotify": {"desc": "Spotify 全球最大音乐流媒体服务"},
+    "geosite-apple-tvplus": {"desc": "Apple TV+ 苹果原创影视流媒体"},
+    "geosite-hbo": {"desc": "HBO Max / HBO 全球影视服务"},
+    "geosite-hulu": {"desc": "Hulu 影视点播流媒体平台"},
+    "geosite-primevideo": {"desc": "Amazon Prime Video 亚马逊影音"},
+    "geosite-twitch": {"desc": "Twitch 全球游戏与互动直播平台"},
+    "geosite-bahamut": {"desc": "巴哈姆特动画疯 (台湾主流动漫平台)"},
+    "geosite-abema": {"desc": "AbemaTV 日本网络电视流媒体"},
+    "geosite-niconico": {"desc": "Niconico (N站) 日本弹幕视频网站"},
+    "geosite-dmm": {"desc": "DMM.com 日本综合数字内容娱乐"},
+    "geosite-pixiv": {"desc": "Pixiv (P站) 日本插画二次元艺术社区"},
+    "geosite-vimeo": {"desc": "Vimeo 高清原创视频创作分享平台"},
+    "geosite-dailymotion": {"desc": "Dailymotion 国际视频共享服务"},
+    "geosite-deezer": {"desc": "Deezer 高保真音乐流媒体服务"},
+    "geosite-soundcloud": {"desc": "SoundCloud 原创音乐与音频分享"},
+    "geosite-tidal": {"desc": "TIDAL HiFi 无损高品质音乐流媒体"},
 
     # 🎮 Gaming
-    "geosite-games": {"desc": "全球热门游戏与联机加速合集", "note": "涵盖全球主机、PC、手游与官方联机服务 (1100+ 条)"},
-    "geosite-games-cn": {"desc": "国内主流网络游戏与加速服务", "note": "米哈游、腾讯、网易、B站等国内游戏服务"},
-    "geosite-games-!cn": {"desc": "外服主机与端游联机加速合集", "note": "Steam, Epic, PlayStation, Xbox, 任天堂等"},
-    "geosite-steam": {"desc": "Valve Steam 全球最大游戏平台", "note": "steampowered.com, steamcommunity.com"},
-    "geosite-epicgames": {"desc": "Epic Games 游戏商城与虚幻联机", "note": "epicgames.com, unrealengine.com"},
-    "geosite-playstation": {"desc": "Sony PlayStation Network (PSN)", "note": "playstation.com, playstation.net"},
-    "geosite-xbox": {"desc": "Microsoft Xbox Live 游戏与 GamePass", "note": "xbox.com, xboxlive.com"},
-    "geosite-nintendo": {"desc": "Nintendo 任天堂 Switch 联机与商城", "note": "nintendo.com, nintendo.net"},
-    "geosite-ea": {"desc": "Electronic Arts (EA / Origin) 平台", "note": "ea.com, origin.com"},
-    "geosite-ubisoft": {"desc": "Ubisoft Connect 育碧游戏与联机", "note": "ubisoft.com, ubi.com"},
-    "geosite-rockstar": {"desc": "Rockstar Games 摇滚之星 (GTA/RDR)", "note": "rockstargames.com, rsg.sc"},
-    "geosite-blizzard": {"desc": "Blizzard 暴雪战网国际服联机服务", "note": "battle.net, blizzard.com"},
-    "geosite-riotgames": {"desc": "Riot Games 拳头游戏 (LOL/Valorant)", "note": "riotgames.com, leagueoflegends.com"},
-    "geosite-mihoyo": {"desc": "米哈游 (MiHoYo) 原神/星铁境外分流", "note": "mihoyo.com 海外加速节点"},
-    "geosite-hoyoverse": {"desc": "HoYoverse 米哈游海外发行平台", "note": "hoyoverse.com, hoyolab.com"},
+    "geosite-games": {"desc": "全球热门游戏与联机加速合集"},
+    "geosite-games-cn": {"desc": "国内主流网络游戏与加速服务"},
+    "geosite-games-!cn": {"desc": "外服主机与端游联机加速合集"},
+    "geosite-steam": {"desc": "Valve Steam 全球最大游戏平台"},
+    "geosite-epicgames": {"desc": "Epic Games 游戏商城与虚幻联机"},
+    "geosite-playstation": {"desc": "Sony PlayStation Network (PSN)"},
+    "geosite-xbox": {"desc": "Microsoft Xbox Live 游戏与 GamePass"},
+    "geosite-nintendo": {"desc": "Nintendo 任天堂 Switch 联机与商城"},
+    "geosite-ea": {"desc": "Electronic Arts (EA / Origin) 平台"},
+    "geosite-ubisoft": {"desc": "Ubisoft Connect 育碧游戏与联机"},
+    "geosite-rockstar": {"desc": "Rockstar Games 摇滚之星 (GTA/RDR)"},
+    "geosite-blizzard": {"desc": "Blizzard 暴雪战网国际服联机服务"},
+    "geosite-riotgames": {"desc": "Riot Games 拳头游戏 (LOL/Valorant)"},
+    "geosite-mihoyo": {"desc": "米哈游 (MiHoYo) 原神/星铁境外分流"},
+    "geosite-hoyoverse": {"desc": "HoYoverse 米哈游海外发行平台"},
 
     # 💰 Finance & Crypto
-    "geosite-paypal": {"desc": "PayPal 全球主流跨境在线支付平台", "note": "paypal.com, paypalobjects.com"},
-    "geosite-stripe": {"desc": "Stripe 国际在线支付结算网关", "note": "stripe.com, stripe.network"},
-    "geosite-wise": {"desc": "Wise (原 TransferWise) 跨境汇款", "note": "wise.com, transferwise.com"},
-    "geosite-binance": {"desc": "币安 (Binance) 全球最大加密货币交易", "note": "binance.com, bnbstatic.com"},
-    "geosite-okx": {"desc": "欧易 (OKX) 全球主流加密货币交易", "note": "okx.com, okex.com"},
+    "geosite-paypal": {"desc": "PayPal 全球主流跨境在线支付平台"},
+    "geosite-stripe": {"desc": "Stripe 国际在线支付结算网关"},
+    "geosite-wise": {"desc": "Wise (原 TransferWise) 跨境汇款"},
+    "geosite-binance": {"desc": "币安 (Binance) 全球最大加密货币交易"},
+    "geosite-okx": {"desc": "欧易 (OKX) 全球主流加密货币交易"},
 
     # 🌐 Cloud & SaaS
-    "geosite-cloudflare": {"desc": "Cloudflare 全球 CDN 与安全防护", "note": "cloudflare.com, cloudflare-dns.com"},
-    "geosite-fastly": {"desc": "Fastly 边缘云计算与高性能 CDN", "note": "fastly.com, fastly.net"},
-    "geosite-akamai": {"desc": "Akamai 全球核心 CDN 与边缘加速", "note": "akamai.com, akamaiedge.net"},
-    "geosite-vercel": {"desc": "Vercel 前端云开发与部署托管平台", "note": "vercel.com, vercel.app"},
-    "geosite-netlify": {"desc": "Netlify 静态网站托管与 Serverless", "note": "netlify.com, netlify.app"},
-    "geosite-microsoft": {"desc": "Microsoft 微软全球产品与 Office 365", "note": "microsoft.com, office.com, live.com"},
-    "geosite-microsoft-cdn": {"desc": "Microsoft 微软全球资源分发 CDN", "note": "azureedge.net, msftauth.net 等"},
-    "geosite-onedrive": {"desc": "Microsoft OneDrive 云端存储服务", "note": "onedrive.live.com, 1drv.ms"},
-    "geosite-google": {"desc": "Google 全球核心产品生态与服务", "note": "google.com, gstatic.com, android.com"},
-    "geosite-apple-services": {"desc": "Apple 苹果全球核心云服务与 iCloud", "note": "apple.com, icloud.com, mzstatic.com"},
-    "geosite-apple-cdn": {"desc": "Apple 苹果官方资产与软件更新 CDN", "note": "apple-dns.net, aaplimg.com"},
-    "geosite-notion": {"desc": "Notion 现代协同办公笔记与知识库", "note": "notion.so, notion.site"},
-    "geosite-figma": {"desc": "Figma 云端协作界面设计平台", "note": "figma.com 核心服务"},
-    "geosite-canva": {"desc": "Canva 可画全球在线平面设计平台", "note": "canva.com, canvastatic.com"},
-    "geosite-zoom": {"desc": "Zoom 全球主流企业在线视频会议", "note": "zoom.us, zoom.com"},
+    "geosite-cloudflare": {"desc": "Cloudflare 全球 CDN 与安全防护"},
+    "geosite-fastly": {"desc": "Fastly 边缘云计算与高性能 CDN"},
+    "geosite-akamai": {"desc": "Akamai 全球核心 CDN 与边缘加速"},
+    "geosite-vercel": {"desc": "Vercel 前端云开发与部署托管平台"},
+    "geosite-netlify": {"desc": "Netlify 静态网站托管与 Serverless"},
+    "geosite-microsoft": {"desc": "Microsoft 微软全球产品与 Office 365"},
+    "geosite-microsoft-cdn": {"desc": "Microsoft 微软全球资源分发 CDN"},
+    "geosite-onedrive": {"desc": "Microsoft OneDrive 云端存储服务"},
+    "geosite-google": {"desc": "Google 全球核心产品生态与服务"},
+    "geosite-apple-services": {"desc": "Apple 苹果全球核心云服务与 iCloud"},
+    "geosite-apple-cdn": {"desc": "Apple 苹果官方资产与软件更新 CDN"},
+    "geosite-notion": {"desc": "Notion 现代协同办公笔记与知识库"},
+    "geosite-figma": {"desc": "Figma 云端协作界面设计平台"},
+    "geosite-canva": {"desc": "Canva 可画全球在线平面设计平台"},
+    "geosite-zoom": {"desc": "Zoom 全球主流企业在线视频会议"},
+    "geosite-netdisk-!cn": {"desc": "海外网盘与云存储服务 (境外代理分流)"},
 
     # 🇨🇳 China Ecosystem
-    "geosite-cn": {"desc": "🇨🇳 中国大陆域名双源合并合集 (精编+自有)", "note": "天灵配方精编 cn (geolocation-cn + category-*@cn + category-*-cn) ∪ cn-additional-list ∪ SKK domestic"},
-    "geosite-!cn": {"desc": "🌐 非中国大陆节点域名合集 (境外代理)", "note": "境外节点精准路由 (27,000+ 域名)"},
-    "geosite-alibaba": {"desc": "阿里巴巴系服务 (淘宝/天猫/阿里云/钉钉)", "note": "taobao.com, aliyun.com, alipay.com"},
-    "geosite-tencent": {"desc": "腾讯系服务 (微信/QQ/腾讯云/腾讯视频)", "note": "qq.com, weixin.com, tencent.com"},
-    "geosite-bilibili": {"desc": "哔哩哔哩 (B站) 视频与直播核心资产", "note": "bilibili.com, bilivideo.com, hdslb.com"},
-    "geosite-xiaomi": {"desc": "小米系生态服务 (MIUI/米家/云服务)", "note": "mi.com, xiaomi.com, miui.com"},
-    "geosite-bytedance": {"desc": "字节跳动系服务 (抖音/头条/飞书)", "note": "bytedance.com, douyin.com, feishu.cn"},
-    "geosite-baidu": {"desc": "百度系服务 (搜索/网盘/地图/文心一言)", "note": "baidu.com, bcebos.com, baidupcs.com"},
-    "geosite-qihoo360": {"desc": "奇虎 360 安全防护与搜索服务", "note": "360.cn, 360.com, qhimg.com"},
-    "geosite-domestic": {"desc": "国内常用互联网服务合集 (SKK 维护)", "note": "精选国内常见互联网服务直连规则"},
-    "geosite-apple-cn": {"desc": "Apple 苹果中国大陆本地化加速域名", "note": "苹果国内直连服务与 CDN 节点"},
-    "geosite-download": {"desc": "应用商店、P2P 与大文件下载分流", "note": "BT/PT Tracker、各类更新包直连分流"},
+    "geosite-cn": {"desc": "🇨🇳 中国大陆域名双源合并合集 (精编+自有)"},
+    "geosite-!cn": {"desc": "🌐 非中国大陆节点域名合集 (境外代理)"},
+    "geosite-alibaba": {"desc": "阿里巴巴系服务 (淘宝/天猫/阿里云/钉钉)"},
+    "geosite-tencent": {"desc": "腾讯系服务 (微信/QQ/腾讯云/腾讯视频)"},
+    "geosite-bilibili": {"desc": "哔哩哔哩 (B站) 视频与直播核心资产"},
+    "geosite-xiaomi": {"desc": "小米系生态服务 (MIUI/米家/云服务)"},
+    "geosite-bytedance": {"desc": "字节跳动系服务 (抖音/头条/飞书)"},
+    "geosite-baidu": {"desc": "百度系服务 (搜索/网盘/地图/文心一言)"},
+    "geosite-qihoo360": {"desc": "奇虎 360 安全防护与搜索服务"},
+    "geosite-domestic": {"desc": "国内常用互联网服务合集 (SKK 维护)"},
+    "geosite-apple-cn": {"desc": "Apple 苹果中国大陆本地化加速域名"},
+    "geosite-download": {"desc": "应用商店、软件源与大文件下载直连分流"},
 
     # 🛡️ Security & Blocking
-    "geosite-ad": {"desc": "终极去广告 / 防追踪 (单集合保守版)", "note": "多源清洗，白名单防误杀，开箱即用"},
+    "geosite-ad": {"desc": "终极去广告 / 防追踪 (单集合保守版)"},
     "geosite-ad-precise": {"desc": "去广告黑名单精确版 (双集合黑名单B)", "note": "配合 geosite-ad-allow 达成 0 误杀"},
     "geosite-ad-allow": {"desc": "去广告防误杀白名单 (双集合白名单B)", "note": "前置短路放行，彻底消除误杀断流"},
-    "geosite-gfw": {"desc": "GFW 封锁与污染域名列表", "note": "精准出海代理分流 (4,300+ 条)"},
-    "geosite-reject-drop": {"desc": "高危威胁、挖矿与垃圾流量直接丢弃", "note": "恶意威胁丢弃阻断"},
-    "geosite-fakeip-filter": {"desc": "Fake-IP 排除名单 (正则压缩防漏网)", "note": "针对 NTP/STUN/游戏联机等直连解析"},
-    "geosite-porn": {"desc": "成人内容与不良网站拦截 (含本地补丁)", "note": "过滤成人内容与涉黄站点 (6,660+ 条)"},
-    "geosite-httpdns": {"desc": "国内 APP 内置 HTTPDNS 解析防劫持", "note": "阻止应用绕过本地 DNS 劫持解析"},
-    "geosite-private": {"desc": "局域网保留与私有/路由器后台域名", "note": "local, lan, router.asus.com 等"},
-    "PCDN": {"desc": "PCDN 边缘上传业务拦截过滤 (ADG 格式)", "note": "AdGuard 规则格式"},
+    "geosite-gfw": {"desc": "GFW 封锁与污染域名列表"},
+    "geosite-reject-drop": {"desc": "高危威胁、挖矿与垃圾流量直接丢弃"},
+    "geosite-fakeip-filter": {"desc": "Fake-IP 排除名单 (正则压缩防漏网)"},
+    "geosite-porn": {"desc": "成人内容与不良网站拦截 (含本地补丁)"},
+    "geosite-httpdns": {"desc": "国内 APP 内置 HTTPDNS 解析防劫持"},
+    "geosite-private": {"desc": "局域网保留与私有/路由器后台域名"},
+    "geosite-pcdn": {"desc": "PCDN 边缘上传业务拦截过滤 (ADG 格式)", "note": "上游: wuiiled/PCDN-mihomo-list · AdGuard 规则格式"},
 
     # 🛠️ Custom Routing
     "geosite-custom-direct": {"desc": "本地自定义直连域名与服务", "note": "用户本地规则: rules/Custom_Direct_DOMAIN.txt"},
@@ -220,26 +220,234 @@ RULE_METADATA: Dict[str, Dict[str, str]] = {
     "geosite-location-dks": {"desc": "抖音/快手/小红书 IP 归属地分流", "note": "精准定位相关请求分流"},
 
     # 🌍 GeoIP
-    "geoip-cn": {"desc": "🇨🇳 中国大陆三大运营商 IPv4/IPv6 权威网段", "note": "权威提纯，覆盖国内所有运营商 (9,940+ 条)"},
-    "geoip-google": {"desc": "🔍 Google 官方全网 IPv4/IPv6 网段", "note": "Google 全网 ASN 与数据中心网段 (8,360+ 条)"},
-    "geoip-telegram": {"desc": "✈️ Telegram 电报官方数据中心网段", "note": "Telegram 核心服务器网段"},
-    "geoip-twitter": {"desc": "🐦 Twitter / X 官方数据中心网段", "note": "X 全球网络基础设施网段"},
-    "geoip-facebook": {"desc": "📘 Meta / Facebook 官方数据中心网段", "note": "Meta 全球机房与网络资产"},
-    "geoip-gfw": {"desc": "🧱 GFW 投毒 IP 与伪造靶心网段拦截", "note": "拦截 DNS 投毒返回的虚假 IP 靶心"},
-    "geoip-private": {"desc": "🔒 局域网私有保留 IP 网段", "note": "RFC 1918 (10.0.0.0/8, 192.168.0.0/16 等)"},
-    "geoip-stream": {"desc": "📻 知名流媒体服务官方 IP 网段", "note": "流媒体服务服务器 IP 网段 (SKK 维护)"},
-    "geoip-apple": {"desc": "🍏 Apple 苹果服务官方 IP 网段", "note": "Apple 核心服务器 IP 网段 (SKK 维护)"},
+    "geoip-cn": {"desc": "🇨🇳 中国大陆三大运营商 IPv4/IPv6 权威网段"},
+    "geoip-google": {"desc": "🔍 Google 官方全网 IPv4/IPv6 网段"},
+    "geoip-telegram": {"desc": "✈️ Telegram 电报官方数据中心网段"},
+    "geoip-twitter": {"desc": "🐦 Twitter / X 官方数据中心网段"},
+    "geoip-facebook": {"desc": "📘 Meta / Facebook 官方数据中心网段"},
+    "geoip-gfw": {"desc": "🧱 GFW 投毒 IP 与伪造靶心网段拦截"},
+    "geoip-private": {"desc": "🔒 局域网私有保留 IP 网段"},
+    "geoip-stream": {"desc": "📻 知名流媒体服务官方 IP 网段"},
+    "geoip-apple": {"desc": "🍏 Apple 苹果服务官方 IP 网段"},
     "geoip-custom-direct": {"desc": "📌 本地自定义直连 IP 地址网段", "note": "用户本地规则: rules/Custom_Direct_IP.txt"},
     "geoip-custom-dns": {"desc": "📌 本地自定义 DNS 解析 IP 地址", "note": "用户本地规则: rules/Custom_DNS_IP.txt"},
-
-    # 🔗 Compatibility Aliases
-    "geosite-emby": {"desc": "Emby 媒体服 (指向 geosite-custom-emby)", "note": "标准兼容别名"},
-    "geosite-game": {"desc": "全球游戏加速 (指向 geosite-games)", "note": "标准兼容别名"},
-    "geosite-microsoftcdn": {"desc": "微软 CDN (指向 geosite-microsoft-cdn)", "note": "标准兼容别名"},
-    "geosite-appleservice": {"desc": "苹果服务 (指向 geosite-apple-services)", "note": "标准兼容别名"},
-    "geosite-applecn": {"desc": "苹果国内服务 (指向 geosite-apple-cn)", "note": "标准兼容别名"},
-    "geosite-applecdn": {"desc": "苹果 CDN (指向 geosite-apple-cdn)", "note": "标准兼容别名"},
 }
+
+
+# 平台 -> 代表域名。构建期对每个集合做真实包含性检查, 只有命中的平台才会
+# 渲染进 README 说明列 —— 宣称的内容永远等于集合实际包含的内容。
+# 判断语义: 代表域名本身是集合成员, 或被集合中某个 domain_suffix 覆盖。
+PLATFORM_MARKERS: Dict[str, List[str]] = {
+    # AI & Dev
+    "OpenAI": ["openai.com", "chatgpt.com"],
+    "Anthropic": ["anthropic.com", "claude.ai"],
+    "Gemini": ["gemini.google.com", "deepmind.com"],
+    "GitHub": ["github.com", "githubusercontent.com"],
+    "GitLab": ["gitlab.com"],
+    "Docker": ["docker.io", "docker.com"],
+    "StackExchange": ["stackoverflow.com", "stackexchange.com"],
+    "npm": ["npmjs.org", "npmjs.com"],
+    # Social & IM
+    "Telegram": ["telegram.org", "telegram.com", "t.me"],
+    "Discord": ["discord.com", "discord.gg", "discordapp.com"],
+    "WhatsApp": ["whatsapp.com", "whatsapp.net"],
+    "Signal": ["signal.org", "whispersystems.org"],
+    "LINE": ["line.me", "line-apps.com"],
+    "X/Twitter": ["x.com", "twitter.com", "twimg.com"],
+    "Instagram": ["instagram.com", "cdninstagram.com"],
+    "Threads": ["threads.net"],
+    "Reddit": ["reddit.com", "redd.it", "redditstatic.com"],
+    "Bluesky": ["bsky.app", "bsky.social"],
+    "TikTok": ["tiktok.com", "tiktokv.com", "byteoversea.com"],
+    "Facebook/Meta": ["facebook.com", "fbcdn.net"],
+    # Media & Streaming
+    "YouTube": ["youtube.com", "googlevideo.com", "youtu.be"],
+    "Netflix": ["netflix.com", "nflxvideo.net", "nflxext.com"],
+    "Disney+": ["disneyplus.com", "bamgrid.com", "disney.com"],
+    "Spotify": ["spotify.com", "scdn.co"],
+    "Apple TV+": ["tv.apple.com"],
+    "HBO": ["hbo.com", "max.com", "hbomax.com"],
+    "Hulu": ["hulu.com", "hulustream.com"],
+    "Prime Video": ["primevideo.com", "aiv-cdn.net"],
+    "Twitch": ["twitch.tv", "ttvnw.net"],
+    "巴哈姆特": ["gamer.com.tw"],
+    "Abema": ["abema.tv"],
+    "Niconico": ["nicovideo.jp"],
+    "DMM": ["dmm.com"],
+    "Pixiv": ["pixiv.net", "pximg.net"],
+    "Vimeo": ["vimeo.com"],
+    "Dailymotion": ["dailymotion.com"],
+    "Deezer": ["deezer.com"],
+    "SoundCloud": ["soundcloud.com"],
+    "TIDAL": ["tidal.com"],
+    # 新闻媒体 (dat category-media 实际构成)
+    "半岛电视台": ["aljazeera.com", "aljazeera.net"],
+    "法新社": ["afp.com"],
+    "今日俄罗斯": ["rt.com", "actualidad-rt.com"],
+    "澳大利亚九号台": ["9now.com.au", "9news.com.au"],
+    "台湾4GTV": ["4gtv.tv"],
+    "6park": ["6park.com"],
+    # Gaming
+    "Steam": ["steampowered.com", "steamcommunity.com"],
+    "Epic Games": ["epicgames.com", "unrealengine.com"],
+    "PlayStation": ["playstation.com", "playstation.net"],
+    "Xbox": ["xbox.com", "xboxlive.com"],
+    "Nintendo": ["nintendo.com", "nintendo.net"],
+    "EA": ["ea.com", "origin.com"],
+    "Ubisoft": ["ubisoft.com", "ubi.com"],
+    "Rockstar": ["rockstargames.com", "rsg.sc"],
+    "Blizzard": ["battle.net", "blizzard.com"],
+    "Riot Games": ["riotgames.com", "leagueoflegends.com"],
+    "米哈游": ["mihoyo.com", "mihoyo.hk"],
+    "HoYoverse": ["hoyoverse.com", "hoyolab.com"],
+    "网易游戏": ["netease.com", "netease.im", "163.com"],
+    "腾讯游戏": ["qq.com", "tencent.com"],
+    "哔哩哔哩": ["bilibili.com", "bilivideo.com"],
+    # Finance
+    "PayPal": ["paypal.com", "paypalobjects.com"],
+    "Stripe": ["stripe.com", "stripe.network"],
+    "Wise": ["wise.com", "transferwise.com"],
+    "Binance": ["binance.com", "bnbstatic.com"],
+    "OKX": ["okx.com", "okex.com"],
+    # Cloud & SaaS
+    "Cloudflare": ["cloudflare.com", "cloudflare-dns.com"],
+    "Fastly": ["fastly.com", "fastly.net"],
+    "Akamai": ["akamai.com", "akamaiedge.net"],
+    "Vercel": ["vercel.com", "vercel.app"],
+    "Netlify": ["netlify.com", "netlify.app"],
+    "Microsoft": ["microsoft.com", "office.com", "live.com"],
+    "OneDrive": ["onedrive.live.com", "1drv.ms", "1drv.com"],
+    "Google": ["google.com", "gstatic.com", "android.com"],
+    "Apple": ["apple.com", "icloud.com", "mzstatic.com"],
+    "Notion": ["notion.so", "notion.site"],
+    "Figma": ["figma.com"],
+    "Canva": ["canva.com", "canvastatic.com"],
+    "Zoom": ["zoom.us", "zoom.com"],
+    # 网盘
+    "Dropbox": ["dropbox.com", "dropboxusercontent.com", "getdropbox.com"],
+    "MEGA": ["mega.nz", "mega.io", "mega.co.nz"],
+    "TeraBox": ["terabox.com", "1024terabox.com", "freeterabox.com"],
+    "PikPak": ["mypikpak.com"],
+    "Google Drive": ["drive.google.com", "googleusercontent.com"],
+    # 国内大厂
+    "阿里巴巴": ["taobao.com", "aliyun.com", "alipay.com"],
+    "腾讯": ["qq.com", "tencent.com"],
+    "百度": ["baidu.com", "bcebos.com"],
+    "字节跳动": ["bytedance.com", "douyin.com", "feishu.cn"],
+    "小米": ["mi.com", "xiaomi.com"],
+    "奇虎360": ["360.cn", "360.com", "qhimg.com"],
+}
+
+
+def marker_in_ruleset(marker: str, rs) -> bool:
+    """判断平台代表域名是否真实命中集合: 是成员, 或被某个 domain_suffix 覆盖。"""
+    m = (marker or "").strip().lower().lstrip(".")
+    if not m:
+        return False
+    if m in {d.lower() for d in rs.domains}:
+        return True
+    for s in rs.domain_suffixes:
+        s = s.lstrip(".").lower()
+        if s and (m == s or m.endswith("." + s)):
+            return True
+    return False
+
+
+def compute_markers(rs) -> List[str]:
+    """返回集合中真实存在的平台名。按命中代表域名数量降序 —— 大集合 (如 !cn)
+    命中平台很多时, 排前面的自然是在集合中占重大头的平台。GeoIP 不适用。"""
+    if getattr(rs, "category", "") == "geoip":
+        return []
+    hits = []
+    for plat, marks in PLATFORM_MARKERS.items():
+        n = sum(1 for mk in marks if marker_in_ruleset(mk, rs))
+        if n:
+            hits.append((n, plat))
+    hits.sort(key=lambda t: -t[0])
+    return [plat for _n, plat in hits]
+
+
+def build_manifest(all_rules) -> Dict[str, dict]:
+    """把每个规则集的来源画像与已验证平台落成 manifest 供 README 渲染。"""
+    out: Dict[str, dict] = {}
+    for name, rs in all_rules.items():
+        out[name] = {
+            "kind": getattr(rs, "source_kind", ""),
+            "dat_code": getattr(rs, "dat_code", ""),
+            "sources": list(getattr(rs, "sources", []) or []),
+            "markers": compute_markers(rs),
+            "count": rs.total_count,
+        }
+    return out
+
+
+def write_manifest(all_rules, output_base_dir: str = "output") -> str:
+    os.makedirs(output_base_dir, exist_ok=True)
+    path = os.path.join(output_base_dir, "manifest.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(build_manifest(all_rules), f, ensure_ascii=False, indent=1, sort_keys=True)
+    print(f"  🗂️ [manifest] 来源画像已写入 {path}")
+    return path
+
+
+def _load_manifest(output_base_dir: str) -> Dict[str, dict]:
+    path = os.path.join(output_base_dir, "manifest.json")
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _manifest_note(entry: dict) -> str:
+    """把 manifest 条目渲染成 README 说明列文本。"""
+    kind = entry.get("kind", "")
+    sources = entry.get("sources") or []
+    if kind == "dat":
+        parts = [f"dat 分类 {entry.get('dat_code', '')}"]
+        markers = entry.get("markers") or []
+        if markers:
+            head = markers[:6]
+            tail = f" 等 {len(markers)} 项" if len(markers) > 6 else ""
+            parts.append("含 " + " / ".join(head) + tail)
+        return " · ".join(parts)
+    if kind == "recipe":
+        return "配方合成: " + " ∪ ".join(sources) if sources else ""
+    if kind in ("self", "skk", "geoip-srs"):
+        return "上游: " + " · ".join(sources) if sources else ""
+    if kind == "custom":
+        return f"用户本地规则: {sources[0]}" if sources else ""
+    return ""
+
+
+_REVERSE_DAT: Optional[Dict[str, str]] = None
+
+
+def _fallback_dat_code(bname: str) -> str:
+    """manifest 缺席时的兜底: 从 TIANLING_GEOSITES 反推 dat 分类码。"""
+    global _REVERSE_DAT
+    if _REVERSE_DAT is None:
+        try:
+            from core.manager import TIANLING_GEOSITES
+            _REVERSE_DAT = {out: up[len("geosite-"):] for up, out in TIANLING_GEOSITES.items()}
+        except Exception:
+            _REVERSE_DAT = {}
+    return _REVERSE_DAT.get(bname, "")
+
+
+def _render_note(bname: str, manifest: Dict[str, dict]) -> str:
+    entry = manifest.get(bname)
+    if entry:
+        note = _manifest_note(entry)
+        if note:
+            return note
+    meta = RULE_METADATA.get(bname, {})
+    if meta.get("note"):
+        return meta["note"]
+    code = _fallback_dat_code(bname)
+    return f"dat 分类 {code}" if code else "-"
 
 
 def count_file_rules(file_path: str) -> int:
@@ -322,6 +530,7 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
     emoji, title, fmt_badge, _ = _BRANCH_META.get(target, ("📦", target, "", "txt"))
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     total_items, total_sets = _total_rules(target_dir)
+    manifest = _load_manifest(output_base_dir)
 
     lines = []
     lines.append('<div align="center">')
@@ -331,7 +540,9 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
     lines.append(f'![规则总数](https://img.shields.io/badge/%E8%A7%84%E5%88%99%E6%80%BB%E6%95%B0-{total_items:,}-blue)')
     lines.append(f'![规则集数](https://img.shields.io/badge/%E8%A7%84%E5%88%99%E9%9B%86%E6%95%B0-{total_sets}-success)')
     lines.append(f'![格式](https://img.shields.io/badge/%E6%A0%BC%E5%BC%8F-{fmt_badge.replace(" ", "%20").replace("/", "%2F")}-informational)')
-    lines.append('![0--Diff对齐](https://img.shields.io/badge/0--Diff-%E7%99%BE%E5%88%86%E7%99%BE%E5%AF%B9%E9%BD%90-brightgreen)')
+    # 0-Diff 是 singbox 分支 dat 派生集合对天灵 sing-geosite 的验证性质, 其他分支不做此宣称
+    if target == "singbox":
+        lines.append('![0--Diff对齐](https://img.shields.io/badge/0--Diff-%E7%99%BE%E5%88%86%E7%99%BE%E5%AF%B9%E9%BD%90-brightgreen)')
     lines.append("")
     lines.append('<i>由 <a href="https://github.com/' + repo + '">Wuiiled_Setup</a> 规则自动化引擎实时构建分发</i><br>')
     lines.append(f'<sub>🕐 最后更新：{now_str} (Asia/Shanghai)</sub>')
@@ -489,7 +700,7 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
                 json_link = f"[📄 JSON]({json_url})" if os.path.exists(json_p) else "-"
                 meta = RULE_METADATA.get(bname, {})
                 desc = meta.get("desc", bname)
-                note = meta.get("note", "-")
+                note = _render_note(bname, manifest)
                 lines.append(f"| **`{bname}`** | {desc} | {note} | `{count_str}` | {srs_link} | {json_link} |")
             lines.append("")
 
@@ -509,7 +720,7 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
                 txt_link = f"[📄 TXT]({txt_url})" if os.path.exists(txt_p) else "-"
                 meta = RULE_METADATA.get(bname, {})
                 desc = meta.get("desc", bname)
-                note = meta.get("note", "-")
+                note = _render_note(bname, manifest)
                 lines.append(f"| **`{bname}`** | {desc} | {note} | `{count_str}` | {mrs_link} | {txt_link} |")
             lines.append("")
 
