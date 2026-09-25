@@ -25,8 +25,8 @@ def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sm
     os.makedirs(geoip_out, exist_ok=True)
 
     # OxiDNS 白名单: smartdns 分支只同步 DNS 服务器实际订阅的规则集
-    # (清单与 OxiDNS 配置 downloads 段一致, 见 providers.OXIDNS_RULE_FILES)
-    whitelist = set(providers.OXIDNS_RULE_FILES.values())
+    # (清单与 OxiDNS 配置 downloads 段一致, 见 providers.OXIDNS_RULE_FILES / EXTRA / ALIASES)
+    whitelist = set(providers.OXIDNS_RULE_FILES.values()) | providers.OXIDNS_EXTRA_RULESETS
     rules = {name: rs for name, rs in rules.items() if name in whitelist}
 
     print(f"\n📦 [SmartDNS] 正在构建 {len(rules)} 个 OxiDNS 订阅规则集并输出至 {output_dir}...")
@@ -67,6 +67,18 @@ def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sm
         src = os.path.join(sub_dir, f"{ruleset_name}.txt")
         if os.path.exists(src):
             utils.safe_copy(src, os.path.join(output_dir, legacy_name))
+
+    # 线上旧命名订阅的子目录别名副本 (geosite/geosite-geolocation-!cn.txt 等)
+    for rel, ruleset_name in providers.OXIDNS_SUBDIR_ALIASES.items():
+        rs = rules.get(ruleset_name)
+        if rs is None:
+            continue
+        sub_dir = geoip_out if rs.is_geoip else geosite_out
+        src = os.path.join(sub_dir, f"{ruleset_name}.txt")
+        dst = os.path.join(output_dir, rel)
+        if os.path.exists(src):
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            utils.safe_copy(src, dst)
 
     print("✅ [SmartDNS] OxiDNS 订阅规则集构建完成！")
 

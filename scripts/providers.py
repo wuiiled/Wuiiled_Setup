@@ -112,6 +112,20 @@ OXIDNS_RULE_FILES = {
     "xiaomi.txt": "geosite-xiaomi",
 }
 
+# 线上 OxiDNS (10.0.0.2, config v1.5.2) 额外订阅、但无需根目录兼容副本的集合
+# (直接下载 rules/geosite|geoip/ 下的标准名文件, 2026-09-26 与线上 downloads 段对齐):
+#   - 黑加白双集合 (线上 sequence: qname $ad_allow → return 前置短路 + $ad_precise drop)
+#   - GFW 投毒 IP 靶心
+# 缺失任一项都会让线上对应下载 URL 404、规则文件停更 (2026-09-25~26 事故)。
+OXIDNS_EXTRA_RULESETS = {"geosite-ad-precise", "geosite-ad-allow", "geoip-gfw"}
+
+# 线上以旧命名订阅、需在 geosite/ 子目录落一份别名副本的集合:
+# 引擎内标准名为 geosite-!cn, 线上 URL 为 rules/geosite/geosite-geolocation-!cn.txt。
+# 别名不参与 README 渲染与计数 (readme_gen 排除), 避免"规则集数"虚增。
+OXIDNS_SUBDIR_ALIASES = {
+    "geosite/geosite-geolocation-!cn.txt": "geosite-!cn",
+}
+
 GFW_IP_URLS = [
     "https://raw.githubusercontent.com/clowwindy/ChinaDNS/master/iplist.txt",
     "https://cdn.jsdelivr.net/gh/clowwindy/ChinaDNS@master/iplist.txt",

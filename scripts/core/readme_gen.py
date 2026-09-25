@@ -481,11 +481,18 @@ def count_file_rules(file_path: str) -> int:
     return 0
 
 
+def _oxidns_alias_basenames() -> Set[str]:
+    """OxiDNS 子目录别名副本的 base 名 (如 geosite-geolocation-!cn):
+    与标准名文件内容重复, 不参与 README 计数与渲染。"""
+    return set(os.path.splitext(os.path.basename(k))[0] for k in providers.OXIDNS_SUBDIR_ALIASES)
+
+
 def _total_rules(target_dir: str) -> Tuple[int, int]:
     """Sum rule counts and distinct rule-sets across geosite/geoip subdirs and root rule files."""
     total_items = 0
     distinct_rules = set()
     legacy_names = set(os.path.splitext(k)[0] for k in providers.OXIDNS_RULE_FILES)
+    alias_names = _oxidns_alias_basenames()
 
     for sub in ("geosite", "geoip"):
         d = os.path.join(target_dir, sub)
@@ -493,7 +500,7 @@ def _total_rules(target_dir: str) -> Tuple[int, int]:
             seen = set()
             for f in os.listdir(d):
                 base = os.path.splitext(f)[0]
-                if base in seen:
+                if base in seen or base in alias_names:
                     continue
                 seen.add(base)
                 distinct_rules.add(base)
@@ -630,7 +637,9 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
 
     available_geosites: Set[str] = set()
     if os.path.exists(geosite_dir):
-        available_geosites = {os.path.splitext(f)[0] for f in os.listdir(geosite_dir)}
+        _alias = _oxidns_alias_basenames()
+        available_geosites = {os.path.splitext(f)[0] for f in os.listdir(geosite_dir)
+                              if os.path.splitext(f)[0] not in _alias}
 
     available_geoips: Set[str] = set()
     if os.path.exists(geoip_dir):
