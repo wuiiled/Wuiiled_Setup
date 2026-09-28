@@ -10,6 +10,7 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 
 from core.manager import load_all_rules
 from core.readme_gen import generate_all_readmes, write_manifest
+import utils
 import build_singbox
 import build_mihomo
 import build_smartdns
@@ -34,6 +35,10 @@ def main():
     # 阶段 2: 预合成 sing-box 复合规则 (域名+IP), 对主字典一次完成,
     # 避免并行构建期间原地改写共享 dict 的竞态
     build_singbox.synthesize_composites(rules)
+
+    # 阶段 2b: 预渲染 geosite-ad 的统一 AdGuard 源文件
+    # (adg 分支直接发布, singbox 分支转 srs —— 两分支同源派生, 单一渲染实现)
+    utils.render_adguard_geosite_ad()
 
     # 阶段 3: 落来源画像 manifest (供各分支 README 渲染真实来源与已验证平台)
     write_manifest(rules, "output")

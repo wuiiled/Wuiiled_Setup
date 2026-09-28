@@ -21,31 +21,13 @@ def build_adg_rules(rules: Dict[str, RuleSet], output_dir: str = "output/adg"):
     os.makedirs(output_dir, exist_ok=True)
     print(f"\n📦 [AdGuard Home] 正在构建所有规则集并输出至 {output_dir}...")
 
-    # 1. geosite-ad / ADs_merged_adg
-    # AdGuard Home natively supports mixing block (||d^) and exception (@@||d^) in one
-    # list, so it uses the precise 黑加白模式: 黑名单B as ||..^ plus 白名单B as @@||..^.
-    work_dir = utils.get_work_dir()
-    blocklist_b_path = os.path.join(work_dir, "ads", "blocklist_b.txt")
-    whitelist_b_path = os.path.join(work_dir, "ads", "whitelist_b.txt")
-
-    adg_lines = []
-    if os.path.exists(blocklist_b_path):
-        with open(blocklist_b_path, 'r', encoding='utf-8') as f:
-            for line in f.read().splitlines():
-                domain = line.strip().lstrip('+.').lstrip('.')
-                if domain and not domain.startswith('#'):
-                    adg_lines.append(f"||{domain}^")
-    if os.path.exists(whitelist_b_path):
-        with open(whitelist_b_path, 'r', encoding='utf-8') as f:
-            for line in f.read().splitlines():
-                domain = line.strip().lstrip('+.').lstrip('.')
-                if domain and not domain.startswith('#'):
-                    adg_lines.append(f"@@||{domain}^")
-
+    # 1. geosite-ad: 统一 AdGuard 源文件 (utils 单一渲染), adg 分支直接发布
+    #    (singbox 分支以同一文件 --type adguard 转 srs, 两分支同源派生)
+    ad_src = utils.render_adguard_geosite_ad()
     ad_out_path = os.path.join(output_dir, "geosite-ad.txt")
-    with open(ad_out_path, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(adg_lines) + '\n')
-    print(f"  [AdGuard] {'geosite-ad':<24} | 规则数: {len(adg_lines):,} (黑加白 ||拦截 + @@||放行)")
+    utils.safe_copy(ad_src, ad_out_path)
+    adg_count = sum(1 for l in open(ad_out_path, encoding='utf-8') if l.strip())
+    print(f"  [AdGuard] {'geosite-ad':<24} | 规则数: {adg_count:,} (黑加白 ||拦截 + @@||放行)")
 
     # 2. Httpdns
     httpdns_lines = []

@@ -293,3 +293,35 @@ def load_blackwhite_rulesets(work_dir=None):
                 sources=["上游黑名单 ∪ 上游白名单 (黑加白差集)"],
             )
     return out
+
+_ADGAuthGuard = None
+
+def render_adguard_geosite_ad(work_dir=None):
+    """渲染 geosite-ad 的统一 AdGuard 源文件 (||黑名单B^ + @@||白名单B^)。
+
+    单一渲染实现 + 单一产物: adg 分支直接发布该文件, singbox 分支以
+    `rule-set convert --type adguard` 转换为 srs —— 两分支同源派生,
+    导出器不各自渲染 (解耦)。内容确定性强; 并发首渲经 临时文件 +
+    os.replace 原子落盘, 重复调用幂等。黑加白中间产物缺失时硬失败。
+    """
+    global _ADGAuthGuard
+    work_dir = work_dir or get_work_dir()
+    out_path = os.path.join(work_dir, "ads", "geosite-ad.adguard.txt")
+    if _ADGAuthGuard == out_path and os.path.exists(out_path):
+        return out_path
+    lines = []
+    for fname, fmt in (("blocklist_b.txt", "||{}^"), ("whitelist_b.txt", "@@||{}^")):
+        path = os.path.join(work_dir, "ads", fname)
+        if not os.path.exists(path):
+            raise RuntimeError(f"AdGuard 源缺失: {path} (manager 黑加白产物未生成)")
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f.read().splitlines():
+                domain = line.strip().lstrip('+.').lstrip('.')
+                if domain and not domain.startswith('#'):
+                    lines.append(fmt.format(domain))
+    tmp_path = out_path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + ("\n" if lines else ""))
+    os.replace(tmp_path, out_path)
+    _ADGAuthGuard = out_path
+    return out_path
