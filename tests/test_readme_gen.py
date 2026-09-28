@@ -191,10 +191,26 @@ def branch_outputs(tmp_path):
                                                      "domain_suffix": ["steamcommunity.com"]}]}),
                 encoding="utf-8")
             (gdir / "geosite-steam.srs").write_bytes(b"srs")
+            # adguard 型集合 (geosite-ad): 无 json, txt 即源码
+            (gdir / "geosite-ad.txt").write_text("||ads.example^\n@@||ok.example^\n", encoding="utf-8")
+            (gdir / "geosite-ad.srs").write_bytes(b"srs-adguard")
         else:
             (gdir / "geosite-steam.txt").write_text("steampowered.com\n+.steamcommunity.com\n", encoding="utf-8")
             (gdir / "geosite-steam.mrs").write_bytes(b"mrs")
     return out
+
+
+def test_singbox_adguard_source_link(branch_outputs):
+    """singbox 分支 adguard 型集合 (geosite-ad): 源码列回退为 TXT, 计数来自 txt。"""
+    generate_branch_readme("singbox", str(branch_outputs))
+    sb = (branch_outputs / "singbox" / "README.md").read_text(encoding="utf-8")
+    assert "源码 (JSON/TXT)" in sb
+    ad_row = next(l for l in sb.splitlines() if "`geosite-ad`" in l)
+    assert "[📄 TXT]" in ad_row
+    assert "`2`" in ad_row  # txt 两行规则
+    assert "黑加白混合" in ad_row  # 分支级描述覆盖
+    steam_row = next(l for l in sb.splitlines() if "`geosite-steam`" in l)
+    assert "[📄 JSON]" in steam_row  # 普通集合仍链接 JSON
 
 
 def test_zero_diff_badge_only_on_singbox(branch_outputs):

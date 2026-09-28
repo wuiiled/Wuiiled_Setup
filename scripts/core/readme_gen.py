@@ -232,6 +232,23 @@ RULE_METADATA: Dict[str, Dict[str, str]] = {
 }
 
 
+# 个别集合在不同分支的产物形态不同, 说明列需如实反映 (介绍=实际内容):
+# geosite-ad 在 singbox 分支为黑加白混合 (AdGuard 语法转换的 adguard 型 srs,
+# @@ 例外编译进 srs); 在 adg 分支同为黑加白混合单文件; 其余分支为单集合保守版。
+_BRANCH_DESC_OVERRIDES = {
+    ("adg", "geosite-ad"): "终极去广告 / 防追踪 (黑加白混合, @@ 例外放行)",
+    ("singbox", "geosite-ad"): "终极去广告 / 防追踪 (黑加白混合, AdGuard 型 srs)",
+}
+
+
+def _rule_desc(target: str, bname: str) -> str:
+    """按分支解析描述: 分支覆盖优先, 回退全局 RULE_METADATA。"""
+    override = _BRANCH_DESC_OVERRIDES.get((target, bname))
+    if override:
+        return override
+    return RULE_METADATA.get(bname, {}).get("desc", bname)
+
+
 # 平台 -> 代表域名。构建期对每个集合做真实包含性检查, 只有命中的平台才会
 # 渲染进 README 说明列 —— 宣称的内容永远等于集合实际包含的内容。
 # 判断语义: 代表域名本身是集合成员, 或被集合中某个 domain_suffix 覆盖。
@@ -696,23 +713,32 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
         lines.append("")
 
         if target == "singbox":
-            lines.append("| 规则名称 | 描述 | 说明/包含 | 条数 | SRS (二进制) | JSON (源码) |")
+            lines.append("| 规则名称 | 描述 | 说明/包含 | 条数 | SRS (二进制) | 源码 (JSON/TXT) |")
             lines.append("| :--- | :--- | :--- | ---: | :---: | :---: |")
             for bname, location, file_prefix in cat_items:
                 rendered_rules.add(bname)
                 json_p = file_prefix + ".json"
                 srs_p = file_prefix + ".srs"
-                count = count_file_rules(json_p)
-                count_str = f"{count:,}" if count > 0 else "-"
+                txt_p = file_prefix + ".txt"
                 rel_dir = "geosite" if location == "geosite" else "geoip"
                 srs_url = f"https://raw.githubusercontent.com/{repo}/{target}/rules/{rel_dir}/{bname}.srs"
                 json_url = f"https://raw.githubusercontent.com/{repo}/{target}/rules/{rel_dir}/{bname}.json"
+                txt_url = f"https://raw.githubusercontent.com/{repo}/{target}/rules/{rel_dir}/{bname}.txt"
                 srs_link = f"[📥 SRS]({srs_url})" if os.path.exists(srs_p) else "-"
-                json_link = f"[📄 JSON]({json_url})" if os.path.exists(json_p) else "-"
-                meta = RULE_METADATA.get(bname, {})
-                desc = meta.get("desc", bname)
+                if os.path.exists(json_p):
+                    count = count_file_rules(json_p)
+                    src_link = f"[📄 JSON]({json_url})"
+                elif os.path.exists(txt_p):
+                    # adguard 型集合 (geosite-ad): srs 不可反编译, 源码即 txt
+                    count = count_file_rules(txt_p)
+                    src_link = f"[📄 TXT]({txt_url})"
+                else:
+                    count = 0
+                    src_link = "-"
+                count_str = f"{count:,}" if count > 0 else "-"
+                desc = _rule_desc(target, bname)
                 note = _render_note(bname, manifest)
-                lines.append(f"| **`{bname}`** | {desc} | {note} | `{count_str}` | {srs_link} | {json_link} |")
+                lines.append(f"| **`{bname}`** | {desc} | {note} | `{count_str}` | {srs_link} | {src_link} |")
             lines.append("")
 
         elif target == "mihomo":
@@ -729,8 +755,7 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
                 txt_url = f"https://raw.githubusercontent.com/{repo}/{target}/rules/{rel_dir}/{bname}.txt"
                 mrs_link = f"[📥 MRS]({mrs_url})" if os.path.exists(mrs_p) else "-"
                 txt_link = f"[📄 TXT]({txt_url})" if os.path.exists(txt_p) else "-"
-                meta = RULE_METADATA.get(bname, {})
-                desc = meta.get("desc", bname)
+                desc = _rule_desc(target, bname)
                 note = _render_note(bname, manifest)
                 lines.append(f"| **`{bname}`** | {desc} | {note} | `{count_str}` | {mrs_link} | {txt_link} |")
             lines.append("")
@@ -749,8 +774,7 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
                 else:
                     rel_dir = "geosite" if location == "geosite" else "geoip"
                     url = f"https://raw.githubusercontent.com/{repo}/{target}/rules/{rel_dir}/{bname}.txt"
-                meta = RULE_METADATA.get(bname, {})
-                desc = meta.get("desc", bname)
+                desc = _rule_desc(target, bname)
                 lines.append(f"| **`{bname}`** | {desc} | `{count_str}` | [📥 直链]({url}) |")
             lines.append("")
 

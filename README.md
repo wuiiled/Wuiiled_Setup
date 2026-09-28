@@ -80,17 +80,17 @@ GeoSite 规则直接拉取并解析 Loyalsoldier 官方最新 `geosite.dat` 二�
 
 上游黑名单经清洗去重后与上游白名单做差集。**凡与上游白名单同名或为其后代的拦截项一律剔除（方向1）**。在此基础上产出三套形态：
 
-- **黑名单A（Option A · 单集合保守版）**：额外把"白名单子域的父域"也剔除（方向2），宁放过勿错杀。对应 `geosite-ad`，各平台默认产物，向后兼容。
+- **黑名单A（Option A · 单集合保守版）**：额外把"白名单子域的父域"也剔除（方向2），宁放过勿错杀。对应 mihomo / smartdns 分支的 `geosite-ad`，向后兼容。
 - **黑名单B + 白名单B（黑加白精确双集合）**：黑名单B 仅做方向1剔除（保留含白名单子域的父域）；白名单B 收录"会被黑名单B命中且自身不在上游黑名单"的上游白名单项。对应 `geosite-ad-precise` + `geosite-ad-allow`。
-- **AdGuard Home（单文件混合）**：原生支持 `@@` 例外，`geosite-ad` 直接输出 `||黑名单B^` + `@@||白名单B^` 混合单文件。
+- **黑加白混合单文件**：`@@` 例外内嵌于同一文件。adg 分支直接输出 `||黑名单B^` + `@@||白名单B^`；**sing-box 分支的 `geosite-ad` 亦为此形态**——以 AdGuard 语法为源，经 `sing-box rule-set convert --type adguard`（≥ 1.10）编译为 adguard 型 srs，例外语义编译进 srs（adguard 型 srs 不可反编译，分支内以 txt 提供源码）。
 
 **各分支产物对照**：
 
 | 分支 | `geosite-ad` | `geosite-ad-precise` | `geosite-ad-allow` |
 | :--- | :--- | :--- | :--- |
-| **smartdns**（供 OxiDNS） | 黑名单A | —（OxiDNS 白名单外） | —（OxiDNS 白名单外） |
+| **smartdns**（供 OxiDNS） | 黑名单A | 黑名单B | 白名单B |
 | **mihomo** | 黑名单A | 黑名单B | 白名单B |
-| **sing-box** | 黑名单A | —（单集合不支持例外） | — |
+| **sing-box** | 黑加白混合（AdGuard 型 srs） | — | — |
 | **adg** | 黑名单B + 白名单B 混合（`@@` 例外） | — | — |
 
 **使用方式**：OxiDNS 在 sequence 中先 `qname $allow → return` 再 `qname $precise → drop`；mihomo 在 `rules:` 中将 `RULE-SET,geosite-ad-allow,DIRECT` 置于 `RULE-SET,geosite-ad-precise,REJECT` 之前短路。

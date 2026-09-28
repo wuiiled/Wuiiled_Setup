@@ -63,6 +63,37 @@ def synthesize_composites(rules: Dict[str, RuleSet]) -> None:
         )
 
 
+# 以 AdGuard 语法为源、经 `rule-set convert --type adguard` 编译的集合 (sing-box >= 1.10)。
+# geosite-ad 在 singbox 分支与 adg 分支同源: 黑名单B + @@||白名单B^ 混合,
+# 例外语义编译进 srs (负向条件); adguard 型 srs 不可反编译, 源码即 txt。
+ADGUARD_SOURCE_SETS = {"geosite-ad"}
+
+
+def _build_adguard_srs(name: str, sub_dir: str, has_sb: bool) -> None:
+    """从 manager 产出的黑加白文件渲染 AdGuard 语法并转换为 adguard 型 srs。"""
+    work_dir = utils.get_work_dir()
+    txt_path = os.path.join(sub_dir, f"{name}.txt")
+    srs_path = os.path.join(sub_dir, f"{name}.srs")
+    lines = []
+    for fname, fmt in (("blocklist_b.txt", "||{}^"), ("whitelist_b.txt", "@@||{}^")):
+        path = os.path.join(work_dir, "ads", fname)
+        if not os.path.exists(path):
+            raise RuntimeError(f"AdGuard 源缺失: {path} (manager 黑加白产物未生成)")
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                domain = line.strip().lstrip('+.').lstrip('.')
+                if domain and not domain.startswith('#'):
+                    lines.append(fmt.format(domain))
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + ("\n" if lines else ""))
+    print(f"  [Sing-box] {name:<26} | AdGuard 语法 {len(lines):,} 行 (||拦截 + @@||放行)")
+    if has_sb:
+        utils.compile_ruleset(
+            ["sing-box", "rule-set", "convert", "--type", "adguard", "-o", srs_path, txt_path],
+            f"{name}.srs"
+        )
+
+
 def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/singbox"):
     """
     Export all RuleSets to Sing-box format (.srs and .json).
@@ -84,6 +115,11 @@ def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sin
         sub_dir = geoip_out if rs.is_geoip else geosite_out
         srs_path = os.path.join(sub_dir, f"{name}.srs")
         json_path = os.path.join(sub_dir, f"{name}.json")
+
+        if name in ADGUARD_SOURCE_SETS:
+            # AdGuard 源集合: txt 为源码, srs 经 --type adguard 转换 (无 JSON)
+            _build_adguard_srs(name, sub_dir, has_sb)
+            continue
 
         if rs.raw_srs and get_active_patch_count(name) == 0:
             # Authoritative Tianling rule (no local patches): write raw SRS directly (100% binary match!)
