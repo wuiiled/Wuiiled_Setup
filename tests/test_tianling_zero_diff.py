@@ -23,6 +23,10 @@ except ImportError:
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts")))
 import utils
 
+# 端到端层: 需要构建产物 output/singbox + 网络 + sing-box。
+# 日常开发: pytest -m "not e2e" (秒级); 发版前: pytest 全量。
+pytestmark = getattr(pytest.mark, "e2e", None)
+
 # 0-Diff 覆盖直接取自 core.manager 的权威映射, 消除手工清单与构建映射的漂移
 # (曾因此漏测 geosite-porn/media/communication/social-media/games/netdisk-!cn 六个集合)。
 # 注意: geosite-cn 不在此列 —— 它以天灵配方合成 + rules/patches/geosite-cn.txt

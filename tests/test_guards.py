@@ -110,9 +110,3 @@ def test_include_local_resolves():
 def test_include_local_missing_returns_none():
     from core.patcher import _resolve_include
     assert _resolve_include("local", "rules/patches/__.nonexistent.__", None) is None
-
-
-# ---------- decompile 统一封装存在性 (行为由 0-Diff 套件覆盖) ----------
-
-def test_decompile_helper_exists():
-    assert callable(utils.decompile_srs)

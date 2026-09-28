@@ -157,8 +157,15 @@ Wuiiled_Setup/
 # 一键构建完整流水线并生成各平台 README
 PYTHONPATH=scripts python3 scripts/main.py
 
-# 验证所有权威规则集与上游 100% 一致（0-Diff）
-PYTHONPATH=scripts python3 -m pytest tests/test_tianling_zero_diff.py -v
+# 日常开发: 快速层单元/契约测试 (秒级, 不含 0-Diff)
+PYTHONPATH=scripts python3 -m pytest -m "not e2e"
+
+# 发版前: 全量测试 (含 0-Diff e2e, 需先构建) + 0-Diff 独立校验
+PYTHONPATH=scripts python3 -m pytest
+PYTHONPATH=scripts python3 scripts/diff_tianling.py --fail-on-diff
+
+# 产物语法门禁 (CI 部署前自动执行, 也可手动)
+PYTHONPATH=scripts python3 scripts/lint_artifacts.py output
 ```
 
 ---

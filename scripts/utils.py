@@ -46,13 +46,14 @@ def cleanup():
 
 def check_tool(binary: str) -> bool:
     """检查编译器二进制是否可用; 在 GitHub Actions 上缺失时直接中断流程。
-    WUIILED_ALLOW_MISSING_COMPILERS=1 时 (测试环境) 不中断, 返回 False。"""
+    WUIILED_ALLOW_MISSING_COMPILERS=1 时 (测试环境) 不探测、不中断, 返回 False
+    —— 必须先于 WSL 探测判断, 否则本机测试会真实调用几十次 WSL 编译器。"""
+    if os.environ.get("WUIILED_ALLOW_MISSING_COMPILERS") == "1":
+        return False
     if shutil.which(binary):
         return True
     if sys.platform == "win32" and shutil.which("wsl"):
         return True
-    if os.environ.get("WUIILED_ALLOW_MISSING_COMPILERS") == "1":
-        return False
     if os.environ.get("GITHUB_ACTIONS") == "true":
         print(f"❌ 错误: 在 GitHub Actions 环境中未找到 '{binary}' 编译器！必须中断任务以防生成残缺规则集。")
         sys.exit(1)
