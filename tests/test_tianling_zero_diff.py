@@ -7,8 +7,6 @@ Ensures that all generated Sing-box rules match Tianling's upstream 100% exactly
 
 import os
 import sys
-import json
-import subprocess
 try:
     import pytest
 except ImportError:
@@ -56,10 +54,7 @@ def _get_upstream_bytes(repo: str, tag: str) -> bytes:
 
 
 def _decompile_srs(srs_path, json_path):
-    cmd = utils._resolve_cmd(["sing-box", "rule-set", "decompile", srs_path, "-o", json_path])
-    subprocess.run(cmd, check=True, capture_output=True, text=True)
-    with open(json_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    data = utils.decompile_srs(srs_path, json_path)
     rule = data.get("rules", [{}])[0]
     # sing-box decompile emits a bare string when a list field has exactly one entry.
     for key in ("domain", "domain_suffix", "domain_keyword", "domain_regex", "ip_cidr"):

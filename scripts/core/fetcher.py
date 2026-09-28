@@ -6,10 +6,8 @@ local repo file loader, and Tianling authoritative rule-set synchronizer.
 
 import os
 import ssl
-import json
 import time
 import urllib.request
-import subprocess
 from typing import List, Optional
 
 import utils
@@ -97,11 +95,7 @@ def fetch_tianling_ruleset(tag: str, category: str = "geosite", out_name: Option
         f.write(srs_bytes)
 
     try:
-        cmd = utils._resolve_cmd(["sing-box", "rule-set", "decompile", temp_srs, "-o", temp_json])
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-
-        with open(temp_json, "r", encoding="utf-8") as jf:
-            decompiled = json.load(jf)
+        decompiled = utils.decompile_srs(temp_srs, temp_json)
 
         rules = decompiled.get("rules", [])
         domains = set()

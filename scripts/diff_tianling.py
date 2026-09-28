@@ -19,7 +19,6 @@ import argparse
 import os
 import sys
 import json
-import subprocess
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     try:
@@ -60,8 +59,7 @@ def load_rule_fields(srs_path: str = "", json_path: str = "") -> dict:
     work_dir = utils.get_work_dir()
     if not json_path:
         json_path = os.path.join(work_dir, f"diff_{os.path.basename(srs_path)}.json")
-        cmd = utils._resolve_cmd(["sing-box", "rule-set", "decompile", srs_path, "-o", json_path])
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        utils.decompile_srs(srs_path, json_path)
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     fields = {}
@@ -96,16 +94,18 @@ def main() -> int:
         return 1
 
     total_pairs = 0
+    skipped_pairs = 0
     diff_pairs = []
     for upstream_tag, local_name in sorted(TIANLING_GEOSITES.items()):
         local_srs = os.path.join(geosite_dir, f"{local_name}.srs")
-        local_json = os.path.join(geosite_dir, f"{local_name}.json")
         if not os.path.exists(local_srs):
             print(f"  ⏭️  {local_name:<28} 本地未构建, 跳过")
             continue
         up_srs = fetch_upstream_srs(upstream_tag)
         if not up_srs:
-            diff_pairs.append((local_name, [("下载失败", "", "")]))
+            # 下载失败不计入 0-Diff 统计 (避免负数假象), 单独报告; 不作为差异
+            print(f"  ⚠️ {local_name:<28} 上游 srs 下载失败, 本轮跳过")
+            skipped_pairs += 1
             continue
         total_pairs += 1
 
@@ -137,7 +137,7 @@ def main() -> int:
         else:
             print(f"  ✅ {local_name:<28} 0-Diff")
 
-    print(f"\n📊 比对完成: {total_pairs} 个集合, 0-Diff: {total_pairs - len(diff_pairs)}, 有差异: {len(diff_pairs)}")
+    print(f"\n📊 比对完成: {total_pairs} 个集合, 0-Diff: {total_pairs - len(diff_pairs)}, 有差异: {len(diff_pairs)}, 跳过(上游下载失败): {skipped_pairs}")
     if diff_pairs and args.fail_on_diff:
         return 1
     return 0

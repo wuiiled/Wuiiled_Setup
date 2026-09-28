@@ -8,7 +8,6 @@ Guarantees 100% Zero-Diff alignment with Tianling Shen for all Tianling rulesets
 import os
 import sys
 import json
-import subprocess
 from typing import Dict, List, Optional, Set
 
 import utils
@@ -118,8 +117,7 @@ def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sin
                 f.write(rs.raw_srs)
             if has_sb:
                 try:
-                    cmd = utils._resolve_cmd(["sing-box", "rule-set", "decompile", srs_path, "-o", json_path])
-                    subprocess.run(cmd, check=True, capture_output=True, text=True)
+                    utils.decompile_srs(srs_path, json_path)
                 except Exception as e:
                     print(f"⚠️ 反编译 {name}.srs 失败: {e}")
         else:
