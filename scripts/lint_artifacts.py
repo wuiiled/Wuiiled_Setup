@@ -59,7 +59,8 @@ def lint(output_base="output"):
         for f in sorted(files):
             if not os.path.isfile(f):
                 continue
-            rel = f.replace(output_base.rstrip("/\\") + os.sep, "").replace("\\", "/")
+            rel = os.path.relpath(f, output_base).replace("\\", "/")
+            norm = f.replace("\\", "/")
             if f.endswith((".srs", ".mrs")):
                 if os.path.getsize(f) == 0:
                     add(rel, 0, "空二进制文件")
@@ -80,7 +81,7 @@ def lint(output_base="output"):
             if os.path.getsize(f) == 0:
                 add(rel, 0, "空文件")
                 continue
-            is_geoip = (os.sep + "geoip" + os.sep in f + os.sep) or \
+            is_geoip = ("/geoip/" in norm + "/") or \
                        (os.path.dirname(f) == root) and (os.path.basename(f) in legacy_geoip)
             for i, raw in enumerate(open(f, encoding="utf-8", errors="replace"), 1):
                 l = raw.strip()

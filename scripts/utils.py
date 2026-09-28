@@ -260,10 +260,9 @@ def is_valid_ip_or_cidr(line):
 def load_blackwhite_rulesets(work_dir=None):
     """从 manager.load_ads_rules 产出的黑加白文件构造 ad-precise / ad-allow IR。
 
-    这两个集合不在主 IR (all_rules) 中——它们是构建期差集产物; mihomo/adg
-    各自有文件渲染路径, DNS 分支 (smartdns/mosdns-x, 线上 OxiDNS 订阅黑加白
-    双集合) 通过本函数按需合成。
-    """
+    这两个集合不在主 IR (all_rules) 中——它们是构建期差集产物。四个导出器
+    统一经本函数消费: mihomo 渲染 +.txt/.mrs, smartdns/mosdns 渲染 DNS 语法,
+    adg/singbox 经 render_adguard_geosite_ad 派生。"""
     work_dir = work_dir or get_work_dir()
     specs = (
         ("geosite-ad-precise", "blocklist_b.txt", "去广告黑名单精确版 (双集合黑名单B)"),
@@ -316,7 +315,8 @@ def render_adguard_geosite_ad(work_dir=None):
                 domain = line.strip().lstrip('+.').lstrip('.')
                 if domain and not domain.startswith('#'):
                     lines.append(fmt.format(domain))
-    tmp_path = out_path + ".tmp"
+    # 并发首渲时各线程写各自的 tmp 文件再原子替换 (共用同一 tmp 名会互相截断)
+    tmp_path = f"{out_path}.{os.getpid()}.{threading.get_ident()}.tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + ("\n" if lines else ""))
     os.replace(tmp_path, out_path)
