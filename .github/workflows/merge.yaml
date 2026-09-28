@@ -59,6 +59,12 @@ jobs:
         export LC_ALL=C
         PYTHONPATH=scripts python3 scripts/main.py
 
+    - name: Validate 0-Diff & artifact grammar
+      run: |
+        export LC_ALL=C
+        PYTHONPATH=scripts python3 scripts/diff_tianling.py --fail-on-diff
+        PYTHONPATH=scripts python3 scripts/lint_artifacts.py output
+
     - name: Notify on failure
       if: failure()
       run: |
@@ -96,7 +102,8 @@ jobs:
             cp "$GITHUB_WORKSPACE/output/$TARGET/README.md" README.md
           fi
 
-          git add rules/ README.md
+          git add rules/
+          if [ -f README.md ]; then git add README.md; fi
           git commit -q -m "Auto Update $TARGET $(date +"%Y-%m-%d %H:%M")" || true
           case "$TARGET" in
             mihomo|adg|mosdns-x|singbox|smartdns) ;;
