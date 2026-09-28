@@ -2,15 +2,15 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+import json
 import shutil
 import tempfile
 import atexit
+import threading
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 
-# 清洗/规范化函数统一收敛到 core/cleaner (单一实现, 防止两份副本语义漂移);
-# utils 保留原函数名作为薄委托, 兼容既有调用方与测试。
+import providers
 from core.cleaner import (
     normalize_domain_line,
     clean_ip_line,
@@ -23,11 +23,15 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 EXCLUDE_FILE = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "rules", "addons", "exclude-keyword.txt"))
 os.environ["LC_ALL"] = "C"
 
+_WORK_DIR_LOCK = threading.Lock()
+
 def get_work_dir():
     global WORK_DIR
     if WORK_DIR is None:
-        WORK_DIR = tempfile.mkdtemp(prefix="wuiiled_convert_")
-        atexit.register(cleanup)
+        with _WORK_DIR_LOCK:
+            if WORK_DIR is None:
+                WORK_DIR = tempfile.mkdtemp(prefix="wuiiled_convert_")
+                atexit.register(cleanup)
     return WORK_DIR
 
 def cleanup():
@@ -41,11 +45,14 @@ def cleanup():
             WORK_DIR = None
 
 def check_tool(binary: str) -> bool:
-    """检查编译器二进制是否可用; 在 GitHub Actions 上缺失时直接中断流程。"""
+    """检查编译器二进制是否可用; 在 GitHub Actions 上缺失时直接中断流程。
+    WUIILED_ALLOW_MISSING_COMPILERS=1 时 (测试环境) 不中断, 返回 False。"""
     if shutil.which(binary):
         return True
     if sys.platform == "win32" and shutil.which("wsl"):
         return True
+    if os.environ.get("WUIILED_ALLOW_MISSING_COMPILERS") == "1":
+        return False
     if os.environ.get("GITHUB_ACTIONS") == "true":
         print(f"❌ 错误: 在 GitHub Actions 环境中未找到 '{binary}' 编译器！必须中断任务以防生成残缺规则集。")
         sys.exit(1)
@@ -55,15 +62,11 @@ def check_mihomo():
     return check_tool("mihomo")
 
 def safe_copy(src, dst):
-    """跨平台安全复制文件，自动规避 Windows 不区分大小写导致的 SameFileError。"""
-    try:
-        if os.path.normcase(os.path.abspath(src)) == os.path.normcase(os.path.abspath(dst)):
-            return
-        shutil.copyfile(src, dst)
-    except shutil.SameFileError:
-        pass
-    except Exception as e:
-        print(f"⚠️ 复制文件失败: {src} -> {dst}: {e}")
+    """跨平台安全复制 (Windows 大小写去重)。失败直接抛出:
+    复制失败意味着分支产物不完整, 静默吞掉会造成部署缺文件。"""
+    if os.path.normcase(os.path.abspath(src)) == os.path.normcase(os.path.abspath(dst)):
+        return
+    shutil.copyfile(src, dst)
 
 def download_file(url, timeout=15, retries=3):
     """文本下载统一走 core.fetcher (镜像回退+重试的单一实现)。
@@ -235,26 +238,15 @@ def compile_ruleset(cmd, output_name):
     except subprocess.CalledProcessError as e:
         print(f"⚠️ 警告: 编译 {output_name} 发生异常:\n{e.stderr}")
 
-def finalize_output(src, dst_dir, base_name, mode):
-    if not os.path.exists(src) or os.path.getsize(src) == 0: return
-    os.makedirs(dst_dir, exist_ok=True)
-    with open(src, 'r', encoding='utf-8') as f: lines = list(set(f.read().splitlines()))
-    lines.sort()
-    if mode == "add_prefix": lines = ["+." + line if not line.startswith("+.") else line for line in lines]
-
-    rule_count = len(lines)
-    print(f"✅ [Mihomo] {base_name:<25} | 规则数: {rule_count:,}")
-
-    date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    header = f"# Count: {rule_count}\n# Updated: {date_str}\n"
-    txt_path = os.path.join(dst_dir, f"{base_name}.txt")
-    mrs_path = os.path.join(dst_dir, f"{base_name}.mrs")
-    with open(txt_path, 'w', encoding='utf-8') as f: f.write(header + "\n".join(lines) + "\n")
-    if check_mihomo():
-        compile_ruleset(
-            ["mihomo", "convert-ruleset", "domain", "text", txt_path, mrs_path],
-            f"{base_name}.mrs"
-        )
+def decompile_srs(srs_path, json_path):
+    """sing-box `rule-set decompile` 的统一封装 (返回解析后的 dict)。
+    此前该调用在 fetcher/build_singbox/diff_tianling/测试 各重复一份。"""
+    subprocess.run(
+        _resolve_cmd(["sing-box", "rule-set", "decompile", srs_path, "-o", json_path]),
+        check=True, capture_output=True, text=True,
+    )
+    with open(json_path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 def is_valid_ip_or_cidr(line):
     """
@@ -279,7 +271,11 @@ def load_blackwhite_rulesets(work_dir=None):
     out = {}
     for name, fname, desc in specs:
         path = os.path.join(work_dir, "ads", fname)
-        if not os.path.exists(path) or os.path.getsize(path) == 0:
+        if not os.path.exists(path):
+            # manager.load_ads_rules 一定会写出这两个文件 (失败会抛错), 缺失 = 编程错误
+            raise RuntimeError(f"黑加白中间产物缺失: {path} (manager.load_ads_rules 未运行?)")
+        if os.path.getsize(path) == 0:
+            print(f"  [黑加白] {fname} 为空, 跳过 {name} (上游黑名单/白名单为空?)")
             continue
         with open(path, "r", encoding="utf-8") as f:
             entries = {l.strip() for l in f if l.strip() and not l.startswith("#")}
@@ -325,3 +321,121 @@ def render_adguard_geosite_ad(work_dir=None):
     os.replace(tmp_path, out_path)
     _ADGAuthGuard = out_path
     return out_path
+
+
+def select_oxidns_rules(rules):
+    """OxiDNS 发布白名单过滤 + 黑加白 IR 注入 (smartdns / mosdns-x 共用,
+    此前该机制在两个导出器中逐行复制)。"""
+    whitelist = set(providers.OXIDNS_RULE_FILES.values()) | providers.OXIDNS_EXTRA_RULESETS
+    out = {name: rs for name, rs in rules.items() if name in whitelist}
+    for name, bw in load_blackwhite_rulesets().items():
+        if name in whitelist:
+            out[name] = bw
+    return out
+
+
+def publish_oxidns_compat(output_dir, rules):
+    """OxiDNS 兼容副本: 根目录历史文件名 + geosite/ 子目录旧命名别名
+    (两个 DNS 分支共用的发布机制)。"""
+    geosite_out = os.path.join(output_dir, "geosite")
+    geoip_out = os.path.join(output_dir, "geoip")
+    for legacy_name, ruleset_name in providers.OXIDNS_RULE_FILES.items():
+        rs = rules.get(ruleset_name)
+        if rs is None:
+            continue
+        sub_dir = geoip_out if rs.is_geoip else geosite_out
+        src = os.path.join(sub_dir, f"{ruleset_name}.txt")
+        if os.path.exists(src):
+            safe_copy(src, os.path.join(output_dir, legacy_name))
+    for rel, ruleset_name in providers.OXIDNS_SUBDIR_ALIASES.items():
+        rs = rules.get(ruleset_name)
+        if rs is None:
+            continue
+        sub_dir = geoip_out if rs.is_geoip else geosite_out
+        src = os.path.join(sub_dir, f"{ruleset_name}.txt")
+        dst = os.path.join(output_dir, rel)
+        if os.path.exists(src):
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            safe_copy(src, dst)
+
+
+def validate_output_invariants(output_base="output", require_binaries=True):
+    """P1 守卫: 关键集合产物必须存在且非空。
+
+    上游源整体下载失败时旧流程会发布空集, OxiDNS 04:00 下载空文件会
+    清空线上 provider (cn/大厂/黑加白全部失效)。此处对每个分支的
+    路由关键产物做非空断言, 违反即抛错 (构建失败, 不部署)。
+    """
+    def _nonempty_text(path):
+        if not os.path.exists(path) or os.path.getsize(path) == 0:
+            return False
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            return any(line.strip() for line in f)
+
+    problems = []
+    ox_names = sorted(set(providers.OXIDNS_RULE_FILES.values()) | providers.OXIDNS_EXTRA_RULESETS)
+    for branch in ("smartdns", "mosdns-x"):
+        for name in ox_names:
+            sub = "geoip" if name.startswith("geoip-") else "geosite"
+            p = os.path.join(output_base, branch, sub, f"{name}.txt")
+            if not _nonempty_text(p):
+                problems.append(f"{branch}/{sub}/{name}.txt 缺失或为空")
+    for branch in ("mihomo",):
+        for name in ("geosite-cn", "geosite-ad", "geosite-ad-precise", "geosite-ad-allow", "geosite-!cn"):
+            p = os.path.join(output_base, branch, "geosite", f"{name}.txt")
+            if not _nonempty_text(p):
+                problems.append(f"{branch}/geosite/{name}.txt 缺失或为空")
+        for name in ("geoip-cn", "geoip-gfw"):
+            p = os.path.join(output_base, branch, "geoip", f"{name}.txt")
+            if not _nonempty_text(p):
+                problems.append(f"{branch}/geoip/{name}.txt 缺失或为空")
+    for name in ("geosite-ad", "geosite-httpdns", "geosite-pcdn"):
+        p = os.path.join(output_base, "adg", f"{name}.txt")
+        if not _nonempty_text(p):
+            problems.append(f"adg/{name}.txt 缺失或为空")
+    if require_binaries:
+        for name in ("geosite-cn", "geosite-ad", "geosite-!cn", "geoip-cn"):
+            sub = "geoip" if name.startswith("geoip-") else "geosite"
+            p = os.path.join(output_base, "singbox", sub, f"{name}.srs")
+            if not os.path.exists(p) or os.path.getsize(p) == 0:
+                problems.append(f"singbox/{sub}/{name}.srs 缺失或为空")
+    if problems:
+        raise RuntimeError("关键产物不变量校验失败 (拒绝发布, 防止空集清空线上 provider):\n  - " + "\n  - ".join(problems))
+    print(f"  ✅ [守卫] 关键产物不变量校验通过 ({len(ox_names)}×2 DNS 集 + mihomo/adg/singbox 关键集)")
+
+
+def _idna_domain(value):
+    """非 ASCII 域名转 punycode (IDNA)。DNS 线上查询只存在 punycode 形态,
+    unicode 条目在任何消费者中都永不命中。转换失败原样返回 (由产物门禁拦截)。"""
+    if value.isascii():
+        return value
+    try:
+        return value.encode("idna").decode("ascii").lower()
+    except Exception:
+        return value
+
+
+def idna_normalize_rules(rules):
+    """遍历全部规则集, 把 domain/domain_suffix 桶中的非 ASCII 域名统一转
+    punycode (keyword/regexp 语义不同, 不转换)。必须在补丁/合并全部完成、
+    导出开始前调用。返回转换条数。"""
+    total = 0
+    for name, rs in rules.items():
+        converted = 0
+        new_domains = set()
+        for d in rs.domains:
+            v = _idna_domain(d)
+            converted += (v != d)
+            new_domains.add(v)
+        new_suffixes = set()
+        for s in rs.domain_suffixes:
+            v = _idna_domain(s)
+            converted += (v != s)
+            new_suffixes.add(v)
+        if converted:
+            rs.domains, rs.domain_suffixes = new_domains, new_suffixes
+            total += converted
+            print(f"  [IDNA] {name:<26} | {converted} 条非 ASCII 域名已转 punycode")
+    if total:
+        print(f"  ✅ [IDNA] 共转换 {total} 条")
+    return total

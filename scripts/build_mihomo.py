@@ -63,38 +63,26 @@ def build_mihomo_rules(rules: Dict[str, RuleSet], output_dir: str = "output/miho
     # 黑加白模式 (mihomo): emit precise blocklist B + allow exception B as SEPARATE
     # rule-sets.  geosite-ad stays as Option A (backward-compat).  Users opt in via
     # config: RULE-SET,geosite-ad-allow,DIRECT placed BEFORE RULE-SET,geosite-ad-precise,REJECT.
+    # 与 smartdns/mosdns-x 相同, 从统一 IR (utils.load_blackwhite_rulesets) 消费,
+    # 不再各自解析中间产物文件。
     # ---------------------------------------------------------------
-    work_dir = utils.get_work_dir()
-    blocklist_b_path = os.path.join(work_dir, "ads", "blocklist_b.txt")
-    whitelist_b_path = os.path.join(work_dir, "ads", "whitelist_b.txt")
-    bl_b, wl_b = [], []
-    if os.path.exists(blocklist_b_path):
-        with open(blocklist_b_path, "r", encoding="utf-8") as f:
-            bl_b = sorted({l.strip() for l in f if l.strip() and not l.startswith("#")})
-        p_txt = os.path.join(geosite_out, "geosite-ad-precise.txt")
-        with open(p_txt, "w", encoding="utf-8") as f:
-            for d in bl_b:
-                f.write("+." + d + "\n")
+    bw = utils.load_blackwhite_rulesets()
+    for name in ("geosite-ad-precise", "geosite-ad-allow"):
+        bw_rs = bw.get(name)
+        if bw_rs is None:
+            continue
+        txt_path = os.path.join(geosite_out, f"{name}.txt")
+        with open(txt_path, "w", encoding="utf-8") as f:
+            for s in sorted(bw_rs.domain_suffixes):
+                f.write("+." + s + "\n")
         if has_m:
             utils.compile_ruleset(
-                ["mihomo", "convert-ruleset", "domain", "text", p_txt, os.path.join(geosite_out, "geosite-ad-precise.mrs")],
-                "geosite-ad-precise.mrs"
+                ["mihomo", "convert-ruleset", "domain", "text", txt_path, os.path.join(geosite_out, f"{name}.mrs")],
+                f"{name}.mrs"
             )
-    if os.path.exists(whitelist_b_path):
-        with open(whitelist_b_path, "r", encoding="utf-8") as f:
-            wl_b = sorted({l.strip() for l in f if l.strip() and not l.startswith("#")})
-        a_txt = os.path.join(geosite_out, "geosite-ad-allow.txt")
-        with open(a_txt, "w", encoding="utf-8") as f:
-            for d in wl_b:
-                f.write("+." + d + "\n")
-        if has_m:
-            utils.compile_ruleset(
-                ["mihomo", "convert-ruleset", "domain", "text", a_txt, os.path.join(geosite_out, "geosite-ad-allow.mrs")],
-                "geosite-ad-allow.mrs"
-            )
-
-    if bl_b or wl_b:
-        print(f"  [Mihomo] 黑加白 precise={len(bl_b):,} allow={len(wl_b):,}")
+    prec, allow = bw.get("geosite-ad-precise"), bw.get("geosite-ad-allow")
+    if prec or allow:
+        print(f"  [Mihomo] 黑加白 precise={len(prec.domain_suffixes) if prec else 0:,} allow={len(allow.domain_suffixes) if allow else 0:,}")
 
     # 兼容别名机制已退役: 全部规则集统一使用标准名称 (geosite-custom-emby 等)
 
