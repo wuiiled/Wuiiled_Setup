@@ -40,6 +40,9 @@ def main():
     # (adg 分支直接发布, singbox 分支转 srs —— 两分支同源派生, 单一渲染实现)
     utils.render_adguard_geosite_ad()
 
+    # 阶段 2c: 非 ASCII 域名统一转 punycode (unicode 条目在任何消费者中永不命中)
+    utils.idna_normalize_rules(rules)
+
     # 阶段 3: 落来源画像 manifest (供各分支 README 渲染真实来源与已验证平台)
     write_manifest(rules, "output")
 
@@ -62,6 +65,9 @@ def main():
                 import traceback
                 traceback.print_exc()
                 sys.exit(1)
+
+    # 阶段 4b: 关键产物不变量校验 (空集/缺失 → 构建失败, 防止空集发布清空线上 provider)
+    utils.validate_output_invariants("output")
 
     # 阶段 5: 自动生成各平台规范 README 导航页
     print("\n🚀 [阶段 5/5] 生成各平台发布分支订阅导航 (README.md)...")

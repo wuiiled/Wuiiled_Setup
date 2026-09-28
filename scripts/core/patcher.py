@@ -26,6 +26,7 @@ include 属于"整表合并", 上游随其自行更新; 解析失败 (下载失�
 import os
 import re
 from typing import Dict, List, Optional, Tuple
+from core.fetcher import read_local_file
 from core.models import RuleSet
 
 
@@ -194,8 +195,7 @@ def _resolve_include(kind: str, target: str, dat_map: Optional[Dict[str, RuleSet
                 _add_to_ruleset(rs, parsed[0], parsed[1])
         return rs
     if kind == "local":
-        import utils
-        content = utils.read_local_file(target)
+        content = read_local_file(target)
         if not content:
             print(f"    ⚠️ include:local 文件不存在或为空, 已跳过: {target}")
             return None
