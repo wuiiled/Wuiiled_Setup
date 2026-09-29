@@ -117,18 +117,23 @@ jobs:
           echo "✅ Deploy completed for: $TARGET"
         }
 
-        # 逐个等待后台部署任务: 裸 `wait` 恒返回 0 会吞掉 push 失败,
-        # 必须收集 PID 并显式检查退出码, 任何分支部署失败都让 step 变红。
-        pids=()
-        deploy_branch mihomo &    pids+=($!)
-        deploy_branch adg &       pids+=($!)
-        deploy_branch mosdns-x &  pids+=($!)
-        deploy_branch singbox &   pids+=($!)
-        deploy_branch smartdns &  pids+=($!)
-
+        # 串行部署 + 单分支重试: 2026-09-29 两次部署曾因 GitHub 存储端
+        # "unable to write pack" 批量拒绝 5 个并发大 pack (失败传播机制
+        # 正确拦截并变红)。串行化降低并发写压力, push 失败自动重试。
         fail=0
-        for pid in "${pids[@]}"; do
-          wait "$pid" || fail=1
+        for TARGET in mihomo adg mosdns-x singbox smartdns; do
+          ok=0
+          for attempt in 1 2 3; do
+            if deploy_branch "$TARGET"; then ok=1; break; fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "⚠️ $TARGET 第 $attempt 次部署失败, 15s 后重试..."
+              sleep 15
+            fi
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "::error::Deploy failed after 3 attempts: $TARGET"
+            fail=1
+          fi
         done
         if [ "$fail" -ne 0 ]; then
           echo "::error::One or more branch deploys failed; subscription branches may be stale."
