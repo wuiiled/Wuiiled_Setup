@@ -86,6 +86,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="output/singbox")
     parser.add_argument("--fail-on-diff", action="store_true")
+    parser.add_argument("--strict-extra", action="store_true",
+                        help="仅额外 (本地比天灵镜像多) 也视为失败; 默认仅 missing 致命")
     args = parser.parse_args()
 
     geosite_dir = os.path.join(args.output, "geosite")
@@ -96,6 +98,7 @@ def main() -> int:
     total_pairs = 0
     skipped_pairs = 0
     diff_pairs = []
+    extra_only_pairs = []
     for upstream_tag, local_name in sorted(TIANLING_GEOSITES.items()):
         local_srs = os.path.join(geosite_dir, f"{local_name}.srs")
         if not os.path.exists(local_srs):
@@ -128,16 +131,27 @@ def main() -> int:
             if extra:
                 set_diffs.append((key, "extra", sorted(extra)))
 
-        if set_diffs:
-            diff_pairs.append((local_name, set_diffs))
+        missing_diffs = [d for d in set_diffs if d[1] == "missing"]
+        extra_only = [d for d in set_diffs if d[1] != "missing"]
+        if missing_diffs or (extra_only and args.strict_extra):
+            fatal = missing_diffs + extra_only
+            diff_pairs.append((local_name, fatal))
             detail = "; ".join(
-                f"{k} {kind} {len(items)} 条 如{items[:3]}" for k, kind, items in set_diffs
+                f"{k} {kind} {len(items)} 条 如{items[:3]}" for k, kind, items in fatal
             )
             print(f"  ❌ {local_name:<28} {detail}")
+        elif extra_only:
+            # 仅额外 = 本地忠实反映更新的 dat, 而天灵镜像尚未同步 (发布滞后),
+            # 或 Loyalsoldier dat 的瞬态条目 —— 不是产物回归, 警告不拦截部署
+            extra_only_pairs.append((local_name, extra_only))
+            detail = "; ".join(
+                f"{k} {kind} {len(items)} 条 如{items[:3]}" for k, kind, items in extra_only
+            )
+            print(f"  ⚠️ {local_name:<28} 仅额外 (上游发布滞后, 不拦截): {detail}")
         else:
             print(f"  ✅ {local_name:<28} 0-Diff")
 
-    print(f"\n📊 比对完成: {total_pairs} 个集合, 0-Diff: {total_pairs - len(diff_pairs)}, 有差异: {len(diff_pairs)}, 跳过(上游下载失败): {skipped_pairs}")
+    print(f"\n📊 比对完成: {total_pairs} 个集合, 0-Diff: {total_pairs - len(diff_pairs)}, 缺失差异: {len(diff_pairs)}, 仅额外(上游滞后): {len(extra_only_pairs)}, 跳过(上游下载失败): {skipped_pairs}")
     if diff_pairs and args.fail_on_diff:
         return 1
     return 0
