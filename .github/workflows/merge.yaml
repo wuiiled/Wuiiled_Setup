@@ -73,11 +73,6 @@ jobs:
         fi
         PYTHONPATH=scripts python3 scripts/lint_artifacts.py output
 
-    - name: Notify on failure
-      if: failure()
-      run: |
-        echo "::error::Rule build failed! Check the logs above."
-
     - name: Deploy to Orphan Branches
       run: |
         # Sanity check: abort deploy if key artifacts are missing/empty to avoid

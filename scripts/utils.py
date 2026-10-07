@@ -312,7 +312,7 @@ def render_adguard_geosite_ad(work_dir=None):
 def select_oxidns_rules(rules):
     """OxiDNS 发布白名单过滤 + 黑加白 IR 注入 (smartdns / mosdns-x 共用,
     此前该机制在两个导出器中逐行复制)。"""
-    whitelist = set(providers.OXIDNS_RULE_FILES.values()) | providers.OXIDNS_EXTRA_RULESETS
+    whitelist = set(providers.OXIDNS_RULESETS) | providers.OXIDNS_EXTRA_RULESETS
     out = {name: rs for name, rs in rules.items() if name in whitelist}
     for name, bw in load_blackwhite_rulesets().items():
         if name in whitelist:
@@ -321,18 +321,11 @@ def select_oxidns_rules(rules):
 
 
 def publish_oxidns_compat(output_dir, rules):
-    """OxiDNS 兼容副本: 根目录历史文件名 + geosite/ 子目录旧命名别名
-    (两个 DNS 分支共用的发布机制)。"""
+    """OxiDNS 旧命名别名副本: geosite/ 子目录的 geosite-geolocation-!cn.txt
+    (线上以旧命名订阅, 标准名 geosite-!cn)。根目录历史文件名副本已退役
+    (线上配置零引用, 2026-10 核对)。"""
     geosite_out = os.path.join(output_dir, "geosite")
     geoip_out = os.path.join(output_dir, "geoip")
-    for legacy_name, ruleset_name in providers.OXIDNS_RULE_FILES.items():
-        rs = rules.get(ruleset_name)
-        if rs is None:
-            continue
-        sub_dir = geoip_out if rs.is_geoip else geosite_out
-        src = os.path.join(sub_dir, f"{ruleset_name}.txt")
-        if os.path.exists(src):
-            safe_copy(src, os.path.join(output_dir, legacy_name))
     for rel, ruleset_name in providers.OXIDNS_SUBDIR_ALIASES.items():
         rs = rules.get(ruleset_name)
         if rs is None:
@@ -359,7 +352,7 @@ def validate_output_invariants(output_base="output", require_binaries=True):
             return any(line.strip() for line in f)
 
     problems = []
-    ox_names = sorted(set(providers.OXIDNS_RULE_FILES.values()) | providers.OXIDNS_EXTRA_RULESETS)
+    ox_names = sorted(set(providers.OXIDNS_RULESETS) | providers.OXIDNS_EXTRA_RULESETS)
     for branch in ("smartdns", "mosdns-x"):
         for name in ox_names:
             sub = "geoip" if name.startswith("geoip-") else "geosite"

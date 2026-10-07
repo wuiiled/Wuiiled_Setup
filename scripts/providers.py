@@ -89,31 +89,31 @@ PCDN_URLS = [
     "https://raw.githubusercontent.com/wuiiled/PCDN-mihomo-list/main/pcdn.list"
 ]
 
-# OxiDNS (mosdns 分支) 从 smartdns 分支拉取的规则文件清单，
-# 与 OxiDNS 配置文件中 downloads 段的 URL 一一对应。
-# smartdns / mosdns-x 分支只同步这些规则集；同时在 rules/ 根目录以 OxiDNS
-# 期望的历史文件名落一份兼容副本，保证线上 OxiDNS 配置的订阅直链持续可用。
-OXIDNS_RULE_FILES = {
-    "CN_merged.txt": "geosite-cn",
-    "ADs_merged.txt": "geosite-ad",
-    "Custom_Emby.txt": "geosite-custom-emby",
-    "proxy.txt": "geosite-!cn",
-    "cnip.txt": "geoip-cn",
-    "apple_cdn.txt": "geosite-apple-cdn",
-    "apple_cn.txt": "geosite-apple-cn",
-    "apple_services.txt": "geosite-apple-services",
-    "microsoft_cdn.txt": "geosite-microsoft-cdn",
-    "alibaba.txt": "geosite-alibaba",
-    "baidu.txt": "geosite-baidu",
-    "bilibili.txt": "geosite-bilibili",
-    "bytedance.txt": "geosite-bytedance",
-    "qihoo360.txt": "geosite-qihoo360",
-    "tencent.txt": "geosite-tencent",
-    "xiaomi.txt": "geosite-xiaomi",
-}
+# OxiDNS (smartdns / mosdns-x 分支) 的发布白名单: 与线上 config downloads 段
+# 的规则集一一对应 (2026-09-26 核对)。旧文件名根目录兼容副本 (CN_merged.txt/
+# proxy.txt/cnip.txt 等) 已于 2026-10 退役: 线上 v1.5.2 起全部改订标准路径,
+# 根目录副本零引用 (线上配置逐条核对)。
+OXIDNS_RULESETS = (
+    "geosite-cn",
+    "geosite-ad",
+    "geosite-custom-emby",
+    "geosite-!cn",
+    "geoip-cn",
+    "geosite-apple-cdn",
+    "geosite-apple-cn",
+    "geosite-apple-services",
+    "geosite-microsoft-cdn",
+    "geosite-alibaba",
+    "geosite-baidu",
+    "geosite-bilibili",
+    "geosite-bytedance",
+    "geosite-qihoo360",
+    "geosite-tencent",
+    "geosite-xiaomi",
+)
 
 # 线上 OxiDNS (10.0.0.2, config v1.5.2) 额外订阅、但无需根目录兼容副本的集合
-# (直接下载 rules/geosite|geoip/ 下的标准名文件, 2026-09-26 与线上 downloads 段对齐):
+# (直接下载 rules/geosite|geoip/ 下的标准名文件):
 #   - 黑加白双集合 (线上 sequence: qname $ad_allow → return 前置短路 + $ad_precise drop)
 #   - GFW 投毒 IP 靶心
 # 缺失任一项都会让线上对应下载 URL 404、规则文件停更 (2026-09-25~26 事故)。

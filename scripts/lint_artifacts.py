@@ -25,18 +25,11 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import providers  # noqa: E402
 
 DOMAIN_OK = re.compile(
     r"^(?=.{1,253}$)([a-z0-9]([a-z0-9_-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9_-]{0,61}[a-z0-9])?$", re.I
 )
 IP_OK = re.compile(r"^(\d{1,3}\.){3}\d{1,3}(/\d{1,2})?$|^[0-9a-fA-F:]+(/\d{1,3})?$")
-
-
-def _legacy_geoip_names():
-    """根目录历史文件名中承载 IP 列表的 (如 cnip.txt), 按 providers 映射判定。"""
-    return {legacy for legacy, target in providers.OXIDNS_RULE_FILES.items()
-            if target.startswith("geoip-")}
 
 
 def lint(output_base="output"):
@@ -54,7 +47,6 @@ def lint(output_base="output"):
         if not os.path.isdir(root):
             add(f"{branch}", 0, "分支产物目录缺失")
             continue
-        legacy_geoip = _legacy_geoip_names()
         files = glob.glob(root + "/**/*", recursive=True)
         for f in sorted(files):
             if not os.path.isfile(f):
@@ -81,8 +73,7 @@ def lint(output_base="output"):
             if os.path.getsize(f) == 0:
                 add(rel, 0, "空文件")
                 continue
-            is_geoip = ("/geoip/" in norm + "/") or \
-                       (os.path.dirname(f) == root) and (os.path.basename(f) in legacy_geoip)
+            is_geoip = "/geoip/" in norm + "/"
             for i, raw in enumerate(open(f, encoding="utf-8", errors="replace"), 1):
                 l = raw.strip()
                 if not l or l.startswith("#"):

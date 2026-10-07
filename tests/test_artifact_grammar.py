@@ -26,7 +26,7 @@ def _seed_blackwhite():
 
 def _synthetic_rules():
     """覆盖 OxiDNS 白名单 + adg 三集 + 带 keyword/regex 的 cn 的最小 IR。"""
-    names = (set(providers.OXIDNS_RULE_FILES.values())
+    names = (set(providers.OXIDNS_RULESETS)
              | providers.OXIDNS_EXTRA_RULESETS)
     rules = {}
     for name in names:

@@ -4,7 +4,6 @@ Rule cleaning, normalization, prefix-tree optimization, and regex compaction.
 Extracted and purified from utils.py to ensure testability and high cohesion.
 """
 
-import os
 import re
 import ipaddress
 from typing import Set, List, Optional, Tuple, Dict

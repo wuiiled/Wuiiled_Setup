@@ -26,12 +26,13 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 
 
 # Branch display metadata: (emoji, title, format badge text, primary format)
+# Branch display metadata: (emoji, title, format badge text)
 _BRANCH_META = {
-    "singbox":  ("📦", "Sing-box",  ".srs / .json",  "binary"),
-    "mihomo":   ("📦", "Mihomo (Clash Meta)", ".mrs / .txt", "mrs"),
-    "smartdns": ("📦", "SmartDNS",  "OxiDNS mosdns syntax", "txt"),
-    "mosdns-x": ("📦", "MosDNS-X",  "domain: / full:", "txt"),
-    "adg":      ("📦", "AdGuard Home", "AdGuard filter", "txt"),
+    "singbox":  ("📦", "Sing-box",  ".srs / .json"),
+    "mihomo":   ("📦", "Mihomo (Clash Meta)", ".mrs / .txt"),
+    "smartdns": ("📦", "SmartDNS",  "OxiDNS mosdns syntax"),
+    "mosdns-x": ("📦", "MosDNS-X",  "domain: / full:"),
+    "adg":      ("📦", "AdGuard Home", "AdGuard filter"),
 }
 
 # Unified Categorization and Metadata for all 120+ rule sets
@@ -508,7 +509,6 @@ def _total_rules(target_dir: str) -> Tuple[int, int]:
     """Sum rule counts and distinct rule-sets across geosite/geoip subdirs and root rule files."""
     total_items = 0
     distinct_rules = set()
-    legacy_names = set(os.path.splitext(k)[0] for k in providers.OXIDNS_RULE_FILES)
     alias_names = _oxidns_alias_basenames()
 
     for sub in ("geosite", "geoip"):
@@ -534,9 +534,6 @@ def _total_rules(target_dir: str) -> Tuple[int, int]:
         p = os.path.join(target_dir, f)
         if os.path.isfile(p) and f != "README.md":
             base = os.path.splitext(f)[0]
-            if base in legacy_names:
-                # OxiDNS 兼容副本: 与 geosite/ 内同名规则集重复, 不重复计数
-                continue
             distinct_rules.add(base)
             total_items += count_file_rules(p)
 
@@ -549,7 +546,7 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
     if not os.path.exists(target_dir):
         return
 
-    emoji, title, fmt_badge, _ = _BRANCH_META.get(target, ("📦", target, "", "txt"))
+    emoji, title, fmt_badge = _BRANCH_META.get(target, ("📦", target, ""))
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     total_items, total_sets = _total_rules(target_dir)
     manifest = _load_manifest(output_base_dir)
@@ -667,14 +664,10 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
         available_geoips = {os.path.splitext(f)[0] for f in os.listdir(geoip_dir)}
 
     root_files: Dict[str, str] = {}
-    legacy_names = set(os.path.splitext(k)[0] for k in providers.OXIDNS_RULE_FILES)
     for f in os.listdir(target_dir):
         p = os.path.join(target_dir, f)
         if os.path.isfile(p) and f != "README.md":
             base = os.path.splitext(f)[0]
-            if base in legacy_names:
-                # OxiDNS 兼容副本: 不在 README 中重复渲染
-                continue
             root_files[base] = f
 
     # Quick Jump Table of Contents

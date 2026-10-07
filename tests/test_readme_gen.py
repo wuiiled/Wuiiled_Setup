@@ -7,7 +7,6 @@ README 生成一致性测试: 保证"介绍"永远等于"实际包含的内容"�
 - 0-Diff 徽章只出现在 singbox 分支。
 """
 import json
-import os
 
 import pytest
 
@@ -17,7 +16,6 @@ from core.readme_gen import (
     PLATFORM_MARKERS,
     RULE_METADATA,
     _manifest_note,
-    _render_note,
     build_manifest,
     compute_markers,
     generate_branch_readme,

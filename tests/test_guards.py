@@ -11,7 +11,7 @@ from core.models import RuleSet
 
 def _full_tree(tmp_path):
     """构造满足全部不变量的最小 output 树。"""
-    ox = sorted(set(providers.OXIDNS_RULE_FILES.values()) | providers.OXIDNS_EXTRA_RULESETS)
+    ox = sorted(set(providers.OXIDNS_RULESETS) | providers.OXIDNS_EXTRA_RULESETS)
     for branch in ("smartdns", "mosdns-x"):
         for name in ox:
             sub = "geoip" if name.startswith("geoip-") else "geosite"

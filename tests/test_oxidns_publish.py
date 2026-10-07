@@ -36,7 +36,7 @@ def _seed_blackwhite_files():
 
 def _published_rules():
     """构造主 IR: 恰好覆盖白名单+别名目标, 但不含黑加白双集合 (与真实 all_rules 一致)。"""
-    names = (set(providers.OXIDNS_RULE_FILES.values())
+    names = (set(providers.OXIDNS_RULESETS)
              | providers.OXIDNS_EXTRA_RULESETS
              | set(providers.OXIDNS_SUBDIR_ALIASES.values()))
     rules = {}
@@ -70,9 +70,9 @@ def test_publish_covers_oxidns_downloads(tmp_path, modname, func):
     for rel in providers.OXIDNS_SUBDIR_ALIASES:
         assert (tmp_path / rel).exists(), f"线上订阅的别名缺失: {rel}"
 
-    # 3. 传统根目录兼容副本保持存在
-    for legacy in providers.OXIDNS_RULE_FILES:
-        assert (tmp_path / legacy).exists(), f"根目录兼容副本缺失: {legacy}"
+    # 3. 根目录历史文件名副本已退役: 不得再出现
+    for legacy in ("CN_merged.txt", "ADs_merged.txt", "proxy.txt", "cnip.txt"):
+        assert not (tmp_path / legacy).exists(), f"已退役的根目录副本不应再发布: {legacy}"
 
     # 4. 白名单之外的集合不得发布 (例如 adg 专属的 geosite-pcdn)
     assert not (tmp_path / "geosite" / "geosite-pcdn.txt").exists()
@@ -80,8 +80,7 @@ def test_publish_covers_oxidns_downloads(tmp_path, modname, func):
 
 def test_oxidns_lists_are_consistent():
     """别名目标必须可发布 (在白名单并集内), 且别名 base 不与标准名冲突。"""
-    published = (set(providers.OXIDNS_RULE_FILES.values())
-                 | providers.OXIDNS_EXTRA_RULESETS)
+    published = set(providers.OXIDNS_RULESETS) | providers.OXIDNS_EXTRA_RULESETS
     for rel, target in providers.OXIDNS_SUBDIR_ALIASES.items():
         assert target in published, f"别名 {rel} 的目标集合 {target} 不在发布清单内"
         assert os.path.splitext(os.path.basename(rel))[0] != target

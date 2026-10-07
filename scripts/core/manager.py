@@ -143,11 +143,6 @@ TIANLING_GEOIPS = {
     "geoip-private": "geoip-private"
 }
 
-# 以天灵 sing-geosite 预编译 srs 原样同步的集合（不经 dat 重解析）。
-# geosite-cn 以天灵配方为基座，自有列表与手动补丁统一走 rules/patches/ 补丁通道。
-# 此机制保留给未来需要原样直通的其他集合。
-TIANLING_RAW_SRS: Dict[str, str] = {}
-
 # dat 解析结果 (含属性视图, 已应用 filterTags) 的模块级缓存,
 # 供统一补丁通道解析 include:dat: 指令使用。
 _DAT_SOURCE_MAP: Dict[str, RuleSet] = {}
@@ -268,15 +263,6 @@ def load_tianling_rules() -> Dict[str, RuleSet]:
     recipe_cn.sources = ["天灵配方精编 cn (geolocation-cn + category-*@cn + category-*-cn + .cn)"]
     print(f"  🧬 [天灵配方] geosite-cn                    | 配方合成: {recipe_cn.total_count:,} 条 (geolocation-cn + category-*@cn + category-*-cn)")
     results["geosite-cn"] = recipe_cn
-
-    # 天灵原样同步集合 (TIANLING_RAW_SRS): 直接拉取其预编译 srs，不经 dat 重解析
-    for tag, out_name in TIANLING_RAW_SRS.items():
-        rs = fetch_tianling_ruleset(tag, category="geosite", out_name=out_name)
-        if rs is None:
-            print(f"  ❌ [天灵原样] {out_name:<26} | 无法获取 {tag}.srs")
-            continue
-        print(f"  ✅ [天灵原样] {out_name:<26} | 规则数: {rs.total_count:,}")
-        results[out_name] = rs
 
     # GeoIP unchanged: still from Tianling sing-geoip srs
     with ThreadPoolExecutor(max_workers=8) as executor:
