@@ -291,8 +291,7 @@ def load_ads_rules() -> RuleSet:
     final_ads_path = os.path.join(mod_dir, "final_ads.txt")
 
     # 1. Download online ad sources
-    online_urls = [u for u in providers.ADS_BLOCK_URLS if not u.endswith("Reject-addon.txt")]
-    utils.download_files_parallel(raw_ads_path, online_urls)
+    utils.download_files_parallel(raw_ads_path, providers.ADS_BLOCK_URLS)
 
     # 2. Append local addon
     local_addon = read_local_file("rules/addons/reject-addon.txt")
@@ -420,8 +419,7 @@ def load_fakeip_rules() -> RuleSet:
     os.makedirs(mod_dir, exist_ok=True)
     raw_fakeip_dl = os.path.join(mod_dir, "raw_fakeip_dl.txt")
 
-    online_urls = [u for u in providers.FAKE_IP_URLS if not u.endswith("fake-ip-addon.txt")]
-    utils.download_files_parallel(raw_fakeip_dl, online_urls)
+    utils.download_files_parallel(raw_fakeip_dl, providers.FAKE_IP_URLS)
 
     unique_lines = set()
     if os.path.exists(raw_fakeip_dl):
@@ -502,8 +500,7 @@ def load_reject_drop_rules() -> RuleSet:
     os.makedirs(mod_dir, exist_ok=True)
     raw_rd = os.path.join(mod_dir, "raw_rd.txt")
 
-    online_urls = [u for u in providers.DROP_URLS if not u.endswith("Custom_Reject-drop.txt")]
-    utils.download_files_parallel(raw_rd, online_urls)
+    utils.download_files_parallel(raw_rd, providers.DROP_URLS)
 
     rd_lines = set()
     if os.path.exists(raw_rd):
@@ -719,12 +716,12 @@ def load_custom_rules() -> Dict[str, RuleSet]:
 def load_skk_rules() -> Dict[str, RuleSet]:
     """Fetch and parse rules from ruleset.skk.moe."""
     results: Dict[str, RuleSet] = {}
-    url_cache = {}
+    unique_urls = list(set(providers.MIHOMO_SKK.values()))
+    with ThreadPoolExecutor(max_workers=min(len(unique_urls), 8)) as executor:
+        url_cache = dict(zip(unique_urls, executor.map(fetch_text_url, unique_urls)))
 
     for name, url in providers.MIHOMO_SKK.items():
-        if url not in url_cache:
-            url_cache[url] = fetch_text_url(url)
-        content = url_cache[url]
+        content = url_cache.get(url, "")
 
         is_ip = name.startswith("geoip-") or name.lower().endswith(('_ip', '_ip.txt'))
         domains = set()

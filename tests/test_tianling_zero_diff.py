@@ -44,17 +44,19 @@ import core.fetcher as fetcher
 CACHE_DIR = os.path.join(tempfile.gettempdir(), "wuiiled_tianling_cache")
 
 def _get_upstream_bytes(repo: str, tag: str) -> bytes:
+    """实时拉取天灵官方上游最新 srs; 失败/离线时降级复用已有缓存保底 (保证绝对时效性且避免缓存过期假阳性)。"""
     os.makedirs(CACHE_DIR, exist_ok=True)
     cache_file = os.path.join(CACHE_DIR, f"{tag}.srs")
-    if os.path.exists(cache_file):
-        with open(cache_file, "rb") as f:
-            return f.read()
     url = f"https://raw.githubusercontent.com/1715173329/{repo}/rule-set/{tag}.srs"
     data = fetcher.fetch_bytes_url(url, timeout=15, retries=2)
     if data:
         with open(cache_file, "wb") as f:
             f.write(data)
-    return data
+        return data
+    if os.path.exists(cache_file):
+        with open(cache_file, "rb") as f:
+            return f.read()
+    return b""
 
 
 def _decompile_srs(srs_path, json_path):

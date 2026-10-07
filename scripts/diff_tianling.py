@@ -35,11 +35,12 @@ CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "wuiiled_setup", "ti
 FIELDS = ("domain", "domain_suffix", "domain_keyword", "domain_regex")
 
 
-def fetch_upstream_srs(tag: str) -> str:
-    """下载(或读取缓存)天灵上游 srs, 返回本地文件路径; 失败返回空串。"""
+def fetch_upstream_srs(tag: str, no_cache: bool = False) -> str:
+    """下载(或读取缓存)天灵上游 srs, 返回本地文件路径; 失败返回空串。支持 no_cache 强制刷新。"""
     os.makedirs(CACHE_DIR, exist_ok=True)
     cache_file = os.path.join(CACHE_DIR, f"{tag}.srs")
-    if os.path.exists(cache_file) and os.path.getsize(cache_file) > 0:
+    bypass = no_cache or os.environ.get("WUIILED_NO_CACHE") == "1"
+    if not bypass and os.path.exists(cache_file) and os.path.getsize(cache_file) > 0:
         return cache_file
     import urllib.request
     url = f"https://raw.githubusercontent.com/1715173329/{UPSTREAM_REPO}/rule-set/{tag}.srs"
@@ -50,6 +51,9 @@ def fetch_upstream_srs(tag: str) -> str:
             f.write(data)
         return cache_file
     except Exception as e:
+        if os.path.exists(cache_file) and os.path.getsize(cache_file) > 0:
+            print(f"  ⚠️ 下载上游 {tag}.srs 失败 ({e}), 降级复用已有缓存")
+            return cache_file
         print(f"  ⚠️ 下载上游 {tag}.srs 失败: {e}")
         return ""
 
@@ -88,6 +92,8 @@ def main() -> int:
     parser.add_argument("--fail-on-diff", action="store_true")
     parser.add_argument("--strict-extra", action="store_true",
                         help="仅额外 (本地比天灵镜像多) 也视为失败; 默认仅 missing 致命")
+    parser.add_argument("--no-cache", action="store_true",
+                        help="强制绕过本地缓存, 重新从天灵上游拉取最新 srs")
     args = parser.parse_args()
 
     geosite_dir = os.path.join(args.output, "geosite")
@@ -104,7 +110,7 @@ def main() -> int:
         if not os.path.exists(local_srs):
             print(f"  ⏭️  {local_name:<28} 本地未构建, 跳过")
             continue
-        up_srs = fetch_upstream_srs(upstream_tag)
+        up_srs = fetch_upstream_srs(upstream_tag, no_cache=args.no_cache)
         if not up_srs:
             # 下载失败不计入 0-Diff 统计 (避免负数假象), 单独报告; 不作为差异
             print(f"  ⚠️ {local_name:<28} 上游 srs 下载失败, 本轮跳过")

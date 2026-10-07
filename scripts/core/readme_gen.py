@@ -25,7 +25,6 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
         pass
 
 
-# Branch display metadata: (emoji, title, format badge text, primary format)
 # Branch display metadata: (emoji, title, format badge text)
 _BRANCH_META = {
     "singbox":  ("📦", "Sing-box",  ".srs / .json"),
