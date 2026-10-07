@@ -62,17 +62,15 @@ jobs:
     - name: Validate 0-Diff & artifact grammar
       run: |
         export LC_ALL=C
-        # 0-Diff 的设计目的是验证转换代码是否忠实于上游, 因此仅在代码/配置
-        # 变更的构建 (push / 手动触发) 上拦截部署。定时构建代码未变更, 不做
-        # 拦截: 两上游 (Loyalsoldier dat 与天灵镜像) 存在发布时差, 严格比对
-        # 会以假阳性挡住新鲜度部署 (2026-10-05 实例)。差异仍完整打印在日志。
+        # 0-Diff 的设计目的是验证转换代码是否忠实于上游 —— 仅在代码/配置变更
+        # 的构建 (push / 手动触发) 执行并拦截部署。定时构建代码未变更, 完全跳过
+        # (不做上游比对, 不产生下载与反编译开销)。
+        # 语法门禁与产物守卫检查的是产物本身而非上游对齐, 与上游无关, 每次必拦。
         if [ "${{ github.event_name }}" = "schedule" ]; then
-          PYTHONPATH=scripts python3 scripts/diff_tianling.py \
-            || echo "::warning::0-Diff 报告存在差异或比对异常 (定时构建不拦截部署, 详见上方日志)"
+          echo "定时构建: 跳过 0-Diff (代码未变更; 该验证在 push / 手动触发构建时执行)"
         else
           PYTHONPATH=scripts python3 scripts/diff_tianling.py --fail-on-diff
         fi
-        # 语法门禁零网络、无时差暴露, 每次构建必拦
         PYTHONPATH=scripts python3 scripts/lint_artifacts.py output
 
     - name: Notify on failure
