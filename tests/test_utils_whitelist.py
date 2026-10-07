@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Tests for utils.apply_advanced_whitelist_filter"""
-import pytest
 import tempfile
 import os
 from utils import apply_advanced_whitelist_filter

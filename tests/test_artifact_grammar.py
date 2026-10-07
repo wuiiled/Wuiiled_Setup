@@ -5,10 +5,9 @@ scripts/lint_artifacts.py 的同一套校验逐文件断言行文法。
 不需要网络与编译器 (WUIILED_ALLOW_MISSING_COMPILERS=1, conftest 已设)。
 """
 import importlib
-import os
 
 import providers
-import utils
+from conftest import seed_blackwhite_files
 from core.models import RuleSet
 from lint_artifacts import lint
 
@@ -20,16 +19,9 @@ BUILDERS = [
     ("build_adg", "build_adg_rules", "adg"),
 ]
 
-AD_SEEDS = {"blocklist_b.txt": "doubleclick.net\nads.example.com\n",
-            "whitelist_b.txt": "fls.doubleclick.net\n"}
-
 
 def _seed_blackwhite():
-    ads = os.path.join(utils.get_work_dir(), "ads")
-    os.makedirs(ads, exist_ok=True)
-    for fname, content in AD_SEEDS.items():
-        with open(os.path.join(ads, fname), "w", encoding="utf-8") as f:
-            f.write(content)
+    seed_blackwhite_files()
 
 
 def _synthetic_rules():

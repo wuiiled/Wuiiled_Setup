@@ -11,11 +11,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
 import providers
-from core.cleaner import (
-    normalize_domain_line,
-    clean_ip_line,
-    clean_mihomo_domain_line,
-)
+from core.cleaner import normalize_domain_line
 from core.models import RuleSet
 
 WORK_DIR = None
@@ -58,9 +54,6 @@ def check_tool(binary: str) -> bool:
         print(f"❌ 错误: 在 GitHub Actions 环境中未找到 '{binary}' 编译器！必须中断任务以防生成残缺规则集。")
         sys.exit(1)
     return False
-
-def check_mihomo():
-    return check_tool("mihomo")
 
 def safe_copy(src, dst):
     """跨平台安全复制 (Windows 大小写去重)。失败直接抛出:
@@ -248,14 +241,6 @@ def decompile_srs(srs_path, json_path):
     )
     with open(json_path, "r", encoding="utf-8") as f:
         return json.load(f)
-
-def is_valid_ip_or_cidr(line):
-    """
-    判断一行内容是否为有效的 IP 或 CIDR (可包含 IP-CIDR 前缀等装饰)。
-    与 core.cleaner.is_valid_ip_or_cidr (严格模式) 语义不同: 本函数用于行分类,
-    需容忍 classical 规则装饰, 故基于 clean_ip_line 的清洗结果判定。
-    """
-    return clean_ip_line(line) is not None
 
 def load_blackwhite_rulesets(work_dir=None):
     """从 manager.load_ads_rules 产出的黑加白文件构造 ad-precise / ad-allow IR。

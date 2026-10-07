@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Tests for utils.normalize_domain_line"""
-import pytest
 from utils import normalize_domain_line
 
 

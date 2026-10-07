@@ -115,18 +115,3 @@ class RuleSet:
             for r in sorted(self.domain_regexes):
                 lines.append(f"DOMAIN-REGEX,{r}")
         return lines
-
-    def to_plain_domains(self) -> List[str]:
-        """
-        Extract clean plain domains/suffixes for SmartDNS / MosDNS / AdGuard Home.
-        """
-        results = set()
-        for d in self.domains:
-            clean = d.strip().lower()
-            if clean:
-                results.add(clean)
-        for s in self.domain_suffixes:
-            clean = s.lstrip('.').strip().lower()
-            if clean:
-                results.add(clean)
-        return sorted(list(results))

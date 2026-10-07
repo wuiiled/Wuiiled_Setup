@@ -3,19 +3,14 @@
 adg 分支 (直接发布) 与 singbox 分支 (转 adguard 型 srs) 必须消费字节相同的
 同一份产物 —— 渲染实现只允许存在一份, 两分支不得各自为政。"""
 import importlib
-import os
 
-import utils
+from conftest import seed_blackwhite_files
 from core.models import RuleSet
 
 
 def _seed_blackwhite():
-    ads = os.path.join(utils.get_work_dir(), "ads")
-    os.makedirs(ads, exist_ok=True)
-    with open(os.path.join(ads, "blocklist_b.txt"), "w", encoding="utf-8") as f:
-        f.write("doubleclick.net\nads.example.com\n")
-    with open(os.path.join(ads, "whitelist_b.txt"), "w", encoding="utf-8") as f:
-        f.write("fls.doubleclick.net\n")
+    seed_blackwhite_files()
+    import utils
     return utils.render_adguard_geosite_ad()
 
 

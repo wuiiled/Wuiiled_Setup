@@ -18,7 +18,7 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 
 
 def check_mihomo() -> bool:
-    return utils.check_mihomo()
+    return utils.check_tool("mihomo")
 
 
 def build_mihomo_rules(rules: Dict[str, RuleSet], output_dir: str = "output/mihomo"):

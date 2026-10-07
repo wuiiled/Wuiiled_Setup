@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Tests for utils.clean_mihomo_domain_line, clean_ip_line, is_valid_ip_or_cidr"""
-import pytest
-from utils import clean_mihomo_domain_line, clean_ip_line, is_valid_ip_or_cidr
+"""Tests for core.cleaner: clean_mihomo_domain_line, clean_ip_line, is_valid_ip_or_cidr"""
+from core.cleaner import clean_mihomo_domain_line, clean_ip_line
 
 
 class TestCleanMihomoDomainLine:
@@ -65,25 +64,3 @@ class TestCleanIpLine:
 
     def test_ip_cidr6_prefix(self):
         assert clean_ip_line("IP-CIDR6,fd00::/8") == "fd00::/8"
-
-
-class TestIsValidIpOrCidr:
-    """Test is_valid_ip_or_cidr."""
-
-    def test_valid_ip(self):
-        assert is_valid_ip_or_cidr("192.168.1.1") is True
-
-    def test_valid_cidr(self):
-        assert is_valid_ip_or_cidr("10.0.0.0/8") is True
-
-    def test_valid_ipv6(self):
-        assert is_valid_ip_or_cidr("fd00::1") is True
-
-    def test_invalid_domain(self):
-        assert is_valid_ip_or_cidr("example.com") is False
-
-    def test_with_prefix(self):
-        assert is_valid_ip_or_cidr("IP-CIDR,10.0.0.0/8") is True
-
-    def test_empty(self):
-        assert is_valid_ip_or_cidr("") is False

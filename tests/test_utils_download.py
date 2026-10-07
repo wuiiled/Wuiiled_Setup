@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Tests for utils.download_files_parallel"""
-import pytest
 import tempfile
 import os
 from unittest.mock import patch

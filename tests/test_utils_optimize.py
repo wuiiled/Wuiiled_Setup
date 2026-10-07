@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Tests for utils.optimize_smart_self"""
-import pytest
 import tempfile
 import os
 from utils import optimize_smart_self
