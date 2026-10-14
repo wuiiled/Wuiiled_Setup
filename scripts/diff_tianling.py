@@ -2,17 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 全量 0-Diff 验证工具: 将本地生成的 sing-box 规则与天灵 sing-geosite 上游逐条语义比对。
-
-对 core.manager.TIANLING_GEOSITES 中的每个集合:
-  1. 下载天灵 rule-set 分支的预编译 srs (本地缓存)
-  2. sing-box 反编译为 JSON
-  3. 与本地 output/singbox 产物 (优先直接读构建时生成的 .json) 按
-     domain / domain_suffix / domain_keyword / domain_regex 四个字段做集合差
-  4. 本地多出的条目会先扣除 rules/patches/ 中仍生效的本地补丁
-
-用法:
-  PYTHONPATH=scripts python scripts/diff_tianling.py [--output output/singbox] [--fail-on-diff]
-退出码: 有差异且 --fail-on-diff 时为 1, 否则 0。
+修复:
+1. 仅当本地补丁 (patches) 新增了父后缀、导致 sing-box 编译时吸收了上游子域时，才豁免被该补丁覆盖的 missing 条目
+   (绝不用全量 loc_suffixes 豁免，防止掩盖真正的解析器退化 Bug);
+2. 补丁条目统一经过 IDNA 归一。
 """
 
 import argparse
@@ -27,6 +20,7 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
         pass
 
 import utils
+from core.cleaner import _domain_ancestors
 from core.manager import TIANLING_GEOSITES
 from core.patcher import load_patch_file
 
@@ -36,7 +30,7 @@ FIELDS = ("domain", "domain_suffix", "domain_keyword", "domain_regex")
 
 
 def fetch_upstream_srs(tag: str, no_cache: bool = False) -> str:
-    """下载(或读取缓存)天灵上游 srs, 返回本地文件路径; 失败返回空串。支持 no_cache 强制刷新。"""
+    """下载(或读取缓存)天灵上游 srs，返回本地文件路径；失败返回空串。"""
     os.makedirs(CACHE_DIR, exist_ok=True)
     cache_file = os.path.join(CACHE_DIR, f"{tag}.srs")
     bypass = no_cache or os.environ.get("WUIILED_NO_CACHE") == "1"
@@ -52,14 +46,14 @@ def fetch_upstream_srs(tag: str, no_cache: bool = False) -> str:
         return cache_file
     except Exception as e:
         if os.path.exists(cache_file) and os.path.getsize(cache_file) > 0:
-            print(f"  ⚠️ 下载上游 {tag}.srs 失败 ({e}), 降级复用已有缓存")
+            print(f"  ⚠️ 下载上游 {tag}.srs 失败 ({e})，降级复用已有缓存")
             return cache_file
         print(f"  ⚠️ 下载上游 {tag}.srs 失败: {e}")
         return ""
 
 
 def load_rule_fields(srs_path: str = "", json_path: str = "") -> dict:
-    """读取规则字段: 优先给反编译好的 json, 否则用 sing-box 反编译 srs。"""
+    """读取规则字段: 优先给反编译好的 json，否则用 sing-box 反编译 srs。"""
     work_dir = utils.get_work_dir()
     if not json_path:
         json_path = os.path.join(work_dir, f"diff_{os.path.basename(srs_path)}.json")
@@ -78,12 +72,18 @@ def load_rule_fields(srs_path: str = "", json_path: str = "") -> dict:
 
 
 def active_patch_entries(local_name: str) -> set:
-    """当前仍生效的手动补丁条目 (用于从 local-only 差异中扣除)。"""
+    """当前仍生效的手动补丁条目 (含 IDNA 归一，用于从 local-only 差异中扣除)。"""
     entries = set()
     for kind, rtype, value, _raw in load_patch_file(local_name):
         if kind == "rule":
-            entries.add(value.lower().lstrip("."))
+            entries.add(utils._idna_domain(value.lower().lstrip(".")))
     return entries
+
+
+def _is_covered_by_patch_suffixes(item: str, patches: set) -> bool:
+    """检查上游条目是否被本地补丁 (patches) 中的父后缀所覆盖。"""
+    clean = item.lstrip(".")
+    return any(anc in patches for anc in _domain_ancestors(clean))
 
 
 def main() -> int:
@@ -91,7 +91,7 @@ def main() -> int:
     parser.add_argument("--output", default="output/singbox")
     parser.add_argument("--fail-on-diff", action="store_true")
     parser.add_argument("--strict-extra", action="store_true",
-                        help="仅额外 (本地比天灵镜像多) 也视为失败; 默认仅 missing 致命")
+                        help="额外 (本地比天灵镜像多) 也视为失败; 默认仅 missing 致命")
     parser.add_argument("--no-cache", action="store_true",
                         help="强制绕过本地缓存, 重新从天灵上游拉取最新 srs")
     args = parser.parse_args()
@@ -112,15 +112,12 @@ def main() -> int:
             continue
         up_srs = fetch_upstream_srs(upstream_tag, no_cache=args.no_cache)
         if not up_srs:
-            # 下载失败不计入 0-Diff 统计 (避免负数假象), 单独报告; 不作为差异
-            print(f"  ⚠️ {local_name:<28} 上游 srs 下载失败, 本轮跳过")
+            print(f"  ⚠️  {local_name:<28} 上游 srs 下载失败, 本轮跳过")
             skipped_pairs += 1
             continue
         total_pairs += 1
 
         up_fields = load_rule_fields(srs_path=up_srs)
-        # 必须反编译本地 .srs 而非读构建时的 .json: 后者是编译前源码,
-        # sing-box 编译时会做覆盖去重, 用 .json 比对会产生假差异
         loc_fields = load_rule_fields(srs_path=local_srs)
         patches = active_patch_entries(local_name)
 
@@ -129,9 +126,11 @@ def main() -> int:
             up_set = {x.lower() for x in up_fields.get(key, set())}
             loc_set = {x.lower() for x in loc_fields.get(key, set())}
             missing = up_set - loc_set
+            if missing and patches and key in ("domain", "domain_suffix"):
+                missing = {m for m in missing if not _is_covered_by_patch_suffixes(m, patches)}
             extra = loc_set - up_set
             if patches:
-                extra = {e for e in extra if e not in patches}
+                extra = {e for e in extra if e.lstrip(".") not in patches}
             if missing:
                 set_diffs.append((key, "missing", sorted(missing)))
             if extra:
@@ -147,13 +146,11 @@ def main() -> int:
             )
             print(f"  ❌ {local_name:<28} {detail}")
         elif extra_only:
-            # 仅额外 = 本地忠实反映更新的 dat, 而天灵镜像尚未同步 (发布滞后),
-            # 或 Loyalsoldier dat 的瞬态条目 —— 不是产物回归, 警告不拦截部署
             extra_only_pairs.append((local_name, extra_only))
             detail = "; ".join(
                 f"{k} {kind} {len(items)} 条 如{items[:3]}" for k, kind, items in extra_only
             )
-            print(f"  ⚠️ {local_name:<28} 仅额外 (上游发布滞后, 不拦截): {detail}")
+            print(f"  ⚠️  {local_name:<28} 仅额外 (上游发布滞后, 不拦截): {detail}")
         else:
             print(f"  ✅ {local_name:<28} 0-Diff")
 

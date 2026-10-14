@@ -9,9 +9,10 @@ import atexit
 import threading
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, List, Optional
 
 import providers
-from core.cleaner import normalize_domain_line
+from core.cleaner import normalize_domain_line, _domain_ancestors, is_valid_ip_or_cidr
 from core.models import RuleSet
 
 WORK_DIR = None
@@ -21,6 +22,7 @@ os.environ["LC_ALL"] = "C"
 
 _WORK_DIR_LOCK = threading.Lock()
 
+
 def get_work_dir():
     global WORK_DIR
     if WORK_DIR is None:
@@ -29,6 +31,7 @@ def get_work_dir():
                 WORK_DIR = tempfile.mkdtemp(prefix="wuiiled_convert_")
                 atexit.register(cleanup)
     return WORK_DIR
+
 
 def cleanup():
     global WORK_DIR
@@ -40,10 +43,9 @@ def cleanup():
         finally:
             WORK_DIR = None
 
+
 def check_tool(binary: str) -> bool:
-    """检查编译器二进制是否可用; 在 GitHub Actions 上缺失时直接中断流程。
-    WUIILED_ALLOW_MISSING_COMPILERS=1 时 (测试环境) 不探测、不中断, 返回 False
-    —— 必须先于 WSL 探测判断, 否则本机测试会真实调用几十次 WSL 编译器。"""
+    """检查编译器二进制是否可用；在 GitHub Actions 上缺失时直接中断流程。"""
     if os.environ.get("WUIILED_ALLOW_MISSING_COMPILERS") == "1":
         return False
     if shutil.which(binary):
@@ -55,21 +57,19 @@ def check_tool(binary: str) -> bool:
         sys.exit(1)
     return False
 
+
 def safe_copy(src, dst):
-    """跨平台安全复制 (Windows 大小写去重)。失败直接抛出:
-    复制失败意味着分支产物不完整, 静默吞掉会造成部署缺文件。"""
+    """跨平台安全复制 (Windows 大小写去重)。"""
     if os.path.normcase(os.path.abspath(src)) == os.path.normcase(os.path.abspath(dst)):
         return
     shutil.copyfile(src, dst)
 
-def download_file(url, timeout=15, retries=3):
-    """文本下载统一走 core.fetcher (镜像回退+重试的单一实现)。
 
-    延迟导入: core.fetcher 顶层 import utils (get_work_dir/_resolve_cmd),
-    调用时导入可避免模块加载期的循环依赖。
-    """
+def download_file(url, timeout=15, retries=3):
+    """文本下载统一走 core.fetcher (镜像回退+重试的单一实现)。"""
     import core.fetcher as fetcher
     return fetcher.fetch_text_url(url, timeout=timeout, retries=retries)
+
 
 def download_files_parallel(output_file, urls):
     with ThreadPoolExecutor(max_workers=min(len(urls) + 1, 10)) as executor:
@@ -81,7 +81,8 @@ def download_files_parallel(output_file, urls):
             try:
                 content = future.result()
                 if content.strip():
-                    if not content.endswith('\n'): content += '\n'
+                    if not content.endswith('\n'):
+                        content += '\n'
                     results.append(content)
                     success_count += 1
                 else:
@@ -92,40 +93,52 @@ def download_files_parallel(output_file, urls):
     if urls:
         print(f"📥 下载完成: {success_count} 成功, {fail_count} 失败 (共 {len(urls)} 源)")
     with open(output_file, 'w', encoding='utf-8') as f:
-        if results: f.write("".join(results))
+        if results:
+            f.write("".join(results))
+
 
 def process_normalize_domain(input_file, output_file, skip_allow_rules=False):
     if not os.path.exists(input_file):
-        with open(output_file, 'w', encoding='utf-8') as f:
+        with open(output_file, 'w', encoding='utf-8'):
             pass
         return
     domains = set()
     with open(input_file, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip().lower()
-            if not line: continue
-            if skip_allow_rules and line.startswith("@@"): continue
+            if not line:
+                continue
+            if skip_allow_rules and line.startswith("@@"):
+                continue
             res = normalize_domain_line(line)
-            if res: domains.add(res)
+            if res:
+                domains.add(_idna_domain(res))
     with open(output_file, 'w', encoding='utf-8') as f:
-        for d in sorted(domains): f.write(d + '\n')
+        for d in sorted(domains):
+            f.write(d + '\n')
+
 
 def apply_keyword_filter(input_file, output_file):
+    if not os.path.exists(input_file):
+        with open(output_file, 'w', encoding='utf-8'):
+            pass
+        return
     keywords = []
     if os.path.exists(EXCLUDE_FILE) and os.path.getsize(EXCLUDE_FILE) > 0:
         with open(EXCLUDE_FILE, 'r', encoding='utf-8') as kf:
             keywords = [k.strip().lower() for k in kf if k.strip() and not k.strip().startswith("#")]
     if not keywords:
-        shutil.copyfile(input_file, output_file)
+        safe_copy(input_file, output_file)
         return
-    with open(input_file, 'r', encoding='utf-8') as infile, open(output_file, 'w', encoding='utf-8') as outfile:
-        for line in infile:
-            if not any(kw in line.lower() for kw in keywords):
-                outfile.write(line)
+    with open(input_file, 'r', encoding='utf-8') as infile:
+        kept = [line for line in infile if not any(kw in line.lower() for kw in keywords)]
+    with open(output_file, 'w', encoding='utf-8') as outfile:
+        outfile.writelines(kept)
+
 
 def optimize_smart_self(input_file, output_file):
     if not os.path.exists(input_file) or os.path.getsize(input_file) == 0:
-        with open(output_file, 'w', encoding='utf-8') as f:
+        with open(output_file, 'w', encoding='utf-8'):
             pass
         return
     with open(input_file, 'r', encoding='utf-8') as f:
@@ -133,26 +146,32 @@ def optimize_smart_self(input_file, output_file):
     data = []
     for line in lines:
         line = line.strip()
-        if not line or line.startswith("#"): continue
+        if not line or line.startswith("#"):
+            continue
         clean = line
         is_wildcard = False
-        if clean.startswith("+."): clean, is_wildcard = clean[2:], True
-        elif clean.startswith("."): clean, is_wildcard = clean[1:], True
+        if clean.startswith("+."):
+            clean, is_wildcard = clean[2:], True
+        elif clean.startswith("."):
+            clean, is_wildcard = clean[1:], True
         parts = clean.split(".")
         parts.reverse()
-        if parts: data.append({'parts': parts, 'is_wildcard': is_wildcard, 'original': line})
+        if parts:
+            data.append({'parts': parts, 'is_wildcard': is_wildcard, 'original': line})
     data.sort(key=lambda x: (x['parts'], not x['is_wildcard']))
     result_lines = []
     last_root = None
     for item in data:
         curr, is_covered = item['parts'], False
-        if last_root is not None and len(curr) >= len(last_root) and curr[:len(last_root)] == last_root: is_covered = True
+        if last_root is not None and len(curr) >= len(last_root) and curr[:len(last_root)] == last_root:
+            is_covered = True
         if not is_covered:
             result_lines.append(item['original'])
             last_root = curr if item['is_wildcard'] else None
     with open(output_file, 'w', encoding='utf-8') as f:
         if result_lines:
             f.write('\n'.join(result_lines) + '\n')
+
 
 def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
     allow_set = set()
@@ -161,50 +180,30 @@ def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
     if os.path.exists(allow_in):
         with open(allow_in, 'r', encoding='utf-8') as f:
             for line in f:
-                line = line.strip().lower()
-                if not line or line.startswith('#'): continue
-                if line.startswith("+."): line = line[2:]
-                elif line.startswith("."): line = line[1:]
+                line = line.strip().lower().lstrip('+').lstrip('.')
+                if not line or line.startswith('#'):
+                    continue
                 allow_set.add(line)
-
-                # 构建白名单域名的所有父域名集合，用于 Option A 的子域防误杀检测
                 parts = line.split('.')
                 for i in range(1, len(parts)):
-                    parent = ".".join(parts[i:])
-                    allow_parents_set.add(parent)
+                    allow_parents_set.add(".".join(parts[i:]))
 
     final_lines = []
     if os.path.exists(block_in):
         with open(block_in, 'r', encoding='utf-8') as f:
             for line in f:
                 original = line.strip()
-                if not original or original.startswith('#'): continue
-                pure = original.lower()
-                if pure.startswith("+."): pure = pure[2:]
-                elif pure.startswith("."): pure = pure[1:]
-
-                is_allowed = False
-
-                # 1. 检查当前拦截域名（或其父域名）是否在白名单中
-                parts = pure.split('.')
-                for i in range(len(parts)):
-                    parent = ".".join(parts[i:])
-                    if parent in allow_set:
-                        is_allowed = True
-                        break
-
-                # 2. 检查是否有任何白名单域名属于当前拦截域名的子域。
-                # 如果有，为了避免拦截父域时误杀白名单子域，当前拦截域也必须放行（Option A 策略）
-                if not is_allowed:
-                    if pure in allow_parents_set:
-                        is_allowed = True
-
-                if not is_allowed:
-                    final_lines.append(original)
+                if not original or original.startswith('#'):
+                    continue
+                pure = original.lower().lstrip('+').lstrip('.')
+                if pure in allow_parents_set or any(anc in allow_set for anc in _domain_ancestors(pure)):
+                    continue
+                final_lines.append(original)
 
     with open(final_out, 'w', encoding='utf-8') as f:
         if final_lines:
             f.write('\n'.join(final_lines) + '\n')
+
 
 def _resolve_cmd(cmd):
     binary = cmd[0]
@@ -224,6 +223,7 @@ def _resolve_cmd(cmd):
         return wsl_cmd
     return cmd
 
+
 def compile_ruleset(cmd, output_name):
     """执行规则集编译命令，失败时打印警告而非中断流程。"""
     try:
@@ -232,9 +232,9 @@ def compile_ruleset(cmd, output_name):
     except subprocess.CalledProcessError as e:
         print(f"⚠️ 警告: 编译 {output_name} 发生异常:\n{e.stderr}")
 
+
 def decompile_srs(srs_path, json_path):
-    """sing-box `rule-set decompile` 的统一封装 (返回解析后的 dict)。
-    此前该调用在 fetcher/build_singbox/diff_tianling/测试 各重复一份。"""
+    """sing-box `rule-set decompile` 的统一封装 (返回解析后的 dict)。"""
     subprocess.run(
         _resolve_cmd(["sing-box", "rule-set", "decompile", srs_path, "-o", json_path]),
         check=True, capture_output=True, text=True,
@@ -242,12 +242,9 @@ def decompile_srs(srs_path, json_path):
     with open(json_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def load_blackwhite_rulesets(work_dir=None):
-    """从 manager.load_ads_rules 产出的黑加白文件构造 ad-precise / ad-allow IR。
 
-    这两个集合不在主 IR (all_rules) 中——它们是构建期差集产物。四个导出器
-    统一经本函数消费: mihomo 渲染 +.txt/.mrs, smartdns/mosdns 渲染 DNS 语法,
-    adg/singbox 经 render_adguard_geosite_ad 派生。"""
+def load_blackwhite_rulesets(work_dir=None):
+    """从 manager.load_ads_rules 产出的黑加白文件构造 ad-precise / ad-allow IR (含 IDNA 归一)。"""
     work_dir = work_dir or get_work_dir()
     specs = (
         ("geosite-ad-precise", "blocklist_b.txt", "去广告黑名单精确版 (双集合黑名单B)"),
@@ -257,13 +254,12 @@ def load_blackwhite_rulesets(work_dir=None):
     for name, fname, desc in specs:
         path = os.path.join(work_dir, "ads", fname)
         if not os.path.exists(path):
-            # manager.load_ads_rules 一定会写出这两个文件 (失败会抛错), 缺失 = 编程错误
             raise RuntimeError(f"黑加白中间产物缺失: {path} (manager.load_ads_rules 未运行?)")
         if os.path.getsize(path) == 0:
             print(f"  [黑加白] {fname} 为空, 跳过 {name} (上游黑名单/白名单为空?)")
             continue
         with open(path, "r", encoding="utf-8") as f:
-            entries = {l.strip() for l in f if l.strip() and not l.startswith("#")}
+            entries = {_idna_domain(l.strip()) for l in f if l.strip() and not l.startswith("#")}
         if entries:
             out[name] = RuleSet(
                 name=name,
@@ -275,43 +271,50 @@ def load_blackwhite_rulesets(work_dir=None):
             )
     return out
 
+
 _ADGAuthGuard = None
+
 
 def render_adguard_geosite_ad(work_dir=None):
     """渲染 geosite-ad 的统一 AdGuard 源文件 (||黑名单B^ + @@||白名单B^)。
-
-    单一渲染实现 + 单一产物: adg 分支直接发布该文件, singbox 分支以
-    `rule-set convert --type adguard` 转换为 srs —— 两分支同源派生,
-    导出器不各自渲染 (解耦)。内容确定性强; 并发首渲经 临时文件 +
-    os.replace 原子落盘, 重复调用幂等。黑加白中间产物缺失时硬失败。
+    缓存键同时校验输入文件 (mtime_ns, size)，避免单元测试在同一 work_dir 下改写输入后读到旧缓存。
     """
     global _ADGAuthGuard
     work_dir = work_dir or get_work_dir()
     out_path = os.path.join(work_dir, "ads", "geosite-ad.adguard.txt")
-    if _ADGAuthGuard == out_path and os.path.exists(out_path):
+    blk_path = os.path.join(work_dir, "ads", "blocklist_b.txt")
+    wht_path = os.path.join(work_dir, "ads", "whitelist_b.txt")
+    for p in (blk_path, wht_path):
+        if not os.path.exists(p):
+            raise RuntimeError(f"AdGuard 源缺失: {p} (manager 黑白产物未生成)")
+
+    sig = (
+        out_path,
+        os.stat(blk_path).st_mtime_ns,
+        os.stat(blk_path).st_size,
+        os.stat(wht_path).st_mtime_ns,
+        os.stat(wht_path).st_size,
+    )
+    if _ADGAuthGuard == sig and os.path.exists(out_path):
         return out_path
+
     lines = []
-    for fname, fmt in (("blocklist_b.txt", "||{}^"), ("whitelist_b.txt", "@@||{}^")):
-        path = os.path.join(work_dir, "ads", fname)
-        if not os.path.exists(path):
-            raise RuntimeError(f"AdGuard 源缺失: {path} (manager 黑加白产物未生成)")
+    for path, fmt in ((blk_path, "||{}^"), (wht_path, "@@||{}^")):
         with open(path, "r", encoding="utf-8") as f:
             for line in f.read().splitlines():
-                domain = line.strip().lstrip('+.').lstrip('.')
+                domain = _idna_domain(line.strip().lstrip('+').lstrip('.'))
                 if domain and not domain.startswith('#'):
                     lines.append(fmt.format(domain))
-    # 并发首渲时各线程写各自的 tmp 文件再原子替换 (共用同一 tmp 名会互相截断)
     tmp_path = f"{out_path}.{os.getpid()}.{threading.get_ident()}.tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + ("\n" if lines else ""))
     os.replace(tmp_path, out_path)
-    _ADGAuthGuard = out_path
+    _ADGAuthGuard = sig
     return out_path
 
 
 def select_oxidns_rules(rules):
-    """OxiDNS 发布白名单过滤 + 黑加白 IR 注入 (smartdns / mosdns-x 共用,
-    此前该机制在两个导出器中逐行复制)。"""
+    """OxiDNS 发布白名单过滤 + 黑加白 IR 注入 (smartdns / mosdns-x 共用)。"""
     whitelist = set(providers.OXIDNS_RULESETS) | providers.OXIDNS_EXTRA_RULESETS
     out = {name: rs for name, rs in rules.items() if name in whitelist}
     for name, bw in load_blackwhite_rulesets().items():
@@ -321,9 +324,7 @@ def select_oxidns_rules(rules):
 
 
 def publish_oxidns_compat(output_dir, rules):
-    """OxiDNS 旧命名别名副本: geosite/ 子目录的 geosite-geolocation-!cn.txt
-    (线上以旧命名订阅, 标准名 geosite-!cn)。根目录历史文件名副本已退役
-    (线上配置零引用, 2026-10 核对)。"""
+    """OxiDNS 旧命名别名副本: geosite/ 子目录的 geosite-geolocation-!cn.txt。"""
     geosite_out = os.path.join(output_dir, "geosite")
     geoip_out = os.path.join(output_dir, "geoip")
     for rel, ruleset_name in providers.OXIDNS_SUBDIR_ALIASES.items():
@@ -338,13 +339,35 @@ def publish_oxidns_compat(output_dir, rules):
             safe_copy(src, dst)
 
 
-def validate_output_invariants(output_base="output", require_binaries=True):
-    """P1 守卫: 关键集合产物必须存在且非空。
+def format_oxidns_lines(rs: RuleSet, domain_prefix: str = "domain:", flatten_host_cidr: bool = False) -> List[str]:
+    """生成 OxiDNS (mosdns-x / smartdns) 单文件的行列表，消除两个导出器的循环重复。"""
+    lines: List[str] = []
+    if rs.is_geoip:
+        for cidr in sorted(rs.ip_cidrs):
+            if flatten_host_cidr and "." in cidr and cidr.endswith("/32"):
+                lines.append(cidr[:-3])
+            elif flatten_host_cidr and ":" in cidr and cidr.endswith("/128"):
+                lines.append(cidr[:-4])
+            else:
+                lines.append(cidr)
+    else:
+        for s in sorted(rs.domain_suffixes):
+            clean_s = s.lstrip('.')
+            if clean_s:
+                lines.append(f"{domain_prefix}{clean_s}")
+        for d in sorted(rs.domains):
+            clean_d = d.strip()
+            if clean_d and clean_d not in rs.domain_suffixes:
+                lines.append(f"full:{clean_d}")
+        for k in sorted(rs.domain_keywords):
+            lines.append(f"keyword:{k}")
+        for r in sorted(rs.domain_regexes):
+            lines.append(f"regexp:{r}")
+    return lines
 
-    上游源整体下载失败时旧流程会发布空集, OxiDNS 04:00 下载空文件会
-    清空线上 provider (cn/大厂/黑加白全部失效)。此处对每个分支的
-    路由关键产物做非空断言, 违反即抛错 (构建失败, 不部署)。
-    """
+
+def validate_output_invariants(output_base="output", require_binaries=True):
+    """P1 守卫: 关键集合产物必须存在且非空。"""
     def _nonempty_text(path):
         if not os.path.exists(path) or os.path.getsize(path) == 0:
             return False
@@ -380,12 +403,11 @@ def validate_output_invariants(output_base="output", require_binaries=True):
                 problems.append(f"singbox/{sub}/{name}.srs 缺失或为空")
     if problems:
         raise RuntimeError("关键产物不变量校验失败 (拒绝发布, 防止空集清空线上 provider):\n  - " + "\n  - ".join(problems))
-    print(f"  ✅ [守卫] 关键产物不变量校验通过 ({len(ox_names)}×2 DNS 集 + mihomo/adg/singbox 关键集)")
+    print(f"  ✅ [守卫] 关键产物不变量校验通过 ({len(ox_names)}x2 DNS 集 + mihomo/adg/singbox 关键集)")
 
 
-def _idna_domain(value):
-    """非 ASCII 域名转 punycode (IDNA)。DNS 线上查询只存在 punycode 形态,
-    unicode 条目在任何消费者中都永不命中。转换失败原样返回 (由产物门禁拦截)。"""
+def _idna_domain(value: str) -> str:
+    """非 ASCII 域名转 punycode (IDNA)。"""
     if value.isascii():
         return value
     try:
@@ -395,9 +417,7 @@ def _idna_domain(value):
 
 
 def idna_normalize_rules(rules):
-    """遍历全部规则集, 把 domain/domain_suffix 桶中的非 ASCII 域名统一转
-    punycode (keyword/regexp 语义不同, 不转换)。必须在补丁/合并全部完成、
-    导出开始前调用。返回转换条数。"""
+    """遍历全部规则集，把 domain/domain_suffix 桶中的非 ASCII 域名统一转 punycode。"""
     total = 0
     for name, rs in rules.items():
         converted = 0
@@ -418,3 +438,8 @@ def idna_normalize_rules(rules):
     if total:
         print(f"  ✅ [IDNA] 共转换 {total} 条")
     return total
+
+
+# 兼容性别名
+process_normalize_domain_file = process_normalize_domain
+

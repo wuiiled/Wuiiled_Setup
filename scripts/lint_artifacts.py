@@ -1,22 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""产物语法门禁: 校验 output/<branch> 下每个规则文件的行文法与该分支
-消费端解析器一致 (P1-M: `-.` 类死条目曾因此存活)。
-
-各分支文法 (与消费者源码核对过):
-  singbox   geosite/*.txt 仅允许 AdGuard 行 (||x^ / @@||x^, geosite-ad 源);
-            *.json 必须可解析
-  mihomo    geosite: 禁 DOMAIN-KEYWORD/REGEX 行; 主体须为裸域名/+.后缀/*.通配
-            (trie 无法承载含 `:` `/` 空格的行); geoip: 纯 IP/CIDR
-  smartdns  geosite: 可选 full:/keyword:/regexp: 前缀 + 合法域名主体;
-            禁 -./+./domain: 前缀; geoip 及根目录 legacy IP 副本: 纯 IP/CIDR
-  mosdns-x  geosite: domain:/full:/keyword:/regexp: 四种前缀; geoip: 纯 IP/CIDR
-  adg       ||x^ / @@||x^ + 合法域名主体
-通用: 禁空文件; 域名主体禁非 ASCII (IDNA 归一后不应残留); keyword/regexp
-正文免域名校验 (语义行)。
-
-用法: PYTHONPATH=scripts python3 scripts/lint_artifacts.py [output_base]
-退出码: 有问题 1, 否则 0。
+"""产物语法门禁: 校验 output/<branch> 下每个规则文件的行语法与该分支消费端解析器一致。
+- 域名校验复用 core.cleaner.is_valid_domain (geosite 允许单标签 TLD 如 cn/lan/xn--fiqs8s,
+  adg/singbox 广告过滤要求带点号域名，同时支持 _dmarc 等下划线前缀并拒绝纯数字 IPv4 混入域名);
+- IP 校验复用 core.cleaner.is_valid_ip_or_cidr (支持 IPv4-mapped IPv6，拦截 999.999.999.999/99 与纯十六进制词)。
 """
 import glob
 import json
@@ -37,10 +24,7 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-DOMAIN_OK = re.compile(
-    r"^(?=.{1,253}$)([a-z0-9]([a-z0-9_-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9_-]{0,61}[a-z0-9])?$", re.I
-)
-IP_OK = re.compile(r"^(\d{1,3}\.){3}\d{1,3}(/\d{1,2})?$|^[0-9a-fA-F:]+(/\d{1,3})?$")
+from core.cleaner import is_valid_domain, is_valid_ip_or_cidr
 
 
 def lint(output_base="output"):
@@ -52,8 +36,6 @@ def lint(output_base="output"):
 
     for branch in ("singbox", "mihomo", "smartdns", "mosdns-x", "adg"):
         branch_dir = os.path.join(output_base, branch)
-        # 兼容两种布局: 构建布局 output/<branch>/geosite|geoip/...,
-        # 部署布局 output/<branch>/rules/geosite|geoip/... (CI 部署时整体移入 rules/)
         root = os.path.join(branch_dir, "rules") if os.path.isdir(os.path.join(branch_dir, "rules")) else branch_dir
         if not os.path.isdir(root):
             add(f"{branch}", 0, "分支产物目录缺失")
@@ -74,7 +56,8 @@ def lint(output_base="output"):
                     add(rel, 0, "空文件")
                     continue
                 try:
-                    json.load(open(f, encoding="utf-8"))
+                    with open(f, encoding="utf-8") as jf:
+                        json.load(jf)
                 except Exception as e:
                     add(rel, 0, f"JSON 解析失败: {e}")
                 continue
@@ -85,50 +68,43 @@ def lint(output_base="output"):
                 add(rel, 0, "空文件")
                 continue
             is_geoip = "/geoip/" in norm + "/"
-            for i, raw in enumerate(open(f, encoding="utf-8", errors="replace"), 1):
-                l = raw.strip()
-                if not l or l.startswith("#"):
-                    continue
-                if branch == "adg":
-                    ok = (l.startswith("||") and l.endswith("^")) or (l.startswith("@@||") and l.endswith("^"))
-                    if not ok:
-                        add(rel, i, f"adg 语法异常: {l[:50]!r}")
+            with open(f, encoding="utf-8", errors="replace") as tf:
+                for i, raw in enumerate(tf, 1):
+                    l = raw.strip()
+                    if not l or l.startswith("#"):
                         continue
-                    dom = l.removeprefix("@@").removeprefix("||").removesuffix("^")
-                    if not DOMAIN_OK.match(dom):
-                        add(rel, i, f"adg 域名异常: {l[:50]!r}")
-                elif branch == "singbox":
-                    # singbox 分支的 txt 仅 geosite-ad (AdGuard 源)
-                    if not ((l.startswith("||") and l.endswith("^")) or (l.startswith("@@||") and l.endswith("^"))):
-                        add(rel, i, f"singbox txt 异常: {l[:50]!r}")
-                    else:
+                    if branch in ("adg", "singbox"):
+                        ok = (l.startswith("||") and l.endswith("^")) or (l.startswith("@@||") and l.endswith("^"))
+                        if not ok:
+                            add(rel, i, f"{branch} 语法异常: {l[:50]!r}")
+                            continue
                         dom = l.removeprefix("@@").removeprefix("||").removesuffix("^")
-                        if not DOMAIN_OK.match(dom):
-                            add(rel, i, f"singbox 域名异常: {l[:50]!r}")
-                elif is_geoip:
-                    if not IP_OK.match(l):
-                        add(rel, i, f"geoip 异常行: {l[:50]!r}")
-                elif branch == "mihomo":
-                    if l.startswith(("DOMAIN-KEYWORD,", "DOMAIN-REGEX,")):
-                        add(rel, i, f"keyword/regex 未剥离: {l[:40]!r}")
-                        continue
-                    body = l[2:] if l.startswith("+.") else l
-                    if "*" in l or " " in body:
-                        continue  # 通配符与消费端特例字面量 (如 'mijia cloud') 合法
-                    if ":" in body or "/" in body or not DOMAIN_OK.match(body):
-                        add(rel, i, f"trie 无法承载: {l[:50]!r}")
-                elif branch in ("smartdns", "mosdns-x"):
-                    m = re.match(r"^(full:|domain:|keyword:|regexp:)?(.*)$", l)
-                    pfx, body = m.group(1) or "", m.group(2)
-                    if pfx in ("keyword:", "regexp:"):
-                        continue  # 语义行正文免域名校验
-                    if branch == "smartdns" and pfx == "domain:":
-                        add(rel, i, f"smartdns 不应出现 domain: 前缀: {l[:40]!r}")
-                    if branch == "mosdns-x" and not pfx:
-                        add(rel, i, f"mosdns-x 裸行应为 domain: 前缀: {l[:40]!r}")
-                    if body.startswith(("-.", "+.", "*", "-")) or " " in body or "/" in body \
-                            or not DOMAIN_OK.match(body):
-                        add(rel, i, f"{branch} 非法行: {l[:50]!r}")
+                        if not is_valid_domain(dom, allow_tld=True):
+                            add(rel, i, f"{branch} 域名异常: {l[:50]!r}")
+                    elif is_geoip:
+                        if not is_valid_ip_or_cidr(l):
+                            add(rel, i, f"geoip 异常行: {l[:50]!r}")
+                    elif branch == "mihomo":
+                        if l.startswith(("DOMAIN-KEYWORD,", "DOMAIN-REGEX,")):
+                            add(rel, i, f"keyword/regex 未剥离: {l[:40]!r}")
+                            continue
+                        body = l[2:] if l.startswith("+.") else l
+                        if "*" in l or " " in body:
+                            continue
+                        if ":" in body or "/" in body or not is_valid_domain(body, allow_tld=True):
+                            add(rel, i, f"trie 无法承载: {l[:50]!r}")
+                    elif branch in ("smartdns", "mosdns-x"):
+                        m = re.match(r"^(full:|domain:|keyword:|regexp:)?(.*)$", l)
+                        pfx, body = m.group(1) or "", m.group(2)
+                        if pfx in ("keyword:", "regexp:"):
+                            continue
+                        if branch == "smartdns" and pfx == "domain:":
+                            add(rel, i, f"smartdns 不应出现 domain: 前缀: {l[:40]!r}")
+                        if branch == "mosdns-x" and not pfx:
+                            add(rel, i, f"mosdns-x 裸行应为 domain: 前缀: {l[:40]!r}")
+                        if body.startswith(("-.", "+.", "*", "-")) or " " in body or "/" in body \
+                                or not is_valid_domain(body, allow_tld=True):
+                            add(rel, i, f"{branch} 非法行: {l[:50]!r}")
 
     if not seen_any:
         add(output_base, 0, "未扫描到任何规则文件 (构建产物缺失?)")

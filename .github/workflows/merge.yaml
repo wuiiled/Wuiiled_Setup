@@ -44,7 +44,7 @@ jobs:
         gunzip mihomo.gz && chmod +x mihomo && sudo mv mihomo /usr/local/bin/mihomo
 
         echo "Downloading latest sing-box 1.14 version (including alpha/pre-release) binary..."
-        sb_version=$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL https://api.github.com/repos/SagerNet/sing-box/releases | jq -r '[.[] | select(.tag_name | startswith("v1.14."))] | .[0].tag_name')
+        sb_version=$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL "https://api.github.com/repos/SagerNet/sing-box/releases?per_page=100" | jq -r '[.[] | select(.tag_name | startswith("v1.14."))] | .[0].tag_name')
         if [ -z "$sb_version" ] || [ "$sb_version" = "null" ]; then
           echo "::error::Failed to fetch sing-box version"
           exit 1

@@ -8,11 +8,47 @@ import re
 import ipaddress
 from typing import Set, List, Optional, Tuple, Dict
 
+_DOMAIN_LABEL = r'[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?'
+# Multi-label domain (requires at least one dot, used for adblock/hosts cleaning)
+_DOMAIN_MULTI_RE = re.compile(
+    rf'^(?=.{{1,253}}$)({_DOMAIN_LABEL}\.)+[a-z0-9]([a-z0-9-]{{0,61}}[a-z0-9])?$',
+    re.IGNORECASE,
+)
+# Single-label TLD or multi-label domain (used for artifact linting where bare TLDs like 'cn', 'google', 'lan' exist)
+_DOMAIN_OR_TLD_RE = re.compile(
+    rf'^(?=.{{1,253}}$)({_DOMAIN_LABEL}\.)*[a-z0-9]([a-z0-9_-]{{0,61}}[a-z0-9])?$',
+    re.IGNORECASE,
+)
+_IPV4_LITERAL_RE = re.compile(r'^\d+\.\d+\.\d+\.\d+$')
+_PURE_NUMERIC_RE = re.compile(r'^\d+$')
+
+# Only reject modifiers that invert or cancel rule semantics ($badfilter, $denyallow)
+_CANCEL_ADG_MODIFIERS = ("$badfilter", "$denyallow=")
+
+
+def is_valid_domain(val: str, allow_tld: bool = False) -> bool:
+    """Validate whether a string is a syntactically valid ASCII domain/hostname.
+    - allow_tld=False: requires at least one dot (for raw adlist/hosts line normalization)
+    - allow_tld=True: allows single-label TLDs like 'cn', 'google', 'lan', 'xn--fiqs8s' (for artifact linting)
+    """
+    if not val or _IPV4_LITERAL_RE.match(val) or _PURE_NUMERIC_RE.match(val):
+        return False
+    pattern = _DOMAIN_OR_TLD_RE if allow_tld else _DOMAIN_MULTI_RE
+    return bool(pattern.match(val))
+
 
 def normalize_domain_line(line: str) -> Optional[str]:
     """Normalize a raw domain line from various adblock/hosts/domain formats."""
     line = line.strip()
-    line = re.sub(r'[\$#].*', '', line)
+    if not line or line.startswith("!"):
+        return None
+
+    # Reject AdGuard rules with rule-canceling modifiers ($badfilter / $denyallow=) before stripping $
+    lower_raw = line.split("#", 1)[0].lower()
+    if "$" in lower_raw and any(mod in lower_raw for mod in _CANCEL_ADG_MODIFIERS):
+        return None
+
+    line = re.sub(r'[\#\$].*', '', line)
     line = re.sub(r'^(0\.0\.0\.0|127\.0\.0\.1)\s+', '', line)
     if line.startswith("!"):
         return None
@@ -24,6 +60,7 @@ def normalize_domain_line(line: str) -> Optional[str]:
         line = line.split(',')[0]
     line = re.sub(r'^(\+\.|\.)', '', line)
     line = line.rstrip('.')
+
     if (
         '.' not in line
         or '*' in line
@@ -33,6 +70,16 @@ def normalize_domain_line(line: str) -> Optional[str]:
         or ' ' in line
         or ':' in line
     ):
+        return None
+
+    # Convert non-ASCII IDN domains to punycode before validating labels
+    if not line.isascii():
+        try:
+            line = line.encode("idna").decode("ascii").lower()
+        except Exception:
+            return None
+
+    if not is_valid_domain(line, allow_tld=False):
         return None
     return line
 
@@ -46,7 +93,7 @@ def clean_ip_line(line: str) -> Optional[str]:
     line = re.sub(r'^(IP-CIDR|IP-CIDR6|IP6-CIDR),', '', line, flags=re.IGNORECASE).strip()
     if ',' in line:
         line = line.split(',')[0].strip()
-    line = line.strip(" '\"")
+    line = line.strip(" '\t\"")
     return line if is_valid_ip_or_cidr(line) else None
 
 
@@ -74,11 +121,7 @@ def clean_mihomo_domain_line(line: str) -> Optional[str]:
         val = line.split(',')[1].strip()
         return val if val else None
 
-    # 如果包含逗号，说明是具有其它前缀修饰的行 (如 IP-CIDR, PROCESS-NAME 等)，过滤掉
-    if ',' in line:
-        return None
-
-    if is_valid_ip_or_cidr(line):
+    if ',' in line or is_valid_ip_or_cidr(line):
         return None
 
     return line
@@ -95,9 +138,11 @@ def compact_regexes(regex_set: Set[str]) -> List[str]:
     regex_set.discard(".*")
     regex_set.discard("^.*$")
     regex_set.discard("^(.*\\.)?.*$")
+    regex_set.discard("^(\\.)?.*$")
 
     step1 = set()
     for r in regex_set:
+        # Fix infinite loop: match condition and replacement string must both use r'\..*\..*'
         while r'\..*\..*' in r:
             r = r.replace(r'\..*\..*', r'\..*')
         while r'-.*-.*' in r:
@@ -128,7 +173,7 @@ def compact_regexes(regex_set: Set[str]) -> List[str]:
     time_bases = {}
     nip_sslip_bases = set()
 
-    time_prefix_regex = re.compile(r'^(\^time(?:\\d*)?\\..*\\.)([^.]+\$)$')
+    time_prefix_regex = re.compile(r'^(\^time(?:\d*)?\\..*\\.)([^.]+\$)$')
 
     for r in step2:
         m = time_prefix_regex.match(r)
@@ -159,14 +204,8 @@ def compact_regexes(regex_set: Set[str]) -> List[str]:
 
 def absorb_covered_domains(domains: Set[str], suffixes: Set[str]) -> Tuple[Set[str], Set[str], int]:
     """
-    覆盖吸收: 删除被更短后缀语义涵盖的条目。仅用于 include 合并集 (cn/ai 等),
+    覆盖吸收: 删除被更短后缀语义涵盖的条目。仅用于 include 合并集 (cn/ai 等)，
     dat 派生集合不做吸收 (保持与天灵 0-Diff 同构)。
-      - 后缀 s: 其祖先链上存在另一个后缀时删除 (如 a.b.cn 被 cn 覆盖);
-      - 同标签的前导点形式 ('.anquan') 与裸形式 ('anquan') 并存时, 保留更广的裸形式;
-      - 精确域名 d: 其自身或祖先链命中任一后缀时删除 (sing-box 语义: suffix 覆盖自身+子域);
-      - keyword/regex 不参与。
-    宽松规范化 (lower + 去前后缀点号) 仅用于比较, 保留条目维持原字面。
-    返回 (kept_domains, kept_suffixes, removed_count)。
     """
     kept_suffixes: Set[str] = set()
     removed = 0
@@ -178,7 +217,6 @@ def absorb_covered_domains(domains: Set[str], suffixes: Set[str]) -> Tuple[Set[s
             continue
         if key in label_map:
             dup_labels += 1
-            # 同标签重复: 裸形式匹配面更广, 优先作为代表
             cur = label_map[key]
             if cur.startswith(".") and not s.strip().startswith("."):
                 label_map[key] = s
@@ -216,15 +254,11 @@ def _domain_ancestors(d: str) -> List[str]:
 def build_blocklist_b(raw_block: Set[str], raw_allow: Set[str]) -> Set[str]:
     """
     Precise blocklist (黑加白模式 黑名单B).
-    Remove ONLY blocklist entries that share an exact name or an ancestor with the
-    upstream allowlist (direction-1).  Unlike Option A we do NOT remove a parent
-    domain merely because the allowlist contains one of its children.  Finally
-    collapse redundant subdomains already covered by a kept parent (prefix-tree absorb).
     """
-    allow_set = {a for a in (x.strip().lower().lstrip('+.').lstrip('.') for x in raw_allow) if a}
+    allow_set = {a for a in (x.strip().lower().lstrip('+').lstrip('.') for x in raw_allow) if a}
     kept = set()
     for b in raw_block:
-        b = b.strip().lower().lstrip('+.').lstrip('.')
+        b = b.strip().lower().lstrip('+').lstrip('.')
         if not b:
             continue
         if any(anc in allow_set for anc in _domain_ancestors(b)):
@@ -242,14 +276,11 @@ def build_blocklist_b(raw_block: Set[str], raw_allow: Set[str]) -> Set[str]:
 def build_whitelist_b(raw_allow: Set[str], raw_block: Set[str], blocklist_b: Set[str]) -> Set[str]:
     """
     Allow exception list (黑加白模式 白名单B).
-    Keep an upstream allowlist entry iff it would be hit by blocklist_b (i.e. its exact
-    name or one of its ancestors is in blocklist_b) AND it does NOT itself appear in the
-    upstream blocklist (such entries are intentionally not blocked, so they need no exception).
     """
-    block_set = {b for b in (x.strip().lower().lstrip('+.').lstrip('.') for x in raw_block) if b}
+    block_set = {b for b in (x.strip().lower().lstrip('+').lstrip('.') for x in raw_block) if b}
     out = set()
     for a in raw_allow:
-        a = a.strip().lower().lstrip('+.').lstrip('.')
+        a = a.strip().lower().lstrip('+').lstrip('.')
         if not a or a in block_set:
             continue
         if any(a == blk or a.endswith("." + blk) for blk in blocklist_b):
