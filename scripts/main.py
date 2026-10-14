@@ -5,6 +5,10 @@ import sys
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+
 from core.manager import load_all_rules
 from core.readme_gen import generate_all_readmes, write_manifest
 import providers

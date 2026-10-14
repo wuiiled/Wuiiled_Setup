@@ -157,19 +157,22 @@ Wuiiled_Setup/
 **环境依赖**：Python 3.9+ · [mihomo](https://github.com/MetaCubeX/mihomo/releases) · [sing-box](https://github.com/SagerNet/sing-box/releases) 1.14.x（均放入 PATH 或通过 WSL）
 
 ```bash
-# 一键构建完整流水线并生成各平台 README
-PYTHONPATH=scripts python3 scripts/main.py
+# 一键构建完整流水线并生成各平台 README (跨平台通用，无需指定 PYTHONPATH)
+python scripts/main.py
 
 # 日常开发: 快速层单元/契约测试 (秒级, 不含 0-Diff)
-PYTHONPATH=scripts python3 -m pytest -m "not e2e"
+python -m pytest -m "not e2e"
 
 # 发版前: 全量测试 (含 0-Diff e2e, 需先构建) + 0-Diff 独立校验
-PYTHONPATH=scripts python3 -m pytest
-PYTHONPATH=scripts python3 scripts/diff_tianling.py --fail-on-diff
+python -m pytest
+python scripts/diff_tianling.py --fail-on-diff
 
 # 产物语法门禁 (CI 部署前自动执行, 也可手动)
-PYTHONPATH=scripts python3 scripts/lint_artifacts.py output
+python scripts/lint_artifacts.py output
 ```
+
+> [!NOTE]
+> 在 Linux / macOS 环境下亦可使用 `python3` 前缀；各脚本已内置环境自适配与模块搜索路径，无需手动声明 `PYTHONPATH`。
 
 ---
 

@@ -35,22 +35,34 @@ jobs:
     - name: Install Tools (Mihomo & Sing-box)
       run: |
         echo "Downloading latest mihomo binary..."
-        m_version=$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL https://api.github.com/repos/MetaCubeX/mihomo/releases/latest | jq -r .tag_name)
+        m_version=""
+        for i in 1 2 3; do
+          m_version=$(curl --retry 3 --retry-delay 2 -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL https://api.github.com/repos/MetaCubeX/mihomo/releases/latest | jq -r .tag_name 2>/dev/null || true)
+          [ -n "$m_version" ] && [ "$m_version" != "null" ] && break
+          sleep 2
+        done
         if [ -z "$m_version" ] || [ "$m_version" = "null" ]; then
-          echo "::error::Failed to fetch mihomo version"
-          exit 1
+          echo "⚠️ Warning: Failed to query latest mihomo via API, using fallback version"
+          m_version="v1.19.32"
         fi
-        curl -fsLo mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/$m_version/mihomo-linux-amd64-$m_version.gz"
-        gunzip mihomo.gz && chmod +x mihomo && sudo mv mihomo /usr/local/bin/mihomo
+        echo "Using mihomo version: $m_version"
+        curl --retry 5 --retry-delay 2 --retry-all-errors -fsLo mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/$m_version/mihomo-linux-amd64-$m_version.gz"
+        gunzip -f mihomo.gz && chmod +x mihomo && sudo mv mihomo /usr/local/bin/mihomo
 
         echo "Downloading latest sing-box 1.14 version (including alpha/pre-release) binary..."
-        sb_version=$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL "https://api.github.com/repos/SagerNet/sing-box/releases?per_page=100" | jq -r '[.[] | select(.tag_name | startswith("v1.14."))] | .[0].tag_name')
+        sb_version=""
+        for i in 1 2 3; do
+          sb_version=$(curl --retry 3 --retry-delay 2 -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL "https://api.github.com/repos/SagerNet/sing-box/releases?per_page=30" | jq -r '[.[] | select(.tag_name | startswith("v1.14."))] | .[0].tag_name' 2>/dev/null || true)
+          [ -n "$sb_version" ] && [ "$sb_version" != "null" ] && break
+          sleep 2
+        done
         if [ -z "$sb_version" ] || [ "$sb_version" = "null" ]; then
-          echo "::error::Failed to fetch sing-box version"
-          exit 1
+          echo "⚠️ Warning: Failed to query sing-box v1.14 via API, using fallback version"
+          sb_version="v1.14.3"
         fi
+        echo "Using sing-box version: $sb_version"
         sb_version_num=${sb_version#v}
-        curl -fsLo sing-box.tar.gz "https://github.com/SagerNet/sing-box/releases/download/$sb_version/sing-box-${sb_version_num}-linux-amd64.tar.gz"
+        curl --retry 5 --retry-delay 2 --retry-all-errors -fsLo sing-box.tar.gz "https://github.com/SagerNet/sing-box/releases/download/$sb_version/sing-box-${sb_version_num}-linux-amd64.tar.gz"
         tar -xzf sing-box.tar.gz
         sudo mv sing-box-${sb_version_num}-linux-amd64/sing-box /usr/local/bin/
 

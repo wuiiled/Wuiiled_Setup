@@ -13,6 +13,10 @@ import os
 import sys
 import json
 
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+
 import utils
 from core.cleaner import _domain_ancestors
 from core.manager import TIANLING_GEOSITES
