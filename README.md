@@ -77,45 +77,24 @@ GeoSite 规则直接拉取并解析 Loyalsoldier 官方最新 `geosite.dat` 二�
 </details>
 
 <details>
-<summary><b>🔀 去广告规则的三套产物</b>（黑名单A / 黑加白双集合 / AdGuard 混合，点击展开）</summary>
+<summary><b>🔀 去广告规则三套产物选型指南</b>（按需选择单集合 / 双集合 / AdGuard 混合，点击展开）</summary>
 
-上游黑名单经清洗去重后与上游白名单做差集。**凡与上游白名单同名或为其后代的拦截项一律剔除（方向1）**。在此基础上产出三套形态：
+上游黑名单经清洗去重后与上游白名单做差集。**凡与上游白名单同名或为其后代的拦截项一律剔除（方向1）**。在此基础上提供三套产物形态供不同客户端选型：
 
-- **黑名单A（Option A · 单集合保守版）**：额外把"白名单子域的父域"也剔除（方向2），宁放过勿错杀。对应 mihomo / smartdns / mosdns-x 分支的 `geosite-ad`，向后兼容。
-- **黑名单B + 白名单B（黑加白精确双集合）**：黑名单B 仅做方向1剔除（保留含白名单子域的父域）；白名单B 收录"会被黑名单B命中且自身不在上游黑名单"的上游白名单项。对应 mihomo、smartdns、mosdns-x 分支的 `geosite-ad-precise` 与 `geosite-ad-allow`。
-- **黑加白混合单文件**：`@@` 例外内嵌于同一文件。adg 分支直接输出 `||黑名单B^` + `@@||白名单B^`；**sing-box 分支的 `geosite-ad` 亦为此形态**——以 AdGuard 语法为源，经 `sing-box rule-set convert --type adguard`（≥ 1.10）编译为 adguard 型 srs，例外语义编译进 srs（adguard 型 srs 不可反编译，分支内以 txt 提供源码）。
-
-**各分支产物对照**：
-
-| 分支 | `geosite-ad` | `geosite-ad-precise` | `geosite-ad-allow` |
+| 形态方案 | 核心过滤逻辑 | 对应规则集文件 | 适用分支与客户端配置方式 |
 | :--- | :--- | :--- | :--- |
-| **smartdns**（供 OxiDNS） | 黑名单A | 黑名单B | 白名单B |
-| **mosdns-x**（供 OxiDNS） | 黑名单A | 黑名单B | 白名单B |
-| **mihomo** | 黑名单A | 黑名单B | 白名单B |
-| **sing-box** | 黑加白混合（AdGuard 型 srs） | — | — |
-| **adg** | 黑名单B + 白名单B 混合（`@@` 例外） | — | — |
-
-**使用方式**：OxiDNS 在 sequence 中先 `qname $allow → return` 再 `qname $precise → drop`；mihomo 在 `rules:` 中将 `RULE-SET,geosite-ad-allow,DIRECT` 置于 `RULE-SET,geosite-ad-precise,REJECT` 之前短路。
+| **黑名单A<br>*(单集合保守版)*** | 额外剔除白名单子域的父域（方向2，宁放过勿错杀） | `geosite-ad` | **mihomo / smartdns / mosdns-x**：单规则集直接配置 REJECT/drop，向后兼容 |
+| **黑加白双集合<br>*(精确推荐版)*** | 保留含白名单子域的父域；白名单B 仅收录被黑名单B命中且不在上游黑名单的项 | `geosite-ad-precise`（黑B）<br>`geosite-ad-allow`（白B） | **smartdns / mosdns-x**（供 OxiDNS）：先 `qname $allow → return` 再 `qname $precise → drop`<br>**mihomo**：将 `RULE-SET,geosite-ad-allow,DIRECT` 置于 `precise` 拦截前短路 |
+| **黑加白混合单文件<br>*(内置例外语法)*** | `@@` 放行例外内嵌于同一文件，单规则集同时表达拦截与放行 | `geosite-ad`（AdGuard 语法源） | **adg**：直接输出 `\|\|黑名单B^` + `@@\|\|白名单B^`<br>**sing-box**：经 `rule-set convert --type adguard` 编译为 adguard 型 srs，内核原生处理例外 |
 
 </details>
 
 <details>
-<summary><b>3️⃣ 知名生态服务与上游分类</b>（SKK 维护，点击展开）</summary>
+<summary><b>3️⃣ 知名生态服务与本地自定义规则</b>（SKK 权威分类 + 本地个性化分流，点击展开）</summary>
 
-由 [`ruleset.skk.moe`](https://ruleset.skk.moe) 权威提供，按国内大厂与核心基础设施精准分类：
+由 [`ruleset.skk.moe`](https://ruleset.skk.moe) 权威提供的大厂基础设施细分，及 `rules/` 目录下的个性化分流规则：
 
-- **`geosite-alibaba`**（阿里巴巴系）· **`geosite-tencent`**（腾讯系）· **`geosite-bilibili`**（哔哩哔哩）
-- **`geosite-xiaomi`**（小米系）· **`geosite-bytedance`**（字节跳动）· **`geosite-baidu`**（百度系）· **`geosite-qihoo360`**（奇虎360）
-- **`geosite-apple-services`** / **`geosite-apple-cn`** / **`geosite-apple-cdn`**（Apple 核心与 CDN 细分）
-- **`geosite-microsoft-cdn`**（微软 CDN）· **`geosite-domestic`**（国内常用服务）· **`geosite-download`**（应用商店与大文件下载）
-- **`geoip-stream`**（流媒体 IP 网段）· **`geoip-apple`**（Apple 核心服务 IP 网段）
-
-</details>
-
-<details>
-<summary><b>4️⃣ 本地自定义规则</b>（个性化分流，点击展开）</summary>
-
-存放于 `rules/` 目录，直接满足个性化路由需求：
+- **大厂与生态服务**：`geosite-alibaba`（阿里系）· `geosite-tencent`（腾讯系）· `geosite-bilibili`（B站）· `geosite-xiaomi`（小米系）· `geosite-bytedance`（字节跳动）· `geosite-baidu`（百度系）· `geosite-qihoo360`（360）· `geosite-apple-services` / `geosite-apple-cn` / `geosite-apple-cdn`（Apple 细分）· `geosite-microsoft-cdn`（微软 CDN）· `geosite-domestic`（国内常用）· `geosite-download`（应用商店/大文件下载）· `geoip-stream`（流媒体 IP）· `geoip-apple`（Apple 服务 IP）
 
 | 源文件 | 生成规则集 | 说明 |
 | :--- | :--- | :--- |

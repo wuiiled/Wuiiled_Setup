@@ -41,7 +41,8 @@ def fetch_upstream_srs(tag: str, no_cache: bool = False) -> str:
             f.write(data)
         return cache_file
     except Exception as e:
-        if os.path.exists(cache_file) and os.path.getsize(cache_file) > 0:
+        bypass = no_cache or os.environ.get("WUIILED_NO_CACHE") == "1"
+        if not bypass and os.path.exists(cache_file) and os.path.getsize(cache_file) > 0:
             print(f"  ⚠️ 下载上游 {tag}.srs 失败 ({e})，降级复用已有缓存")
             return cache_file
         print(f"  ⚠️ 下载上游 {tag}.srs 失败: {e}")
