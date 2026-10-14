@@ -7,6 +7,15 @@ Decouples data sourcing from platform-specific exporters.
 from typing import Set, List, Optional, Dict, Any
 
 
+def _strip_host_cidr(cidr: str) -> str:
+    """Strip /32 from IPv4 or /128 from IPv6 host addresses."""
+    if "." in cidr and cidr.endswith("/32"):
+        return cidr[:-3]
+    if ":" in cidr and cidr.endswith("/128"):
+        return cidr[:-4]
+    return cidr
+
+
 class RuleSet:
     def __init__(
         self,
@@ -95,12 +104,7 @@ class RuleSet:
         if self.is_geoip:
             for cidr in sorted(self.ip_cidrs):
                 if self.flatten_cidr_host:
-                    if "." in cidr and cidr.endswith("/32"):
-                        lines.append(cidr[:-3])
-                    elif ":" in cidr and cidr.endswith("/128"):
-                        lines.append(cidr[:-4])
-                    else:
-                        lines.append(cidr)
+                    lines.append(_strip_host_cidr(cidr))
                 else:
                     lines.append(cidr)
         else:
@@ -114,4 +118,37 @@ class RuleSet:
                 lines.append(f"DOMAIN-KEYWORD,{k}")
             for r in sorted(self.domain_regexes):
                 lines.append(f"DOMAIN-REGEX,{r}")
+        return lines
+
+    def to_oxidns_lines(self, domain_prefix: str = "domain:", flatten_host_cidr: bool = False) -> List[str]:
+        """
+        Generate line list for OxiDNS (mosdns-x / smartdns) text files.
+        For domain:
+          - domain_suffix: {domain_prefix}{suffix} (default "domain:foo.com", or "foo.com" for smartdns)
+          - domain: full:{domain} (if not already covered by exact suffix)
+          - keyword: keyword:{kw}
+          - regex: regexp:{regex}
+        For geoip:
+          - ip_cidr: CIDR (optionally stripping /32 or /128 host suffix)
+        """
+        lines: List[str] = []
+        if self.is_geoip:
+            for cidr in sorted(self.ip_cidrs):
+                if flatten_host_cidr:
+                    lines.append(_strip_host_cidr(cidr))
+                else:
+                    lines.append(cidr)
+        else:
+            for s in sorted(self.domain_suffixes):
+                clean_s = s.lstrip('.')
+                if clean_s:
+                    lines.append(f"{domain_prefix}{clean_s}")
+            for d in sorted(self.domains):
+                clean_d = d.strip()
+                if clean_d and clean_d not in self.domain_suffixes:
+                    lines.append(f"full:{clean_d}")
+            for k in sorted(self.domain_keywords):
+                lines.append(f"keyword:{k}")
+            for r in sorted(self.domain_regexes):
+                lines.append(f"regexp:{r}")
         return lines

@@ -11,20 +11,11 @@ import os
 import re
 import sys
 
-if sys.stdout and hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
-if sys.stderr and hasattr(sys.stderr, "reconfigure"):
-    try:
-        sys.stderr.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
-
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import utils
 from core.cleaner import is_valid_domain, is_valid_ip_or_cidr
+import providers
 
 
 def lint(output_base="output"):
@@ -34,7 +25,7 @@ def lint(output_base="output"):
     def add(rel, ln, msg):
         issues.append(f"{rel}:{ln}: {msg}")
 
-    for branch in ("singbox", "mihomo", "smartdns", "mosdns-x", "adg"):
+    for branch in providers.TARGET_BRANCHES:
         branch_dir = os.path.join(output_base, branch)
         root = os.path.join(branch_dir, "rules") if os.path.isdir(os.path.join(branch_dir, "rules")) else branch_dir
         if not os.path.isdir(root):

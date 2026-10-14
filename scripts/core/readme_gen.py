@@ -12,17 +12,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Set
 
 import providers
-
-if sys.stdout and hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
-if sys.stderr and hasattr(sys.stderr, "reconfigure"):
-    try:
-        sys.stderr.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
+import utils
 
 
 # Branch display metadata: (emoji, title, format badge text)
@@ -823,5 +813,5 @@ def generate_branch_readme(target: str, output_base_dir: str, repo: str = "wuiil
 def generate_all_readmes(output_base_dir: str = "output", repo: str = "wuiiled/Wuiiled_Setup"):
     """Generate README.md for all 5 platform outputs."""
     print("\n📝 正在生成全平台订阅导航文档 (README.md)...")
-    for target in ("singbox", "mihomo", "smartdns", "mosdns-x", "adg"):
+    for target in providers.TARGET_BRANCHES:
         generate_branch_readme(target, output_base_dir, repo)

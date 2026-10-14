@@ -13,12 +13,6 @@ import os
 import sys
 import json
 
-if sys.stdout and hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
-
 import utils
 from core.cleaner import _domain_ancestors
 from core.manager import TIANLING_GEOSITES

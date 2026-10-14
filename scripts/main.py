@@ -5,13 +5,9 @@ import sys
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 
-if sys.stdout and hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if sys.stderr and hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
-
 from core.manager import load_all_rules
 from core.readme_gen import generate_all_readmes, write_manifest
+import providers
 import utils
 import build_singbox
 import build_mihomo
@@ -50,7 +46,7 @@ def main():
 
     # 阶段 4: 并行导出所有目标平台 (零耦合独立构建)
     # 重置各分支输出目录, 保证本地多次构建的无状态幂等性 (杜绝旧产物脏残留)
-    for branch in ("singbox", "mihomo", "smartdns", "mosdns-x", "adg"):
+    for branch in providers.TARGET_BRANCHES:
         b_dir = os.path.join("output", branch)
         if os.path.isdir(b_dir):
             shutil.rmtree(b_dir)

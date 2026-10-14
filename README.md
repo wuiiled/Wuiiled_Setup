@@ -37,7 +37,7 @@
 ## 🌐 规则生态全景体系
 
 规则集统一采用 **`geosite/`**（域名集）与 **`geoip/`**（IP/CIDR 集）两级目录隔离，命名保留 `geosite-` / `geoip-` 标准前缀。
-基于 **Loyalsoldier 官方源头 `geosite.dat`（v2ray Protobuf 原生解析）** 与多源深度清洗构建，涵盖 **113+ 个标准规则集**，在 Sing-box 平台达成 **100% 语义级/差集为 0 的权威对齐（0-Diff 严格自动化测试验证）**。
+基于 **Loyalsoldier 官方源头 `geosite.dat`（v2ray Protobuf 原生解析）** 与多源深度清洗构建，涵盖 **113+ 个标准规则集**，在 Sing-box 平台达成与 [天灵 sing-geosite](https://github.com/soffchen/sing-geosite) 的 **100% 语义级/差集为 0 的权威对齐（0-Diff 严格自动化测试验证）**。
 
 <details open>
 <summary><b>1️⃣ 官方权威提纯规则集</b>（原生 Protobuf 源头构建，100% 0-Diff 对齐，点击展开）</summary>
@@ -64,9 +64,10 @@ GeoSite 规则直接拉取并解析 Loyalsoldier 官方最新 `geosite.dat` 二�
 
 | 规则名称 | 作用 | 上游数据源 |
 | :--- | :--- | :--- |
-| **`geosite-ad`** | **终极去广告 / 防追踪**<br>*(剔除数十万重复项与误杀项)* | `pmkol/easymosdns` · AdGuard 官方列表 (1/3/4) · Dan Pollock · Pi-hole · `Cats-Team/AdRules` · AWAvenue · OISD Small · 本地补丁 |
+| **`geosite-ad`** | **终极去广告 / 防追踪**<br>*(剔除数十万重复项与误杀项)* | `pmkol/easymosdns` · AdGuard 官方列表 (1/3/4) · Adobe Telemetry (`a.dove.isdumb.one`) · `Cats-Team/AdRules` · `TG-Twilight/AWAvenue-Ads-Rule` · `OISD Small` · 本地补丁 |
 | **`geosite-ai`** | **全球主流 AI 服务合集**<br>*(自研列表 ∪ dat category-ai-!cn)* | `MetaCubeX` · `skk.moe` · `DustinWin` · dat `category-ai-!cn` |
-| **`geosite-fakeip-filter`** | **Fake-IP 排除名单**<br>*(正则压缩，消除冗余)* | `OpenClash` · `ShellCrash` · `DustinWin` · `skk.moe` · 本地补丁 |
+| **`geosite-fakeip-filter`** | **Fake-IP 排除名单**<br>*(正则压缩，消除冗余)* | `OpenClash` · `ShellCrash` · `DustinWin` · `ruleset.skk.moe` · 本地补丁 (`fake-ip-addon.txt`) |
+| **`geosite-pcdn`** | **PCDN 与边缘计算节点拦截**<br>*(保护上行带宽，防运营商限速)* | `wuiiled/PCDN-mihomo-list` · 本地补丁 |
 | **`geosite-reject-drop`** | **高危垃圾流量直接丢弃** | `skk.moe` · 本地名单 |
 | **`geoip-gfw`** | **GFW 投毒 IP 与靶心网段** | ChinaDNS 投毒 IPv4 · EasyMosdns 投毒 CIDR · GFW 假 IPv6 靶心 |
 
@@ -80,8 +81,8 @@ GeoSite 规则直接拉取并解析 Loyalsoldier 官方最新 `geosite.dat` 二�
 
 上游黑名单经清洗去重后与上游白名单做差集。**凡与上游白名单同名或为其后代的拦截项一律剔除（方向1）**。在此基础上产出三套形态：
 
-- **黑名单A（Option A · 单集合保守版）**：额外把"白名单子域的父域"也剔除（方向2），宁放过勿错杀。对应 mihomo / smartdns 分支的 `geosite-ad`，向后兼容。
-- **黑名单B + 白名单B（黑加白精确双集合）**：黑名单B 仅做方向1剔除（保留含白名单子域的父域）；白名单B 收录"会被黑名单B命中且自身不在上游黑名单"的上游白名单项。对应 `geosite-ad-precise` + `geosite-ad-allow`。
+- **黑名单A（Option A · 单集合保守版）**：额外把"白名单子域的父域"也剔除（方向2），宁放过勿错杀。对应 mihomo / smartdns / mosdns-x 分支的 `geosite-ad`，向后兼容。
+- **黑名单B + 白名单B（黑加白精确双集合）**：黑名单B 仅做方向1剔除（保留含白名单子域的父域）；白名单B 收录"会被黑名单B命中且自身不在上游黑名单"的上游白名单项。对应 mihomo、smartdns、mosdns-x 分支的 `geosite-ad-precise` 与 `geosite-ad-allow`。
 - **黑加白混合单文件**：`@@` 例外内嵌于同一文件。adg 分支直接输出 `||黑名单B^` + `@@||白名单B^`；**sing-box 分支的 `geosite-ad` 亦为此形态**——以 AdGuard 语法为源，经 `sing-box rule-set convert --type adguard`（≥ 1.10）编译为 adguard 型 srs，例外语义编译进 srs（adguard 型 srs 不可反编译，分支内以 txt 提供源码）。
 
 **各分支产物对照**：
@@ -89,6 +90,7 @@ GeoSite 规则直接拉取并解析 Loyalsoldier 官方最新 `geosite.dat` 二�
 | 分支 | `geosite-ad` | `geosite-ad-precise` | `geosite-ad-allow` |
 | :--- | :--- | :--- | :--- |
 | **smartdns**（供 OxiDNS） | 黑名单A | 黑名单B | 白名单B |
+| **mosdns-x**（供 OxiDNS） | 黑名单A | 黑名单B | 白名单B |
 | **mihomo** | 黑名单A | 黑名单B | 白名单B |
 | **sing-box** | 黑加白混合（AdGuard 型 srs） | — | — |
 | **adg** | 黑名单B + 白名单B 混合（`@@` 例外） | — | — |
@@ -138,12 +140,13 @@ Wuiiled_Setup/
 │   ├── patches/            # 热补丁: 手动域名 + include 列表/分类合并 (geosite-porn / geosite-cn / geosite-ai ...)
 │   └── Custom_*.txt        # 各类自定义分流名单
 ├── scripts/                # 构建引擎源码（三层解耦架构）
-│   ├── core/               # 核心：models / cleaner / fetcher / manager / readme_gen
-│   ├── build_*.py          # 五平台独立导出器
+│   ├── core/               # 核心：models / cleaner / fetcher / manager / geosite_source / patcher / readme_gen
+│   ├── build_*.py          # 五平台独立导出器 (singbox / mihomo / smartdns / mosdns / adg)
+│   ├── diff_tianling.py    # 天灵 0-Diff 独立比对与门禁校验
+│   ├── lint_artifacts.py   # 产物行级语法门禁校验
 │   ├── main.py             # 统一主入口
-│   └── providers.py        # 上游源 URL 配置清单
+│   └── providers.py        # 上游源 URL 配置清单与目标分支常量
 ├── tests/                  # 自动化测试套件（含 0-Diff 对齐校验）
-├── singbox/config.json     # Sing-box 参考配置示例
 └── README.md               # 本文档
 ```
 

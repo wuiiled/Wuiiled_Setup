@@ -4,6 +4,8 @@ Upstream URL definitions and custom rule mappings.
 All local addons and custom rules are loaded directly from disk in manager.py.
 """
 
+TARGET_BRANCHES = ("singbox", "mihomo", "smartdns", "mosdns-x", "adg")
+
 ALLOW_URLS = [
     # Cats-Team dns-allowlist
     "https://raw.githubusercontent.com/Cats-Team/AdRules/script/mod/rules/dns-allowlist.txt",

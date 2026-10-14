@@ -11,11 +11,6 @@ from typing import Dict, Optional
 import utils
 from core.models import RuleSet
 
-if sys.stdout and hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if sys.stderr and hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
-
 
 def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/smartdns"):
     geosite_out = os.path.join(output_dir, "geosite")

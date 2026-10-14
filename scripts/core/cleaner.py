@@ -264,12 +264,7 @@ def build_blocklist_b(raw_block: Set[str], raw_allow: Set[str]) -> Set[str]:
         if any(anc in allow_set for anc in _domain_ancestors(b)):
             continue
         kept.add(b)
-    final = set()
-    for b in kept:
-        parts = b.split(".")
-        if any(".".join(parts[i:]) in kept for i in range(1, len(parts))):
-            continue
-        final.add(b)
+    _, final, _ = absorb_covered_domains(set(), kept)
     return final
 
 

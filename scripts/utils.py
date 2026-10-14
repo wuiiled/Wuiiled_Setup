@@ -11,6 +11,17 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 import providers
 from core.cleaner import normalize_domain_line, _domain_ancestors, is_valid_ip_or_cidr
 from core.models import RuleSet
@@ -340,30 +351,8 @@ def publish_oxidns_compat(output_dir, rules):
 
 
 def format_oxidns_lines(rs: RuleSet, domain_prefix: str = "domain:", flatten_host_cidr: bool = False) -> List[str]:
-    """生成 OxiDNS (mosdns-x / smartdns) 单文件的行列表，消除两个导出器的循环重复。"""
-    lines: List[str] = []
-    if rs.is_geoip:
-        for cidr in sorted(rs.ip_cidrs):
-            if flatten_host_cidr and "." in cidr and cidr.endswith("/32"):
-                lines.append(cidr[:-3])
-            elif flatten_host_cidr and ":" in cidr and cidr.endswith("/128"):
-                lines.append(cidr[:-4])
-            else:
-                lines.append(cidr)
-    else:
-        for s in sorted(rs.domain_suffixes):
-            clean_s = s.lstrip('.')
-            if clean_s:
-                lines.append(f"{domain_prefix}{clean_s}")
-        for d in sorted(rs.domains):
-            clean_d = d.strip()
-            if clean_d and clean_d not in rs.domain_suffixes:
-                lines.append(f"full:{clean_d}")
-        for k in sorted(rs.domain_keywords):
-            lines.append(f"keyword:{k}")
-        for r in sorted(rs.domain_regexes):
-            lines.append(f"regexp:{r}")
-    return lines
+    """生成 OxiDNS (mosdns-x / smartdns) 单文件的行列表，委托给 RuleSet.to_oxidns_lines。"""
+    return rs.to_oxidns_lines(domain_prefix=domain_prefix, flatten_host_cidr=flatten_host_cidr)
 
 
 def validate_output_invariants(output_base="output", require_binaries=True):
