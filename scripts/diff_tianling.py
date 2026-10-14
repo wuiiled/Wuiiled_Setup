@@ -28,16 +28,14 @@ FIELDS = ("domain", "domain_suffix", "domain_keyword", "domain_regex")
 
 
 def fetch_upstream_srs(tag: str, no_cache: bool = False) -> str:
-    """下载(或读取缓存)天灵上游 srs，返回本地文件路径；失败返回空串。"""
+    """实时拉取天灵官方上游最新 srs; 失败/离线时降级复用已有缓存保底。"""
     os.makedirs(CACHE_DIR, exist_ok=True)
     cache_file = os.path.join(CACHE_DIR, f"{tag}.srs")
-    bypass = no_cache or os.environ.get("WUIILED_NO_CACHE") == "1"
-    if not bypass and os.path.exists(cache_file) and os.path.getsize(cache_file) > 0:
-        return cache_file
     import urllib.request
     url = f"https://raw.githubusercontent.com/1715173329/{UPSTREAM_REPO}/rule-set/{tag}.srs"
     try:
-        with urllib.request.urlopen(url, timeout=30) as resp:
+        req = urllib.request.Request(url, headers={"User-Agent": "Wuiiled-Diff/1.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
             data = resp.read()
         with open(cache_file, "wb") as f:
             f.write(data)

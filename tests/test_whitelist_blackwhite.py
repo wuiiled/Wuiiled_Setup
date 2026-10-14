@@ -26,6 +26,11 @@ class TestBlocklistB:
         block = {"a.a.com", "ocdn.a.a.com", "ads.a.a.com", "a.com"}
         assert build_blocklist_b(block, allow) == {"a.com"}
 
+    def test_trailing_and_leading_dots(self):
+        allow = {"ads.aaa.com.", "+.publishers.aaa.com"}
+        block = {"aaa.com.", "ocdn.aaa.com", ".ads.aaa.com."}
+        assert build_blocklist_b(block, allow) == {"aaa.com"}
+
 
 class TestWhitelistB:
     def test_example1(self):
@@ -48,3 +53,10 @@ class TestWhitelistB:
         # a.a.com & ads.a.a.com are in upstream block -> excluded
         # publishers.a.a.com & b.a.com hit by a.com (blocklist B) -> kept
         assert build_whitelist_b(allow, block, b) == {"publishers.a.a.com", "b.a.com"}
+
+    def test_trailing_dots(self):
+        allow = {"publishers.aaa.com."}
+        block = {"aaa.com"}
+        b = {"aaa.com"}
+        assert build_whitelist_b(allow, block, b) == {"publishers.aaa.com"}
+

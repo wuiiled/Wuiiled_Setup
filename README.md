@@ -140,7 +140,7 @@ Wuiiled_Setup/
 │   ├── patches/            # 热补丁: 手动域名 + include 列表/分类合并 (geosite-porn / geosite-cn / geosite-ai ...)
 │   └── Custom_*.txt        # 各类自定义分流名单
 ├── scripts/                # 构建引擎源码（三层解耦架构）
-│   ├── core/               # 核心：models / cleaner / fetcher / manager / geosite_source / patcher / readme_gen
+│   ├── core/               # 核心：models / cleaner / fetcher / manager / geosite_source / patcher / proto / readme_gen
 │   ├── build_*.py          # 五平台独立导出器 (singbox / mihomo / smartdns / mosdns / adg)
 │   ├── diff_tianling.py    # 天灵 0-Diff 独立比对与门禁校验
 │   ├── lint_artifacts.py   # 产物行级语法门禁校验

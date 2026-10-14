@@ -428,7 +428,3 @@ def idna_normalize_rules(rules):
         print(f"  ✅ [IDNA] 共转换 {total} 条")
     return total
 
-
-# 兼容性别名
-process_normalize_domain_file = process_normalize_domain
-

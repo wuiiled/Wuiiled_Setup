@@ -255,10 +255,10 @@ def build_blocklist_b(raw_block: Set[str], raw_allow: Set[str]) -> Set[str]:
     """
     Precise blocklist (黑加白模式 黑名单B).
     """
-    allow_set = {a for a in (x.strip().lower().lstrip('+').lstrip('.') for x in raw_allow) if a}
+    allow_set = {a for a in (x.strip().lower().lstrip('+').strip('.') for x in raw_allow) if a}
     kept = set()
     for b in raw_block:
-        b = b.strip().lower().lstrip('+').lstrip('.')
+        b = b.strip().lower().lstrip('+').strip('.')
         if not b:
             continue
         if any(anc in allow_set for anc in _domain_ancestors(b)):
@@ -272,10 +272,10 @@ def build_whitelist_b(raw_allow: Set[str], raw_block: Set[str], blocklist_b: Set
     """
     Allow exception list (黑加白模式 白名单B).
     """
-    block_set = {b for b in (x.strip().lower().lstrip('+').lstrip('.') for x in raw_block) if b}
+    block_set = {b for b in (x.strip().lower().lstrip('+').strip('.') for x in raw_block) if b}
     out = set()
     for a in raw_allow:
-        a = a.strip().lower().lstrip('+').lstrip('.')
+        a = a.strip().lower().lstrip('+').strip('.')
         if not a or a in block_set:
             continue
         if any(a == blk or a.endswith("." + blk) for blk in blocklist_b):
