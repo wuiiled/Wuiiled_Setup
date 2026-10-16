@@ -53,6 +53,24 @@ class RuleSet:
         # (如 geoip-gfw 靶心表按裸 IP 表达), 替代旧的按集合名硬编码特判。
         self.flatten_cidr_host: bool = flatten_cidr_host
 
+    def copy(self) -> "RuleSet":
+        return RuleSet(
+            name=self.name,
+            category=self.category,
+            description=self.description,
+            domains=set(self.domains),
+            domain_suffixes=set(self.domain_suffixes),
+            domain_keywords=set(self.domain_keywords),
+            domain_regexes=set(self.domain_regexes),
+            ip_cidrs=set(self.ip_cidrs),
+            raw_srs=self.raw_srs,
+            raw_lines=list(self.raw_lines) if self.raw_lines is not None else None,
+            source_kind=self.source_kind,
+            sources=list(self.sources),
+            dat_code=self.dat_code,
+            flatten_cidr_host=self.flatten_cidr_host,
+        )
+
     @property
     def is_geoip(self) -> bool:
         return self.category == "geoip" or bool(self.ip_cidrs and not (self.domains or self.domain_suffixes or self.domain_keywords or self.domain_regexes))

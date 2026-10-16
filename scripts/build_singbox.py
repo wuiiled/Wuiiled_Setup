@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Set
 
 import utils
 from core.models import RuleSet
-from core.patcher import get_active_patch_count
+from core.patcher import get_active_patch_count, has_patch_includes
 
 ADGUARD_SOURCE_SETS = {"geosite-ad"}
 
@@ -99,7 +99,7 @@ def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sin
             _build_adguard_srs(name, sub_dir, has_sb)
             continue
 
-        if rs.raw_srs and get_active_patch_count(name) == 0:
+        if rs.raw_srs and get_active_patch_count(name) == 0 and not has_patch_includes(name):
             with open(srs_path, "wb") as f:
                 f.write(rs.raw_srs)
             if has_sb:

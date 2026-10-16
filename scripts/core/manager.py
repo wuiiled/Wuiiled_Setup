@@ -231,10 +231,11 @@ def load_tianling_rules() -> Dict[str, RuleSet]:
     for upstream_tag, out_name in TIANLING_GEOSITES.items():
         # upstream_tag like 'geosite-openai' or 'geosite-category-porn' -> dat code 'openai'/'category-porn'
         code = upstream_tag[len("geosite-"):]
-        rs = source_map.get(code)
-        if rs is None:
+        src_rs = source_map.get(code)
+        if src_rs is None:
             print(f"  ❌ [源头 GeoSite] {out_name:<26} | 上游分类 '{code}' 不存在")
             continue
+        rs = src_rs.copy()
         rs.name = out_name
         rs.category = "geosite"
         rs.description = f"Loyalsoldier 权威提纯 ({code})"
@@ -320,10 +321,7 @@ def load_ads_rules() -> RuleSet:
     shared_allow_path = os.path.join(work_dir, "shared", "opt_allow.txt")
     os.makedirs(os.path.dirname(shared_allow_path), exist_ok=True)
     if os.path.exists(opt_allow_path):
-        with open(opt_allow_path, "r", encoding="utf-8") as src, open(
-            shared_allow_path, "w", encoding="utf-8"
-        ) as dst:
-            dst.write(src.read())
+        utils.safe_copy(opt_allow_path, shared_allow_path)
 
     # 黑加白模式: compute precise blocklist B + allow exception list B via pure
     # functions, persist for platform exporters (smartdns/mihomo/adg).
@@ -519,8 +517,7 @@ def load_reject_drop_rules() -> RuleSet:
         utils.apply_advanced_whitelist_filter(clean_rd, clean_rd_allow, final_rd)
     else:
         print("  [Reject-Drop] WARNING: shared allowlist missing/empty, whitelist filter skipped")
-        with open(clean_rd, "r", encoding="utf-8") as src, open(final_rd, "w", encoding="utf-8") as dst:
-            dst.write(src.read())
+        utils.safe_copy(clean_rd, final_rd)
 
     domains = set()
     domain_suffixes = set()
@@ -563,43 +560,20 @@ def load_gfwip_rules() -> RuleSet:
     raw_gfwip = os.path.join(mod_dir, "raw_gfwip.txt")
     utils.download_files_parallel(raw_gfwip, providers.GFW_IP_URLS)
 
-    ipv4_nets = set()
-    ipv6_nets = set()
-
+    raw_lines = []
     if os.path.exists(raw_gfwip):
         with open(raw_gfwip, 'r', encoding='utf-8') as f:
-            for line in f:
-                cleaned = clean_ip_line(line)
-                if cleaned:
-                    try:
-                        net = ipaddress.ip_network(cleaned, strict=False)
-                        if net.version == 4:
-                            ipv4_nets.add(net)
-                        else:
-                            ipv6_nets.add(net)
-                    except ValueError:
-                        pass
-
-    for item in providers.GFW_IPV6_LIST:
-        cleaned = clean_ip_line(item)
-        if cleaned:
-            try:
-                net = ipaddress.ip_network(cleaned, strict=False)
-                if net.version == 6:
-                    ipv6_nets.add(net)
-                else:
-                    ipv4_nets.add(net)
-            except ValueError:
-                pass
-
-    sorted_ipv4 = sorted(list(ipv4_nets), key=lambda x: (int(x.network_address), x.prefixlen))
-    sorted_ipv6 = sorted(list(ipv6_nets), key=lambda x: (int(x.network_address), x.prefixlen))
+            raw_lines = f.read().splitlines()
+    raw_lines.extend(providers.GFW_IPV6_LIST)
 
     lines = set()
-    for net in sorted_ipv4:
-        lines.add(str(net.network_address) + "/32" if net.prefixlen == 32 else str(net))
-    for net in sorted_ipv6:
-        lines.add(str(net.network_address) + "/128" if net.prefixlen == 128 else str(net))
+    for line in raw_lines:
+        cleaned = clean_ip_line(line)
+        if cleaned:
+            try:
+                lines.add(str(ipaddress.ip_network(cleaned, strict=False)))
+            except ValueError:
+                pass
 
     print(f"  ✅ [GFW IP]     {'geoip-gfw':<26} | 规则数: {len(lines):,}")
     return RuleSet(

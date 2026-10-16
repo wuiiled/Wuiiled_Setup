@@ -77,6 +77,15 @@ def active_patch_entries(local_name: str) -> set:
     return entries
 
 
+def active_patch_suffixes(local_name: str) -> set:
+    """当前仍生效的 domain_suffix 补丁 (仅后缀补丁在编译期会吸收上游同名/子域名)。"""
+    return {
+        utils._idna_domain(value.lower().lstrip("."))
+        for kind, rtype, value, _raw in load_patch_file(local_name)
+        if kind == "rule" and rtype == "domain_suffix"
+    }
+
+
 def _is_covered_by_patch_suffixes(item: str, patches: set) -> bool:
     """检查上游条目是否被本地补丁 (patches) 中的父后缀所覆盖。"""
     clean = item.lstrip(".")
@@ -117,14 +126,15 @@ def main() -> int:
         up_fields = load_rule_fields(srs_path=up_srs)
         loc_fields = load_rule_fields(srs_path=local_srs)
         patches = active_patch_entries(local_name)
+        patch_suffixes = active_patch_suffixes(local_name)
 
         set_diffs = []
         for key in FIELDS:
             up_set = {x.lower() for x in up_fields.get(key, set())}
             loc_set = {x.lower() for x in loc_fields.get(key, set())}
             missing = up_set - loc_set
-            if missing and patches and key in ("domain", "domain_suffix"):
-                missing = {m for m in missing if not _is_covered_by_patch_suffixes(m, patches)}
+            if missing and patch_suffixes and key in ("domain", "domain_suffix"):
+                missing = {m for m in missing if not _is_covered_by_patch_suffixes(m, patch_suffixes)}
             extra = loc_set - up_set
             if patches:
                 extra = {e for e in extra if e.lstrip(".") not in patches}

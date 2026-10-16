@@ -26,6 +26,7 @@ include 属于"整表合并", 上游随其自行更新; 解析失败 (下载失�
 import os
 import re
 from typing import Dict, List, Optional, Tuple
+from core.cleaner import clean_mihomo_domain_line
 from core.fetcher import read_local_file
 from core.models import RuleSet
 
@@ -56,7 +57,7 @@ def _clean_list_line(line: str) -> Optional[Tuple[str, str]]:
     if lower.startswith("regexp:"):
         return "domain_regex", line[7:]
     if lower.startswith("domain-suffix,") or lower.startswith("domain,"):
-        cleaned = _clean_mihomo_domain(line)
+        cleaned = clean_mihomo_domain_line(line)
         if cleaned:
             if cleaned.startswith("+."):
                 return "domain_suffix", cleaned[2:].lstrip(".")
@@ -68,19 +69,6 @@ def _clean_list_line(line: str) -> Optional[Tuple[str, str]]:
     if line.lower().startswith("include:"):
         return None
     return "domain_suffix", line.lstrip("+.").lstrip(".").rstrip(".").lower()
-
-
-def _clean_mihomo_domain(line: str) -> Optional[str]:
-    """极简版 mihomo 域名行清洗 (仅处理 domain-suffix,/domain, 前缀)。"""
-    parts = line.split(",")
-    if len(parts) < 2:
-        return None
-    val = parts[1].strip()
-    if not val:
-        return None
-    if line.lower().startswith("domain-suffix,"):
-        return "+." + val
-    return val
 
 
 def _parse_patch_line(line: str):
@@ -139,16 +127,17 @@ def get_active_patch_count(ruleset_name: str) -> int:
 
 def _ruleset_contains(rs: RuleSet, rtype: str, value: str) -> bool:
     """Check if a RuleSet already contains a rule."""
-    value = value.lower().strip()
+    value = value.strip()
+    if rtype == "domain_regex":
+        return value in rs.domain_regexes
+    value = value.lower()
     if rtype == "domain":
-        return value in rs.domains
+        return value in {d.lower() for d in rs.domains}
     if rtype == "domain_suffix":
         clean = value.lstrip(".")
         return clean in {s.lstrip(".").lower() for s in rs.domain_suffixes}
     if rtype == "domain_keyword":
-        return value in rs.domain_keywords
-    if rtype == "domain_regex":
-        return value in rs.domain_regexes
+        return value in {k.lower() for k in rs.domain_keywords}
     return False
 
 
@@ -223,13 +212,30 @@ def apply_patches(rs: RuleSet, dat_map: Optional[Dict[str, RuleSet]] = None):
     upstream_included = []
     include_stats = []
 
+    dom_low = {d.lower() for d in rs.domains}
+    suf_low = {s.lstrip(".").lower() for s in rs.domain_suffixes}
+    kw_low = {k.lower() for k in rs.domain_keywords}
+
     for kind, a, b, _raw in entries:
         if kind == "rule":
-            rtype, value = a, b
-            if _ruleset_contains(rs, rtype, value):
+            rtype, value = a, b.strip()
+            low_val = value.lower()
+            is_dup = (
+                (rtype == "domain" and low_val in dom_low)
+                or (rtype == "domain_suffix" and low_val.lstrip(".") in suf_low)
+                or (rtype == "domain_keyword" and low_val in kw_low)
+                or (rtype == "domain_regex" and value in rs.domain_regexes)
+            )
+            if is_dup:
                 upstream_included.append(value)
                 continue
             _add_to_ruleset(rs, rtype, value)
+            if rtype == "domain":
+                dom_low.add(low_val)
+            elif rtype == "domain_suffix":
+                suf_low.add(low_val.lstrip("."))
+            elif rtype == "domain_keyword":
+                kw_low.add(low_val)
             active += 1
         elif kind == "include":
             src = _resolve_include(a, b, dat_map)
@@ -238,6 +244,9 @@ def apply_patches(rs: RuleSet, dat_map: Optional[Dict[str, RuleSet]] = None):
                 continue
             before = rs.total_count
             _merge_ruleset(src, rs)
+            dom_low.update(d.lower() for d in src.domains)
+            suf_low.update(s.lstrip(".").lower() for s in src.domain_suffixes)
+            kw_low.update(k.lower() for k in src.domain_keywords)
             include_stats.append((a, b, rs.total_count - before))
 
     return rs, active, upstream_included, include_stats

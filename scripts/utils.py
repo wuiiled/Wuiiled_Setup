@@ -395,14 +395,7 @@ def validate_output_invariants(output_base="output", require_binaries=True):
     print(f"  ✅ [守卫] 关键产物不变量校验通过 ({len(ox_names)}x2 DNS 集 + mihomo/adg/singbox 关键集)")
 
 
-def _idna_domain(value: str) -> str:
-    """非 ASCII 域名转 punycode (IDNA)。"""
-    if value.isascii():
-        return value
-    try:
-        return value.encode("idna").decode("ascii").lower()
-    except Exception:
-        return value
+from core.cleaner import idna_domain as _idna_domain
 
 
 def idna_normalize_rules(rules):

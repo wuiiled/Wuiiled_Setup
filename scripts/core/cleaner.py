@@ -26,6 +26,16 @@ _PURE_NUMERIC_RE = re.compile(r'^\d+$')
 _CANCEL_ADG_MODIFIERS = ("$badfilter", "$denyallow=")
 
 
+def idna_domain(value: str) -> str:
+    """非 ASCII 域名转 punycode (IDNA)。"""
+    if value.isascii():
+        return value
+    try:
+        return value.encode("idna").decode("ascii").lower()
+    except Exception:
+        return value
+
+
 def is_valid_domain(val: str, allow_tld: bool = False) -> bool:
     """Validate whether a string is a syntactically valid ASCII domain/hostname.
     - allow_tld=False: requires at least one dot (for raw adlist/hosts line normalization)
@@ -65,7 +75,7 @@ def normalize_domain_line(line: str) -> Optional[str]:
         '.' not in line
         or '*' in line
         or not re.match(r'^[a-z0-9_]', line)
-        or re.match(r'^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$', line)
+        or _IPV4_LITERAL_RE.match(line)
         or '/' in line
         or ' ' in line
         or ':' in line
@@ -74,9 +84,8 @@ def normalize_domain_line(line: str) -> Optional[str]:
 
     # Convert non-ASCII IDN domains to punycode before validating labels
     if not line.isascii():
-        try:
-            line = line.encode("idna").decode("ascii").lower()
-        except Exception:
+        line = idna_domain(line)
+        if not line.isascii():
             return None
 
     if not is_valid_domain(line, allow_tld=False):
@@ -135,14 +144,10 @@ def compact_regexes(regex_set: Set[str]) -> List[str]:
     if not regex_set:
         return []
 
-    regex_set.discard(".*")
-    regex_set.discard("^.*$")
-    regex_set.discard("^(.*\\.)?.*$")
-    regex_set.discard("^(\\.)?.*$")
+    candidates = regex_set - {".*", "^.*$", "^(.*\\.)?.*$", "^(\\.)?.*$"}
 
     step1 = set()
-    for r in regex_set:
-        # Fix infinite loop: match condition and replacement string must both use r'\..*\..*'
+    for r in candidates:
         while r'\..*\..*' in r:
             r = r.replace(r'\..*\..*', r'\..*')
         while r'-.*-.*' in r:
@@ -151,15 +156,12 @@ def compact_regexes(regex_set: Set[str]) -> List[str]:
 
     step2 = set()
     num_pattern = re.compile(r'^(\^?[a-zA-Z_-]+)(\d*)(\\..*)$')
-    groups = {}
+    groups: Dict[Tuple[str, str], Set[str]] = {}
     for r in step1:
         m = num_pattern.match(r)
         if m:
             prefix, num, suffix = m.groups()
-            key = (prefix, suffix)
-            if key not in groups:
-                groups[key] = set()
-            groups[key].add(num)
+            groups.setdefault((prefix, suffix), set()).add(num)
         else:
             step2.add(r)
 
@@ -167,22 +169,18 @@ def compact_regexes(regex_set: Set[str]) -> List[str]:
         if len(nums) > 1:
             step2.add(f"{prefix}\\d*{suffix}")
         else:
-            step2.add(f"{prefix}{nums.pop()}{suffix}")
+            step2.add(f"{prefix}{next(iter(nums))}{suffix}")
 
     step3 = set()
-    time_bases = {}
+    time_bases: Dict[str, Set[str]] = {}
     nip_sslip_bases = set()
-
     time_prefix_regex = re.compile(r'^(\^time(?:\d*)?\\..*\\.)([^.]+\$)$')
 
     for r in step2:
         m = time_prefix_regex.match(r)
         if m:
             base, tld_with_dollar = m.groups()
-            tld = tld_with_dollar[:-1]
-            if base not in time_bases:
-                time_bases[base] = set()
-            time_bases[base].add(tld)
+            time_bases.setdefault(base, set()).add(tld_with_dollar[:-1])
         elif r.endswith("nip\\.io$") or r.endswith("sslip\\.io$"):
             base = r.replace("nip\\.io$", "").replace("sslip\\.io$", "")
             nip_sslip_bases.add(base)
@@ -191,15 +189,15 @@ def compact_regexes(regex_set: Set[str]) -> List[str]:
 
     for base, tlds in time_bases.items():
         if len(tlds) > 1:
-            tld_str = "|".join(sorted(list(tlds)))
+            tld_str = "|".join(sorted(tlds))
             step3.add(f"{base}({tld_str})$")
         else:
-            step3.add(f"{base}{tlds.pop()}$")
+            step3.add(f"{base}{next(iter(tlds))}$")
 
     for base in nip_sslip_bases:
         step3.add(f"{base}(nip|sslip)\\.io$")
 
-    return sorted(list(step3))
+    return sorted(step3)
 
 
 def absorb_covered_domains(domains: Set[str], suffixes: Set[str]) -> Tuple[Set[str], Set[str], int]:
@@ -273,11 +271,12 @@ def build_whitelist_b(raw_allow: Set[str], raw_block: Set[str], blocklist_b: Set
     Allow exception list (黑加白模式 白名单B).
     """
     block_set = {b for b in (x.strip().lower().lstrip('+').strip('.') for x in raw_block) if b}
+    blk_b_set = {b for b in (x.strip().lower().lstrip('+').strip('.') for x in blocklist_b) if b}
     out = set()
     for a in raw_allow:
         a = a.strip().lower().lstrip('+').strip('.')
         if not a or a in block_set:
             continue
-        if any(a == blk or a.endswith("." + blk) for blk in blocklist_b):
+        if any(anc in blk_b_set for anc in _domain_ancestors(a)):
             out.add(a)
     return out

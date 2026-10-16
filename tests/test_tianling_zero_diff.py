@@ -192,12 +192,11 @@ def test_tianling_cn_superset():
 
     loc_domains = {x.lower().lstrip(".") for x in (loc_rule.get("domain", []) or [])}
     loc_suffixes = {x.lower().lstrip(".") for x in (loc_rule.get("domain_suffix", []) or [])}
+    from core.cleaner import _domain_ancestors
 
     def _covered_by_suffix(d: str) -> bool:
         d = d.lower().lstrip(".")
-        if d in loc_domains or d in loc_suffixes:
-            return True
-        return any(d == s or d.endswith("." + s) for s in loc_suffixes)
+        return d in loc_domains or any(anc in loc_suffixes for anc in _domain_ancestors(d))
 
     for key in ("domain", "domain_suffix"):
         up_set = {x.lower() for x in (up_rule.get(key, []) or [])}

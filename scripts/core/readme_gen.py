@@ -344,28 +344,32 @@ PLATFORM_MARKERS: Dict[str, List[str]] = {
 }
 
 
-def marker_in_ruleset(marker: str, rs) -> bool:
-    """判断平台代表域名是否真实命中集合: 是成员, 或被某个 domain_suffix 覆盖。"""
+from core.cleaner import _domain_ancestors
+
+
+def _match_marker_sets(marker: str, dom_set: Set[str], suf_set: Set[str]) -> bool:
     m = (marker or "").strip().lower().lstrip(".")
     if not m:
         return False
-    if m in {d.lower() for d in rs.domains}:
-        return True
-    for s in rs.domain_suffixes:
-        s = s.lstrip(".").lower()
-        if s and (m == s or m.endswith("." + s)):
-            return True
-    return False
+    return m in dom_set or any(anc in suf_set for anc in _domain_ancestors(m))
+
+
+def marker_in_ruleset(marker: str, rs) -> bool:
+    """判断平台代表域名是否真实命中集合: 是成员, 或被某个 domain_suffix 覆盖。"""
+    dom_set = {d.lower() for d in rs.domains}
+    suf_set = {s.lstrip(".").lower() for s in rs.domain_suffixes if s.lstrip(".")}
+    return _match_marker_sets(marker, dom_set, suf_set)
 
 
 def compute_markers(rs) -> List[str]:
-    """返回集合中真实存在的平台名。按命中代表域名数量降序 —— 大集合 (如 !cn)
-    命中平台很多时, 排前面的自然是在集合中占重大头的平台。GeoIP 不适用。"""
+    """返回集合中真实存在的平台名。按命中代表域名数量降序。GeoIP 不适用。"""
     if getattr(rs, "category", "") == "geoip":
         return []
+    dom_set = {d.lower() for d in rs.domains}
+    suf_set = {s.lstrip(".").lower() for s in rs.domain_suffixes if s.lstrip(".")}
     hits = []
     for plat, marks in PLATFORM_MARKERS.items():
-        n = sum(1 for mk in marks if marker_in_ruleset(mk, rs))
+        n = sum(1 for mk in marks if _match_marker_sets(mk, dom_set, suf_set))
         if n:
             hits.append((n, plat))
     hits.sort(key=lambda t: -t[0])
