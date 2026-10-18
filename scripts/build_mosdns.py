@@ -5,7 +5,6 @@ Decoupled: receives canonical RuleSet IR and generates domain: and full: MosDNS 
 """
 
 import os
-import sys
 from typing import Dict, Optional
 
 import utils

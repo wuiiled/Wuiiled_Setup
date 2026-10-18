@@ -74,8 +74,9 @@ def main():
                 traceback.print_exc()
                 sys.exit(1)
 
-    # 阶段 4b: 关键产物不变量校验 (空集/缺失 → 构建失败, 防止空集发布清空线上 provider)
+    # 阶段 4b: 关键产物不变量与编译完整性校验 (空集/缺失/二进制编译失败 → 拒绝发布)
     utils.validate_output_invariants("output")
+    utils.assert_no_compile_failures()
 
     # 阶段 5: 自动生成各平台规范 README 导航页
     print("\n🚀 [阶段 5/5] 生成各平台发布分支订阅导航 (README.md)...")

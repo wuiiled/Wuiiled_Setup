@@ -5,7 +5,6 @@ Fully decoupled: receives canonical RuleSet IR and exports .txt and .mrs files.
 """
 
 import os
-import sys
 from typing import Dict, Optional
 
 import utils

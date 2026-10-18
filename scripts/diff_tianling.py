@@ -68,22 +68,27 @@ def load_rule_fields(srs_path: str = "", json_path: str = "") -> dict:
     return fields
 
 
-def active_patch_entries(local_name: str) -> set:
-    """当前仍生效的手动补丁条目 (含 IDNA 归一，用于从 local-only 差异中扣除)。"""
+def _active_patch_rules(local_name: str) -> tuple:
+    """当前仍生效的手动补丁条目 (单次遍历完成): (全部规则条目, 仅 domain_suffix 条目)。"""
     entries = set()
+    suffixes = set()
     for kind, rtype, value, _raw in load_patch_file(local_name):
         if kind == "rule":
-            entries.add(utils._idna_domain(value.lower().lstrip(".")))
-    return entries
+            norm = utils._idna_domain(value.lower().lstrip("."))
+            entries.add(norm)
+            if rtype == "domain_suffix":
+                suffixes.add(norm)
+    return entries, suffixes
+
+
+def active_patch_entries(local_name: str) -> set:
+    """兼容旧接口: 当前仍生效的手动补丁条目。"""
+    return _active_patch_rules(local_name)[0]
 
 
 def active_patch_suffixes(local_name: str) -> set:
-    """当前仍生效的 domain_suffix 补丁 (仅后缀补丁在编译期会吸收上游同名/子域名)。"""
-    return {
-        utils._idna_domain(value.lower().lstrip("."))
-        for kind, rtype, value, _raw in load_patch_file(local_name)
-        if kind == "rule" and rtype == "domain_suffix"
-    }
+    """兼容旧接口: 当前仍生效的 domain_suffix 补丁。"""
+    return _active_patch_rules(local_name)[1]
 
 
 def _is_covered_by_patch_suffixes(item: str, patches: set) -> bool:
@@ -125,8 +130,7 @@ def main() -> int:
 
         up_fields = load_rule_fields(srs_path=up_srs)
         loc_fields = load_rule_fields(srs_path=local_srs)
-        patches = active_patch_entries(local_name)
-        patch_suffixes = active_patch_suffixes(local_name)
+        patches, patch_suffixes = _active_patch_rules(local_name)
 
         set_diffs = []
         for key in FIELDS:
@@ -162,6 +166,9 @@ def main() -> int:
             print(f"  ✅ {local_name:<28} 0-Diff")
 
     print(f"\n📊 比对完成: {total_pairs} 个集合, 0-Diff: {total_pairs - len(diff_pairs)}, 缺失差异: {len(diff_pairs)}, 仅额外(上游滞后): {len(extra_only_pairs)}, 跳过(上游下载失败): {skipped_pairs}")
+    if total_pairs == 0 and args.fail_on_diff:
+        print("❌ 0-Diff 比对失败: 未成功比对任何规则集 (全部上游下载失败或本地未构建)")
+        return 1
     if diff_pairs and args.fail_on_diff:
         return 1
     return 0

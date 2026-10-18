@@ -12,7 +12,6 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Set
 
 import providers
-import utils
 
 
 # Branch display metadata: (emoji, title, format badge text)

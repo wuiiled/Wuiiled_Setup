@@ -62,7 +62,14 @@ def fetch_bytes_url(url: str, timeout: int = 15, retries: int = 3) -> bytes:
 def read_local_file(rel_path: str) -> str:
     """Safely read a file relative to the repository root."""
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    full_path = os.path.join(repo_root, rel_path)
+    full_path = os.path.abspath(os.path.join(repo_root, rel_path))
+    try:
+        inside = os.path.commonpath([repo_root, os.path.realpath(full_path)]) == repo_root
+    except ValueError:
+        inside = False
+    if not inside:
+        print(f"⚠️ 拒绝越界路径: {rel_path}")
+        return ""
     if os.path.exists(full_path):
         with open(full_path, 'r', encoding='utf-8') as f:
             return f.read()

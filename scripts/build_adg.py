@@ -5,7 +5,6 @@ Decoupled: receives canonical RuleSet IR and exports AdGuard filter rules.
 """
 
 import os
-import sys
 from typing import Dict, Optional
 
 import utils

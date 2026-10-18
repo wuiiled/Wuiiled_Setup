@@ -9,7 +9,7 @@ import atexit
 import threading
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional
+from typing import List
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     try:
@@ -23,7 +23,7 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
         pass
 
 import providers
-from core.cleaner import normalize_domain_line, _domain_ancestors, is_valid_ip_or_cidr
+from core.cleaner import normalize_domain_line, _domain_ancestors, idna_domain as _idna_domain
 from core.models import RuleSet
 
 WORK_DIR = None
@@ -32,6 +32,7 @@ EXCLUDE_FILE = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "rules", "addons",
 os.environ["LC_ALL"] = "C"
 
 _WORK_DIR_LOCK = threading.Lock()
+_COMPILE_FAILURES = []
 
 
 def get_work_dir():
@@ -221,7 +222,7 @@ def _resolve_cmd(cmd):
     if shutil.which(binary):
         return cmd
     if sys.platform == "win32" and shutil.which("wsl"):
-        wsl_bin_dir = os.environ.get("WUIILED_BIN_DIR", "/mnt/f/antigravity/debian13/bin")
+        wsl_bin_dir = os.environ.get("WUIILED_BIN_DIR", "/usr/local/bin")
         wsl_cmd = ["wsl", f"{wsl_bin_dir}/{binary}"]
         for arg in cmd[1:]:
             if isinstance(arg, str) and (":\\" in arg or ":/" in arg or arg.startswith("output/") or arg.startswith("rules/")):
@@ -236,12 +237,22 @@ def _resolve_cmd(cmd):
 
 
 def compile_ruleset(cmd, output_name):
-    """执行规则集编译命令，失败时打印警告而非中断流程。"""
+    """执行规则集编译命令，失败时记录告警，构建结束由 assert_no_compile_failures 统一裁决。"""
     try:
         resolved_cmd = _resolve_cmd(cmd)
         subprocess.run(resolved_cmd, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as e:
         print(f"⚠️ 警告: 编译 {output_name} 发生异常:\n{e.stderr}")
+        _COMPILE_FAILURES.append(output_name)
+
+
+def assert_no_compile_failures():
+    """P1 守卫: 任意二进制编译失败即拒绝发布。"""
+    if _COMPILE_FAILURES:
+        raise RuntimeError(
+            f"编译产物完整性校验失败 ({len(_COMPILE_FAILURES)} 个二进制失败): "
+            + ", ".join(_COMPILE_FAILURES)
+        )
 
 
 def decompile_srs(srs_path, json_path):
@@ -393,9 +404,6 @@ def validate_output_invariants(output_base="output", require_binaries=True):
     if problems:
         raise RuntimeError("关键产物不变量校验失败 (拒绝发布, 防止空集清空线上 provider):\n  - " + "\n  - ".join(problems))
     print(f"  ✅ [守卫] 关键产物不变量校验通过 ({len(ox_names)}x2 DNS 集 + mihomo/adg/singbox 关键集)")
-
-
-from core.cleaner import idna_domain as _idna_domain
 
 
 def idna_normalize_rules(rules):

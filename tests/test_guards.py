@@ -110,3 +110,30 @@ def test_include_local_resolves():
 def test_include_local_missing_returns_none():
     from core.patcher import _resolve_include
     assert _resolve_include("local", "rules/patches/__.nonexistent.__", None) is None
+
+
+# ---------- 路径遍历安全防护 (M1) ----------
+
+def test_read_local_file_path_traversal():
+    from core.fetcher import read_local_file
+    # 相对跨目录逃逸
+    assert read_local_file("../../something_sensitive.txt") == ""
+    assert read_local_file("../../../etc/passwd") == ""
+    # 绝对路径注入 (Windows 跨盘符及 Linux 绝对路径)
+    assert read_local_file("C:\\Windows\\win.ini") == ""
+    assert read_local_file("D:\\confidential.txt") == ""
+    assert read_local_file("/etc/passwd") == ""
+
+
+# ---------- 编译完整性守卫 (M2) ----------
+
+def test_assert_no_compile_failures():
+    utils._COMPILE_FAILURES.clear()
+    try:
+        utils.assert_no_compile_failures()  # 无失败记录应正常通过
+        utils._COMPILE_FAILURES.append("geosite-test.srs")
+        with pytest.raises(RuntimeError, match="编译产物完整性校验失败"):
+            utils.assert_no_compile_failures()
+    finally:
+        utils._COMPILE_FAILURES.clear()
+

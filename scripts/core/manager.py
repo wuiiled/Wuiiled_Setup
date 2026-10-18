@@ -5,7 +5,6 @@ runs the normalization and cleaning pipelines, and yields unified RuleSet object
 """
 
 import os
-import sys
 import re
 import ipaddress
 from concurrent.futures import ThreadPoolExecutor

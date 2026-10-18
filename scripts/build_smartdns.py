@@ -5,7 +5,6 @@ Decoupled: receives canonical RuleSet IR and generates rules for the smartdns br
 """
 
 import os
-import sys
 from typing import Dict, Optional
 
 import utils

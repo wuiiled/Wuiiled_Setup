@@ -81,7 +81,7 @@ jobs:
         if [ "${{ github.event_name }}" = "schedule" ]; then
           echo "定时构建: 跳过 0-Diff (代码未变更; 该验证在 push / 手动触发构建时执行)"
         else
-          PYTHONPATH=scripts python3 scripts/diff_tianling.py --fail-on-diff
+          PYTHONPATH=scripts python3 scripts/diff_tianling.py --fail-on-diff --no-cache
         fi
         PYTHONPATH=scripts python3 scripts/lint_artifacts.py output
 

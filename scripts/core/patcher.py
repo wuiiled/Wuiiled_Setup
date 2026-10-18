@@ -125,22 +125,6 @@ def get_active_patch_count(ruleset_name: str) -> int:
     return sum(1 for kind, *_ in load_patch_file(ruleset_name) if kind == "rule")
 
 
-def _ruleset_contains(rs: RuleSet, rtype: str, value: str) -> bool:
-    """Check if a RuleSet already contains a rule."""
-    value = value.strip()
-    if rtype == "domain_regex":
-        return value in rs.domain_regexes
-    value = value.lower()
-    if rtype == "domain":
-        return value in {d.lower() for d in rs.domains}
-    if rtype == "domain_suffix":
-        clean = value.lstrip(".")
-        return clean in {s.lstrip(".").lower() for s in rs.domain_suffixes}
-    if rtype == "domain_keyword":
-        return value in {k.lower() for k in rs.domain_keywords}
-    return False
-
-
 def _add_to_ruleset(rs: RuleSet, rtype: str, value: str) -> None:
     """Add a rule to a RuleSet."""
     value = value.strip()
