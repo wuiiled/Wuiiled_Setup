@@ -15,7 +15,7 @@
 # GitHub 反代 CDN
 +.ghfast.top
 +.imee.me
-+.ihtw.moe
+#+.ihtw.moe
 +.gh-proxy.com
 +.gh-proxy.org
 +.gh.con.sh
