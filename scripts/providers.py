@@ -54,6 +54,12 @@ DROP_URLS = [
     "https://ruleset.skk.moe/Clash/non_ip/reject-drop.txt",
 ]
 
+# IPTV 境外直播与流媒体规则 (Gary & Cathy 源)
+IPTV_URLS = [
+    "https://raw.githubusercontent.com/marcuccilli/gary/main/iptv_surge.list",
+    "https://raw.githubusercontent.com/marcuccilli/Cathy/main/cathy_surge.list",
+]
+
 # 注: 原 CN_URLS_1/CN_URLS_2 (cn-additional-list + SKK domestic) 已迁移至
 # rules/patches/geosite-cn.txt 的 include 指令, 与天灵配方 cn 统一经补丁通道合并。
 

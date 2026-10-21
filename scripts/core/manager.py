@@ -8,7 +8,7 @@ import os
 import re
 import ipaddress
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict
+from typing import Dict, Tuple, Set
 
 import utils
 import providers
@@ -625,6 +625,73 @@ def load_pcdn_rules() -> RuleSet:
     )
 
 
+def load_iptv_rules() -> Tuple[RuleSet, RuleSet]:
+    """
+    Build geosite-iptv!cn and geoip-iptv!cn from Gary and Cathy IPTV upstream.
+    - geosite-iptv!cn: domains & domain_suffixes
+    - geoip-iptv!cn: ip_cidrs
+    """
+    work_dir = utils.get_work_dir()
+    mod_dir = os.path.join(work_dir, "iptv")
+    os.makedirs(mod_dir, exist_ok=True)
+    raw_iptv = os.path.join(mod_dir, "raw_iptv.txt")
+    utils.download_files_parallel(raw_iptv, providers.IPTV_URLS)
+
+    domains: Set[str] = set()
+    domain_suffixes: Set[str] = set()
+    ip_cidrs: Set[str] = set()
+
+    if os.path.exists(raw_iptv):
+        with open(raw_iptv, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith(("IP-CIDR,", "IP-CIDR6,", "IP6-CIDR,")):
+                    cleaned_ip = clean_ip_line(line)
+                    if cleaned_ip:
+                        try:
+                            net = ipaddress.ip_network(cleaned_ip, strict=False)
+                            ip_cidrs.add(str(net))
+                        except ValueError:
+                            pass
+                else:
+                    cleaned_dom = clean_mihomo_domain_line(line)
+                    if cleaned_dom:
+                        if cleaned_dom.startswith("+."):
+                            domain_suffixes.add(cleaned_dom[2:].lstrip("."))
+                        elif cleaned_dom.startswith("."):
+                            domain_suffixes.add(cleaned_dom[1:].lstrip("."))
+                        else:
+                            domains.add(cleaned_dom)
+
+    domains, domain_suffixes, _ = absorb_covered_domains(domains, domain_suffixes)
+
+    geosite_rs = RuleSet(
+        name="geosite-iptv!cn",
+        category="geosite",
+        description="IPTV 境外直播与流媒体服务 (Gary & Cathy 聚合)",
+        domains=domains,
+        domain_suffixes=domain_suffixes,
+        source_kind="self",
+        sources=["marcuccilli/gary", "marcuccilli/Cathy"],
+    )
+
+    geoip_rs = RuleSet(
+        name="geoip-iptv!cn",
+        category="geoip",
+        description="IPTV 境外直播与流媒体 IP 节点 (Gary & Cathy 聚合)",
+        ip_cidrs=ip_cidrs,
+        source_kind="self",
+        sources=["marcuccilli/gary", "marcuccilli/Cathy"],
+    )
+
+    print(f"  ✅ [IPTV]       {'geosite-iptv!cn':<26} | 规则数: {geosite_rs.total_count:,}")
+    print(f"  ✅ [IPTV]       {'geoip-iptv!cn':<26} | 规则数: {geoip_rs.total_count:,}")
+
+    return geosite_rs, geoip_rs
+
+
 def load_custom_rules() -> Dict[str, RuleSet]:
     """Load local custom rules from rules/ directory."""
     results: Dict[str, RuleSet] = {}
@@ -733,15 +800,16 @@ def load_all_rules() -> Dict[str, RuleSet]:
     print("\n🚀 [1/5] 拉取权威规则 (Loyalsoldier dat 原生解析 GeoSites + 天灵配方 cn + GeoIPs)...")
     all_rules = load_tianling_rules()
 
-    print("\n🚀 [2/5] 构建原创复合提纯规则 (Ad / AI / Fake-IP / Drop / GFW-IP / PCDN)...")
+    print("\n🚀 [2/5] 构建原创复合提纯规则 (Ad / AI / Fake-IP / Drop / GFW-IP / PCDN / IPTV)...")
     ads = load_ads_rules()
     ai = load_ai_rules()
     fakeip = load_fakeip_rules()
     drop = load_reject_drop_rules()
     gfwip = load_gfwip_rules()
     pcdn = load_pcdn_rules()
+    iptv_site, iptv_ip = load_iptv_rules()
 
-    for r in (ads, ai, fakeip, drop, gfwip, pcdn):
+    for r in (ads, ai, fakeip, drop, gfwip, pcdn, iptv_site, iptv_ip):
         all_rules[r.name] = r
 
     print("\n🚀 [3/5] 加载本地自定义规则 (Custom_*)...")
