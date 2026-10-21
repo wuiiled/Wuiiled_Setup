@@ -627,9 +627,9 @@ def load_pcdn_rules() -> RuleSet:
 
 def load_iptv_rules() -> Tuple[RuleSet, RuleSet]:
     """
-    Build geosite-iptv!cn and geoip-iptv!cn from Gary and Cathy IPTV upstream.
-    - geosite-iptv!cn: domains & domain_suffixes
-    - geoip-iptv!cn: ip_cidrs
+    Build geosite-iptv-!cn and geoip-iptv-!cn from Gary and Cathy IPTV upstream.
+    - geosite-iptv-!cn: domains & domain_suffixes
+    - geoip-iptv-!cn: ip_cidrs
     """
     work_dir = utils.get_work_dir()
     mod_dir = os.path.join(work_dir, "iptv")
@@ -668,7 +668,7 @@ def load_iptv_rules() -> Tuple[RuleSet, RuleSet]:
     domains, domain_suffixes, _ = absorb_covered_domains(domains, domain_suffixes)
 
     geosite_rs = RuleSet(
-        name="geosite-iptv!cn",
+        name="geosite-iptv-!cn",
         category="geosite",
         description="IPTV 境外直播与流媒体服务 (Gary & Cathy 聚合)",
         domains=domains,
@@ -678,7 +678,7 @@ def load_iptv_rules() -> Tuple[RuleSet, RuleSet]:
     )
 
     geoip_rs = RuleSet(
-        name="geoip-iptv!cn",
+        name="geoip-iptv-!cn",
         category="geoip",
         description="IPTV 境外直播与流媒体 IP 节点 (Gary & Cathy 聚合)",
         ip_cidrs=ip_cidrs,
@@ -686,8 +686,8 @@ def load_iptv_rules() -> Tuple[RuleSet, RuleSet]:
         sources=["marcuccilli/gary", "marcuccilli/Cathy"],
     )
 
-    print(f"  ✅ [IPTV]       {'geosite-iptv!cn':<26} | 规则数: {geosite_rs.total_count:,}")
-    print(f"  ✅ [IPTV]       {'geoip-iptv!cn':<26} | 规则数: {geoip_rs.total_count:,}")
+    print(f"  ✅ [IPTV]       {'geosite-iptv-!cn':<26} | 规则数: {geosite_rs.total_count:,}")
+    print(f"  ✅ [IPTV]       {'geoip-iptv-!cn':<26} | 规则数: {geoip_rs.total_count:,}")
 
     return geosite_rs, geoip_rs
 

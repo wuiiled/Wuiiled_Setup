@@ -119,7 +119,7 @@ def _known_universe():
     from core.manager import TIANLING_GEOIPS, TIANLING_GEOSITES
     import providers
     universe = set(TIANLING_GEOSITES.values()) | {"geosite-cn"} | set(TIANLING_GEOIPS.values())
-    universe |= {"geosite-ad", "geosite-ai", "geosite-fakeip-filter", "geosite-reject-drop", "geoip-gfw", "geosite-iptv!cn", "geoip-iptv!cn"}
+    universe |= {"geosite-ad", "geosite-ai", "geosite-fakeip-filter", "geosite-reject-drop", "geoip-gfw", "geosite-iptv-!cn", "geoip-iptv-!cn"}
     universe |= set(providers.MIHOMO_SKK.keys()) | set(providers.CUSTOM_RULES.keys())
     universe |= {  # 构建层产物 (不在 all_rules 中; 兼容别名机制已退役, 无别名集合)
         "geosite-ad-precise", "geosite-ad-allow", "geosite-pcdn",

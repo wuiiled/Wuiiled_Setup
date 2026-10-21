@@ -40,7 +40,7 @@ CATEGORY_DEFS = [
         "geosite-hulu", "geosite-primevideo", "geosite-twitch", "geosite-bahamut",
         "geosite-abema", "geosite-niconico", "geosite-dmm", "geosite-pixiv",
         "geosite-vimeo", "geosite-dailymotion", "geosite-deezer", "geosite-soundcloud", "geosite-tidal",
-        "geosite-iptv!cn"
+        "geosite-iptv-!cn"
     ]),
     ("gaming", "🎮 游戏平台与联机服务 (Gaming)", [
         "geosite-games", "geosite-games-cn", "geosite-games-!cn", "geosite-steam",
@@ -74,7 +74,7 @@ CATEGORY_DEFS = [
     ("geoip", "🌍 GeoIP 地址段网段集合 (IP Networks)", [
         "geoip-cn", "geoip-google", "geoip-telegram", "geoip-twitter",
         "geoip-facebook", "geoip-gfw", "geoip-private", "geoip-stream",
-        "geoip-apple", "geoip-custom-direct", "geoip-custom-dns", "geoip-iptv!cn"
+        "geoip-apple", "geoip-custom-direct", "geoip-custom-dns", "geoip-iptv-!cn"
     ])
 ]
 
@@ -130,7 +130,7 @@ RULE_METADATA: Dict[str, Dict[str, str]] = {
     "geosite-deezer": {"desc": "Deezer 高保真音乐流媒体服务"},
     "geosite-soundcloud": {"desc": "SoundCloud 原创音乐与音频分享"},
     "geosite-tidal": {"desc": "TIDAL HiFi 无损高品质音乐流媒体"},
-    "geosite-iptv!cn": {"desc": "IPTV 境外直播与电视流媒体服务"},
+    "geosite-iptv-!cn": {"desc": "IPTV 境外直播与电视流媒体服务"},
 
     # 🎮 Gaming
     "geosite-games": {"desc": "全球热门游戏与联机加速合集"},
@@ -220,7 +220,7 @@ RULE_METADATA: Dict[str, Dict[str, str]] = {
     "geoip-apple": {"desc": "🍏 Apple 苹果服务官方 IP 网段"},
     "geoip-custom-direct": {"desc": "📌 本地自定义直连 IP 地址网段", "note": "用户本地规则: rules/Custom_Direct_IP.txt"},
     "geoip-custom-dns": {"desc": "📌 本地自定义 DNS 解析 IP 地址", "note": "用户本地规则: rules/Custom_DNS_IP.txt"},
-    "geoip-iptv!cn": {"desc": "IPTV 境外直播与流媒体 IP 节点"},
+    "geoip-iptv-!cn": {"desc": "IPTV 境外直播与流媒体 IP 节点"},
 }
 
 

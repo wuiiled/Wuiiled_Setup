@@ -26,7 +26,7 @@ def synthesize_composites(rules: Dict[str, RuleSet]) -> None:
     composite_specs = [
         ("geosite-custom-direct", "geosite-custom-direct", "geoip-custom-direct"),
         ("geosite-custom-dns", "geosite-custom-dns", "geoip-custom-dns"),
-        ("geosite-iptv!cn", "geosite-iptv!cn", "geoip-iptv!cn"),
+        ("geosite-iptv-!cn", "geosite-iptv-!cn", "geoip-iptv-!cn"),
     ]
 
     for comp_name, domain_key, ip_key in composite_specs:
@@ -89,7 +89,7 @@ def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sin
     print(f"\n📦 [Sing-box] 正在构建所有规则集并输出至 {output_dir}...")
 
     for name, rs in rules.items():
-        if name in ("geoip-custom-direct", "geoip-custom-dns", "geoip-iptv!cn"):
+        if name in ("geoip-custom-direct", "geoip-custom-dns", "geoip-iptv-!cn"):
             continue
 
         sub_dir = geoip_out if rs.is_geoip else geosite_out
