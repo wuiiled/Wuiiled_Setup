@@ -25,6 +25,7 @@ from core.cleaner import (
 from core.fetcher import (
     fetch_text_cached,
     fetch_text_url,
+    fetch_published_geoip_ai_cidrs,
     read_local_file,
     fetch_tianling_ruleset,
     resolve_asn_to_cidrs
@@ -415,12 +416,22 @@ def load_ai_rules(min_domains: int = 0) -> Tuple[RuleSet, RuleSet]:
     if ip_asns:
         asn_cidrs, failed_asns = resolve_asn_to_cidrs(ip_asns)
         if failed_asns:
-            # 单个 ASN 双源 (ipverse + RIPEstat) 均未返回有效数据: 该 ASN 的全部网段
-            # 将静默缺失, 相关流量会漏出直连 —— 中止构建, 保留部署分支上的上一版规则
-            raise RuntimeError(
-                f"AI 规则集 IP-ASN 解析失败 (双源均无有效数据: {', '.join('AS' + a for a in failed_asns)}), "
-                "拒绝静默缩水导致相关网段流量漏出"
-            )
+            # 三级回退的最后一环: 双源 (ipverse+RIPEstat) 与该 ASN 的本地缓存均不可用时,
+            # 拉取本仓库已发布的 geoip-ai.txt (上一版网段) 继续合成 geoip-ai,
+            # 而不是中止整个规则构建 —— 仅在从未发布过 (真冷启动) 时才中止。
+            published = fetch_published_geoip_ai_cidrs()
+            if published:
+                print(
+                    f"  ⚠️ [AI ASN]     {len(failed_asns)} 个 ASN 双源且缓存均不可用 "
+                    f"({', '.join('AS' + a for a in failed_asns)}), "
+                    f"回退上一版已发布 geoip-ai 网段 {len(published):,} 条"
+                )
+                asn_cidrs.update(published)
+            else:
+                raise RuntimeError(
+                    f"AI 规则集 IP-ASN 解析失败 (双源均无有效数据且无上一版可用: "
+                    f"{', '.join('AS' + a for a in failed_asns)}), 拒绝静默缩水导致相关网段流量漏出"
+                )
         if not asn_cidrs:
             raise RuntimeError(
                 f"AI 规则集 IP-ASN 转换异常 (待解析: {sorted(ip_asns)} -> 0 条 CIDR), 拒绝静默缩水"

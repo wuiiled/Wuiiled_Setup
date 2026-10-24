@@ -54,6 +54,11 @@ AI_IGNORED_ASNS: set = set()
 # 中止构建拒绝合成 (防止长期用陈旧数据静默顶替)。CI 通过 actions/cache 持久化。
 SOURCE_CACHE_MAX_AGE_DAYS: int = 14
 
+# ASN 第三级回退: 本仓库 mihomo 分支已发布的 geoip-ai.txt (上一版网段)。
+# 比 actions/cache 更持久 (部署分支永远存在), 双源 + 本地缓存均不可用时,
+# 用它继续合成 geoip-ai 而不是中止整个构建; 仅在从未发布过 (真冷启动) 时才中止。
+GEOIP_AI_PUBLISHED_URL = "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/mihomo/rules/geoip/geoip-ai.txt"
+
 FAKE_IP_URLS = [
     "https://raw.githubusercontent.com/vernesong/OpenClash/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list",
     "https://raw.githubusercontent.com/juewuy/ShellCrash/dev/public/fake_ip_filter.list",

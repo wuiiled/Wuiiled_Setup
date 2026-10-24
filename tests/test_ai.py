@@ -156,11 +156,20 @@ def test_ai_guards_on_asn_failure_and_domain_shrinkage():
         with open(out_file, "w", encoding="utf-8") as f:
             f.write(sample_ai_raw)
 
-    # Guard 1: per-ASN double-source failure raises RuntimeError (traffic-leak prevention)
+    # Guard 1: ASN 双源失败且缓存/上一版 geoip-ai 均不可用 (真冷启动) -> 中止构建
     with patch("utils.download_files_parallel", side_effect=fake_download), \
-         patch("core.manager.resolve_asn_to_cidrs", return_value=(set(), ["399358"])):
+         patch("core.manager.resolve_asn_to_cidrs", return_value=(set(), ["399358"])), \
+         patch("core.manager.fetch_published_geoip_ai_cidrs", return_value=set()):
         with pytest.raises(RuntimeError, match="IP-ASN 解析失败"):
             load_ai_rules()
+
+    # Guard 1b: ASN 双源失败但上一版已发布 geoip-ai 可用 -> 回退继续合成, 不中止
+    with patch("utils.download_files_parallel", side_effect=fake_download), \
+         patch("core.manager.resolve_asn_to_cidrs", return_value=(set(), ["399358"])), \
+         patch("core.manager.fetch_published_geoip_ai_cidrs",
+               return_value={"160.79.104.0/21", "2001:db8::/32"}):
+        g1, ip1 = load_ai_rules()
+    assert {"160.79.104.0/21", "2001:db8::/32"} <= ip1.ip_cidrs
 
     # Guard 2: total-empty CIDR result still raises (belt-and-braces)
     with patch("utils.download_files_parallel", side_effect=fake_download), \

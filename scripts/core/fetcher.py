@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Set, Tuple
 
 import utils
+import providers
 from core.models import RuleSet
 
 _SSL_CONTEXT = ssl.create_default_context()
@@ -397,6 +398,29 @@ def fetch_bytes_cached(url: str, timeout: int = 15, retries: int = 3) -> bytes:
     if cached is not None:
         return cached
     raise RuntimeError(f"源拉取失败且无可用缓存 (拒绝合成缺失该源的不完整规则): {url}")
+
+
+def fetch_published_geoip_ai_cidrs(timeout: int = 15, retries: int = 3) -> Set[str]:
+    """
+    ASN 第三级回退: 从本仓库已发布的 mihomo 分支 geoip-ai.txt 提取上一版网段。
+    部署分支永远保有上一版产物 (比 actions/cache 更持久, 不受缓存逐出影响);
+    双源解析与本地缓存均不可用时, 用它继续合成 geoip-ai 而不是中止整个构建。
+    返回空集表示"上一版也不可用" (真冷启动), 由调用方决定中止。
+    """
+    url = getattr(providers, "GEOIP_AI_PUBLISHED_URL", "")
+    if not url:
+        return set()
+    content = fetch_text_url(url, timeout=timeout, retries=retries)
+    cidrs: Set[str] = set()
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            cidrs.add(str(ipaddress.ip_network(line, strict=False)))
+        except ValueError:
+            pass
+    return cidrs
 
 
 def read_local_file(rel_path: str) -> str:
