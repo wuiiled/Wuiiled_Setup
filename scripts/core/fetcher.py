@@ -13,7 +13,7 @@ import time
 import ipaddress
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Tuple
 
 import utils
 from core.models import RuleSet
@@ -185,17 +185,21 @@ def fetch_text_url(url: str, timeout: int = 15, retries: int = 3) -> str:
     return content
 
 
-def fetch_single_asn_cidrs(asn: str, timeout: int = 15, retries: int = 3) -> Set[str]:
+def fetch_single_asn_cidrs(asn: str, timeout: int = 15, retries: int = 3) -> Tuple[Set[str], bool]:
     """
     Resolve a single ASN (e.g. '399358' or 'AS399358') into announced IPv4/IPv6 CIDRs.
     1. Primary: ipverse/as-ip-blocks aggregated.json (GitHub Raw + ghfast mirror)
     2. Fallback: RIPEstat Announced Prefixes Data API
+    Returns (cidrs, authoritative):
+      - authoritative=True  表示至少一源返回了有效数据 (空前缀 = 该 ASN 合法无宣告)
+      - authoritative=False 表示双源均未返回有效数据 (网络失败/解析失败), 调用方应中止构建
     """
     clean_asn = re.sub(r"^as", "", str(asn).strip(), flags=re.IGNORECASE).strip()
     if not clean_asn.isdigit():
-        return set()
+        return set(), False
 
     cidrs: Set[str] = set()
+    authoritative = False
 
     # 1. Try ipverse/as-ip-blocks (fast, aggregated, supports GitHub mirror)
     ipverse_url = f"https://raw.githubusercontent.com/ipverse/as-ip-blocks/master/as/{clean_asn}/aggregated.json"
@@ -203,6 +207,7 @@ def fetch_single_asn_cidrs(asn: str, timeout: int = 15, retries: int = 3) -> Set
     if raw_ipverse:
         try:
             data = json.loads(raw_ipverse)
+            authoritative = True
             prefixes = data.get("prefixes") or {}
             for key in ("ipv4", "ipv6"):
                 for p in prefixes.get(key) or []:
@@ -220,6 +225,7 @@ def fetch_single_asn_cidrs(asn: str, timeout: int = 15, retries: int = 3) -> Set
         if raw_ripe:
             try:
                 data = json.loads(raw_ripe)
+                authoritative = True
                 items = (data.get("data") or {}).get("prefixes") or []
                 for item in items:
                     p = item.get("prefix") if isinstance(item, dict) else None
@@ -231,24 +237,33 @@ def fetch_single_asn_cidrs(asn: str, timeout: int = 15, retries: int = 3) -> Set
             except Exception:
                 pass
 
-    if not cidrs:
-        print(f"⚠️ ASN 转换未获取到网段: AS{clean_asn}")
-    return cidrs
+    if not cidrs and not authoritative:
+        print(f"⚠️ ASN 双源均未返回有效数据: AS{clean_asn}")
+    return cidrs, authoritative
 
 
-def resolve_asn_to_cidrs(asns: Set[str], timeout: int = 15, retries: int = 3) -> Set[str]:
-    """Concurrently resolve a set of ASNs into deduplicated, collapsed IPv4/IPv6 CIDRs."""
+def resolve_asn_to_cidrs(asns: Set[str], timeout: int = 15, retries: int = 3) -> Tuple[Set[str], List[str]]:
+    """
+    Concurrently resolve a set of ASNs into deduplicated, collapsed IPv4/IPv6 CIDRs.
+    Returns (collapsed_cidrs, failed_asns); failed_asns 非空表示这些 ASN 双源解析
+    均未获得有效数据, 调用方必须中止构建以防相关网段静默缺失导致流量漏出。
+    """
     if not asns:
-        return set()
+        return set(), []
     sorted_asns = sorted(asns)
     raw_cidrs: Set[str] = set()
+    failed_asns: List[str] = []
     with ThreadPoolExecutor(max_workers=min(len(sorted_asns), 8)) as executor:
-        futures = [executor.submit(fetch_single_asn_cidrs, a, timeout, retries) for a in sorted_asns]
-        for fut in futures:
+        futures = {executor.submit(fetch_single_asn_cidrs, a, timeout, retries): a for a in sorted_asns}
+        for fut, asn in futures.items():
             try:
-                raw_cidrs.update(fut.result())
+                cidrs, authoritative = fut.result()
+                raw_cidrs.update(cidrs)
+                if not authoritative:
+                    failed_asns.append(asn)
             except Exception as e:
-                print(f"⚠️ ASN 并发解析异常: {e}")
+                print(f"⚠️ ASN 并发解析异常 (AS{asn}): {e}")
+                failed_asns.append(asn)
 
     v4_nets = []
     v6_nets = []
@@ -264,7 +279,7 @@ def resolve_asn_to_cidrs(asns: Set[str], timeout: int = 15, retries: int = 3) ->
     collapsed = {str(n) for n in ipaddress.collapse_addresses(v4_nets)} | {
         str(n) for n in ipaddress.collapse_addresses(v6_nets)
     }
-    return collapsed
+    return collapsed, failed_asns
 
 
 def fetch_bytes_url(url: str, timeout: int = 15, retries: int = 3) -> bytes:

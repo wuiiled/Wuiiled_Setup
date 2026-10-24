@@ -165,7 +165,8 @@ def apply_rule_patches(all_rules: Dict[str, RuleSet]) -> None:
       - 手动补丁规则行 (上游已收录的行在运行期跳过并日志标注, 补丁文件保持只读);
       - include 指令 (dat 分类 / 外部 URL / 本地文件 的整表合并)。
     所有集合 (dat 派生 / 自研 / 自定义 / SKK) 共用同一条通道, 逻辑单一稳定。
-    include 解析失败 (下载失败/分类不存在/合并 0 条) 时中止构建, 防止规则集静默缩水。
+    include 解析失败 (下载失败/分类不存在/来源为空, 计 -1) 时中止构建, 防止规则集静默缩水;
+    来源有效但条目已全部被覆盖时诚实计 +0 放行。
     """
     print("\n🚀 [5/5] 应用本地补丁与列表合并 (rules/patches/)...")
     applied = 0
@@ -189,7 +190,9 @@ def apply_rule_patches(all_rules: Dict[str, RuleSet]) -> None:
             kept_dom, kept_suf, absorbed = absorb_covered_domains(rs.domains, rs.domain_suffixes)
             rs.domains, rs.domain_suffixes = kept_dom, kept_suf
         applied_str = f" | 覆盖吸收: -{absorbed:,}" if absorbed else ""
-        inc_str = " | ".join(f"{k}:{t} (+{n:,})" for k, t, n in includes) if includes else "-"
+        inc_str = " | ".join(
+            f"{k}:{t} ({'失败' if n < 0 else f'+{n:,}'})" for k, t, n in includes
+        ) if includes else "-"
         extra = f" | 上游已收录: {len(upstream_included)}" if upstream_included else ""
         print(f"  📝 [补丁] {name:<26} | 手动补丁: {plain_n} | include: {inc_str}{applied_str}{extra}")
     print(f"  ✅ 共应用 {applied} 个规则集的本地补丁")
@@ -411,10 +414,17 @@ def load_ai_rules(min_domains: int = 0) -> Tuple[RuleSet, RuleSet]:
                         ip_asns.add(val)
 
     if ip_asns:
-        asn_cidrs = resolve_asn_to_cidrs(ip_asns)
+        asn_cidrs, failed_asns = resolve_asn_to_cidrs(ip_asns)
+        if failed_asns:
+            # 单个 ASN 双源 (ipverse + RIPEstat) 均未返回有效数据: 该 ASN 的全部网段
+            # 将静默缺失, 相关流量会漏出直连 —— 中止构建, 保留部署分支上的上一版规则
+            raise RuntimeError(
+                f"AI 规则集 IP-ASN 解析失败 (双源均无有效数据: {', '.join('AS' + a for a in failed_asns)}), "
+                "拒绝静默缩水导致相关网段流量漏出"
+            )
         if not asn_cidrs:
             raise RuntimeError(
-                f"AI 规则集 IP-ASN 转换失败 (待解析: {sorted(ip_asns)} -> 0 条 CIDR), 拒绝静默缩水"
+                f"AI 规则集 IP-ASN 转换异常 (待解析: {sorted(ip_asns)} -> 0 条 CIDR), 拒绝静默缩水"
             )
         print(
             f"  🔄 [AI ASN]     解析 {len(ip_asns)} 个 IP-ASN "

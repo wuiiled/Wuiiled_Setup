@@ -135,13 +135,14 @@ def test_asn_to_cidr_ipverse_and_ripestat_fallback():
         return ""
 
     with patch("core.fetcher._fetch_raw_text", side_effect=fake_fetch):
-        c_399358 = fetch_single_asn_cidrs("399358")
-        assert "2607:6bc0::/32" in c_399358
+        c_399358, ok_399358 = fetch_single_asn_cidrs("399358")
+        assert ok_399358 and "2607:6bc0::/32" in c_399358
 
-        c_401518 = fetch_single_asn_cidrs("401518")
-        assert c_401518 == {"23.98.142.176/28", "2604:f20::/32"}
+        c_401518, ok_401518 = fetch_single_asn_cidrs("401518")
+        assert ok_401518 and c_401518 == {"23.98.142.176/28", "2604:f20::/32"}
 
-        merged = resolve_asn_to_cidrs({"399358", "401518"})
+        merged, failed = resolve_asn_to_cidrs({"399358", "401518"})
+        assert failed == []
         assert "160.79.104.0/21" in merged
         assert "2607:6bc0::/32" in merged
         assert "23.98.142.176/28" in merged
@@ -155,17 +156,40 @@ def test_ai_guards_on_asn_failure_and_domain_shrinkage():
         with open(out_file, "w", encoding="utf-8") as f:
             f.write(sample_ai_raw)
 
-    # Guard 1: ASN failure raises RuntimeError instead of silently dropping ASN CIDRs
+    # Guard 1: per-ASN double-source failure raises RuntimeError (traffic-leak prevention)
     with patch("utils.download_files_parallel", side_effect=fake_download), \
-         patch("core.manager.resolve_asn_to_cidrs", return_value=set()):
-        with pytest.raises(RuntimeError, match="IP-ASN 转换失败"):
+         patch("core.manager.resolve_asn_to_cidrs", return_value=(set(), ["399358"])):
+        with pytest.raises(RuntimeError, match="IP-ASN 解析失败"):
             load_ai_rules()
 
-    # Guard 2: Minimum domain count guard raises RuntimeError on shrinkage
+    # Guard 2: total-empty CIDR result still raises (belt-and-braces)
     with patch("utils.download_files_parallel", side_effect=fake_download), \
-         patch("core.manager.resolve_asn_to_cidrs", return_value={"160.79.104.0/21"}):
+         patch("core.manager.resolve_asn_to_cidrs", return_value=(set(), [])):
+        with pytest.raises(RuntimeError, match="IP-ASN 转换异常"):
+            load_ai_rules()
+
+    # Guard 3: Minimum domain count guard raises RuntimeError on shrinkage
+    with patch("utils.download_files_parallel", side_effect=fake_download), \
+         patch("core.manager.resolve_asn_to_cidrs", return_value=({"160.79.104.0/21"}, [])):
         with pytest.raises(RuntimeError, match="域名条数异常偏低"):
             load_ai_rules(min_domains=300)
+
+
+def test_asn_authoritative_empty_not_failure_but_double_failure_is():
+    # RIPEstat 返回合法空集 (该 ASN 无宣告前缀): 不算失败, 不进 failed_asns
+    def fake_valid_empty(url, timeout=15, retries=3):
+        if "stat.ripe.net" in url:
+            return json.dumps({"data": {"prefixes": []}})
+        return ""
+
+    with patch("core.fetcher._fetch_raw_text", side_effect=fake_valid_empty):
+        cidrs, failed = resolve_asn_to_cidrs({"64512"})
+        assert cidrs == set() and failed == []
+
+    # 双源均未返回有效数据: 计入 failed_asns, 供 manager 中止构建
+    with patch("core.fetcher._fetch_raw_text", return_value=""):
+        cidrs, failed = resolve_asn_to_cidrs({"64512", "399358"})
+        assert failed == ["399358", "64512"]
 
 
 def test_patcher_full_overlap_reports_zero_delta_not_negative():
@@ -199,7 +223,7 @@ def test_ai_end_to_end_singbox_or_semantics_and_mihomo_lint(tmp_path):
             f.write(sample_ai_raw)
 
     with patch("utils.download_files_parallel", side_effect=fake_download_parallel), \
-         patch("core.manager.resolve_asn_to_cidrs", return_value={"160.79.104.0/21"}):
+         patch("core.manager.resolve_asn_to_cidrs", return_value=({"160.79.104.0/21"}, [])):
         geosite_ai, geoip_ai = load_ai_rules()
 
     assert "apple-relay.cloudflare.com" in geosite_ai.domains
