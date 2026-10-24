@@ -78,17 +78,28 @@ def safe_copy(src, dst):
 
 
 def download_file(url, timeout=15, retries=3):
-    """文本下载统一走 core.fetcher (镜像回退+重试的单一实现)。"""
+    """文本下载统一走 core.fetcher (重试+镜像回退+上一次完整拉取缓存兜底)。"""
     import core.fetcher as fetcher
-    return fetcher.fetch_text_url(url, timeout=timeout, retries=retries)
+    return fetcher.fetch_text_cached(url, timeout=timeout, retries=retries)
 
 
 def download_files_parallel(output_file, urls):
+    """并行拉取全部源并聚合。
+
+    任意源失败的行为 (all-or-nothing):
+    - 失败源若有"上一次完整拉取"的缓存 (download_file 内部回退) 则照常参与合成;
+    - 既拉取失败又无可用缓存的源, 整体抛 RuntimeError 中止构建,
+      拒绝合成缺失任意源的不完整规则 (CI 不部署, 各分支保留上一版)。
+    """
+    if not urls:
+        with open(output_file, 'w', encoding='utf-8'):
+            pass
+        return
     with ThreadPoolExecutor(max_workers=min(len(urls) + 1, 10)) as executor:
         futures_map = {executor.submit(download_file, url): url for url in urls}
         results = []
         success_count = 0
-        fail_count = 0
+        failed = []
         for future, url in futures_map.items():
             try:
                 content = future.result()
@@ -98,12 +109,15 @@ def download_files_parallel(output_file, urls):
                     results.append(content)
                     success_count += 1
                 else:
-                    fail_count += 1
+                    failed.append(url)
             except Exception as e:
-                print(f"⚠️ 并行下载异常: {url} -> {e}")
-                fail_count += 1
-    if urls:
-        print(f"📥 下载完成: {success_count} 成功, {fail_count} 失败 (共 {len(urls)} 源)")
+                print(f"❌ 源拉取失败: {url} -> {e}")
+                failed.append(url)
+    print(f"📥 下载完成: {success_count} 成功, {len(failed)} 失败 (共 {len(urls)} 源)")
+    if failed:
+        raise RuntimeError(
+            f"以下 {len(failed)} 个源拉取失败且无可用缓存, 拒绝合成不完整规则: {', '.join(failed)}"
+        )
     with open(output_file, 'w', encoding='utf-8') as f:
         if results:
             f.write("".join(results))

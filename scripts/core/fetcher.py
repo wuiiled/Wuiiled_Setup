@@ -10,6 +10,8 @@ import os
 import re
 import ssl
 import time
+import hashlib
+import threading
 import ipaddress
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -239,7 +241,20 @@ def fetch_single_asn_cidrs(asn: str, timeout: int = 15, retries: int = 3) -> Tup
 
     if not cidrs and not authoritative:
         print(f"⚠️ ASN 双源均未返回有效数据: AS{clean_asn}")
-    return cidrs, authoritative
+    if authoritative:
+        _source_cache_save(f"asn-cidrs:{clean_asn}", json.dumps(sorted(cidrs)).encode("utf-8"))
+        return cidrs, True
+
+    # 双源均无有效数据: 回退该 ASN 上一次完整拉取的网段缓存
+    cached = _fresh_cache_or_none(f"asn-cidrs:{clean_asn}", label=f"AS{clean_asn} ")
+    if cached is not None:
+        try:
+            stale_cidrs = set(json.loads(cached.decode("utf-8")))
+            print(f"⚠️ AS{clean_asn} 双源失败, 使用缓存网段 {len(stale_cidrs):,} 条")
+            return stale_cidrs, True
+        except Exception:
+            pass
+    return cidrs, False
 
 
 def resolve_asn_to_cidrs(asns: Set[str], timeout: int = 15, retries: int = 3) -> Tuple[Set[str], List[str]]:
@@ -298,6 +313,92 @@ def fetch_bytes_url(url: str, timeout: int = 15, retries: int = 3) -> bytes:
     return b""
 
 
+# ----------------------------------------------------------------------
+# 逐源"上一次完整拉取"缓存: 任意源拉取失败时回退用上一次成功拉取的内容
+# 继续合成, 无缓存或缓存超龄则抛错中止构建 —— 拒绝发布缺失任意源的不完整规则。
+# CI 侧通过 actions/cache 持久化 ~/.cache/wuiiled_setup 实现跨次构建回退。
+# ----------------------------------------------------------------------
+SOURCE_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "wuiiled_setup", "sources")
+
+
+def _source_cache_paths(url: str) -> Tuple[str, str]:
+    key = hashlib.sha256(url.encode("utf-8")).hexdigest()[:24]
+    return (
+        os.path.join(SOURCE_CACHE_DIR, key + ".body"),
+        os.path.join(SOURCE_CACHE_DIR, key + ".meta.json"),
+    )
+
+
+def _source_cache_load(url: str) -> Optional[Tuple[bytes, float]]:
+    """读取缓存, 返回 (内容, 缓存年龄天数); 缺失/损坏返回 None。"""
+    body_p, meta_p = _source_cache_paths(url)
+    try:
+        with open(meta_p, encoding="utf-8") as f:
+            meta = json.load(f)
+        if meta.get("url") != url:
+            return None
+        with open(body_p, "rb") as f:
+            data = f.read()
+    except Exception:
+        return None
+    age_days = max(0.0, (time.time() - float(meta.get("fetched_at", 0))) / 86400)
+    return data, age_days
+
+
+def _source_cache_save(url: str, data: bytes) -> None:
+    os.makedirs(SOURCE_CACHE_DIR, exist_ok=True)
+    body_p, meta_p = _source_cache_paths(url)
+    suffix = f".{os.getpid()}.{threading.get_ident()}.tmp"
+    with open(body_p + suffix, "wb") as f:
+        f.write(data)
+    os.replace(body_p + suffix, body_p)
+    with open(meta_p + suffix, "w", encoding="utf-8") as f:
+        json.dump({"url": url, "fetched_at": time.time()}, f)
+    os.replace(meta_p + suffix, meta_p)
+
+
+def _source_cache_max_age_days() -> float:
+    import providers
+    return float(getattr(providers, "SOURCE_CACHE_MAX_AGE_DAYS", 14))
+
+
+def _fresh_cache_or_none(url: str, label: str = "源") -> Optional[bytes]:
+    """读取未超龄的缓存并打印回退提示; 缺失或超龄返回 None。"""
+    cached = _source_cache_load(url)
+    if cached is None:
+        return None
+    data, age_days = cached
+    if age_days > _source_cache_max_age_days():
+        return None
+    print(f"⚠️ {label}拉取失败, 回退上一次完整拉取的缓存 ({age_days:.1f} 天前): {url}")
+    return data
+
+
+def fetch_text_cached(url: str, timeout: int = 15, retries: int = 3) -> str:
+    """网络优先文本拉取: 成功即刷新缓存; 失败回退上一次完整拉取的缓存;
+    无缓存或缓存超龄则抛 RuntimeError, 由调用方中止构建。"""
+    content = fetch_text_url(url, timeout=timeout, retries=retries)
+    if content.strip():
+        _source_cache_save(url, content.encode("utf-8"))
+        return content
+    cached = _fresh_cache_or_none(url)
+    if cached is not None:
+        return cached.decode("utf-8", errors="ignore")
+    raise RuntimeError(f"源拉取失败且无可用缓存 (拒绝合成缺失该源的不完整规则): {url}")
+
+
+def fetch_bytes_cached(url: str, timeout: int = 15, retries: int = 3) -> bytes:
+    """fetch_text_cached 的二进制版本 (geosite.dat / .srs 等大文件)。"""
+    data = fetch_bytes_url(url, timeout=timeout, retries=retries)
+    if data:
+        _source_cache_save(url, data)
+        return data
+    cached = _fresh_cache_or_none(url)
+    if cached is not None:
+        return cached
+    raise RuntimeError(f"源拉取失败且无可用缓存 (拒绝合成缺失该源的不完整规则): {url}")
+
+
 def read_local_file(rel_path: str) -> str:
     """Safely read a file relative to the repository root."""
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -327,7 +428,7 @@ def fetch_tianling_ruleset(tag: str, category: str = "geosite", out_name: Option
     repo = "sing-geoip" if category == "geoip" else "sing-geosite"
     url = f"https://raw.githubusercontent.com/1715173329/{repo}/rule-set/{tag}.srs"
 
-    srs_bytes = fetch_bytes_url(url)
+    srs_bytes = fetch_bytes_cached(url)
     if not srs_bytes:
         print(f"❌ 无法从天灵官方仓库获取 {tag}.srs: {url}")
         return None

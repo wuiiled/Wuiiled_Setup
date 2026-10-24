@@ -157,9 +157,14 @@ def _resolve_include(kind: str, target: str, dat_map: Optional[Dict[str, RuleSet
         return rs
     if kind == "url":
         import utils
-        content = utils.download_file(target)
+        try:
+            content = utils.download_file(target)
+        except RuntimeError as e:
+            # 拉取失败且无"上一次完整拉取"缓存: 返回 None 由 -1 守卫聚合报错中止构建
+            print(f"    ❌ include:url 拉取失败: {e}")
+            return None
         if not content:
-            print(f"    ⚠️ include:url 下载失败, 已跳过: {target}")
+            print(f"    ⚠️ include:url 内容为空, 已跳过: {target}")
             return None
         rs = RuleSet(name=f"include:{target}", category="geosite")
         for line in content.splitlines():

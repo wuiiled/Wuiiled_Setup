@@ -32,6 +32,16 @@ jobs:
     - name: Install Python dependencies
       run: pip install -r requirements.txt
 
+    # 源"上一次完整拉取"缓存: 任意上游源拉取失败时回退该缓存继续合成;
+    # key 含 run_id 保证每次成功构建都保存新鲜缓存, restore-keys 取最近一次
+    - name: Restore upstream source cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/wuiiled_setup
+        key: rule-sources-${{ github.run_id }}
+        restore-keys: |
+          rule-sources-
+
     - name: Install Tools (Mihomo & Sing-box)
       run: |
         echo "Downloading latest mihomo binary..."

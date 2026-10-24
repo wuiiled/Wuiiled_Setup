@@ -23,6 +23,7 @@ from core.cleaner import (
     absorb_covered_domains
 )
 from core.fetcher import (
+    fetch_text_cached,
     fetch_text_url,
     read_local_file,
     fetch_tianling_ruleset,
@@ -211,21 +212,17 @@ def load_tianling_rules() -> Dict[str, RuleSet]:
     results: Dict[str, RuleSet] = {}
 
     # Download latest geosite.dat from Loyalsoldier release
+    # (fetch_bytes_cached: 失败自动回退上一次完整拉取的缓存, 无缓存/超龄则抛错中止)
     import core.fetcher as fetcher
     dat_url = "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
     cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "wuiiled_setup")
     os.makedirs(cache_dir, exist_ok=True)
     dat_path = os.path.join(cache_dir, "geosite.dat")
     print(f"\n🌐 [源头] 检查/下载 Loyalsoldier geosite.dat ...")
-    data = fetcher.fetch_bytes_url(dat_url, timeout=60, retries=3)
-    if data:
-        with open(dat_path, "wb") as f:
-            f.write(data)
-        print(f"🌐 [源头] geosite.dat 下载成功: {len(data):,} bytes")
-    elif os.path.exists(dat_path) and os.path.getsize(dat_path) > 0:
-        print(f"⚠️ [源头] 下载失败，自动回退使用本地缓存 geosite.dat ({os.path.getsize(dat_path):,} bytes)")
-    else:
-        raise RuntimeError("无法下载 Loyalsoldier geosite.dat 且本地缓存不存在")
+    data = fetcher.fetch_bytes_cached(dat_url, timeout=60, retries=3)
+    with open(dat_path, "wb") as f:
+        f.write(data)
+    print(f"🌐 [源头] geosite.dat 就绪: {len(data):,} bytes")
 
     source_map = parse_geosite_dat(dat_path)
     print(f"🌐 [源头] 解析出 {len(source_map)} 个上游分类")
@@ -237,8 +234,10 @@ def load_tianling_rules() -> Dict[str, RuleSet]:
         code = upstream_tag[len("geosite-"):]
         src_rs = source_map.get(code)
         if src_rs is None:
-            print(f"  ❌ [源头 GeoSite] {out_name:<26} | 上游分类 '{code}' 不存在")
-            continue
+            # 上游分类被改名/移除时整个规则集会静默消失 —— 拒绝发布不完整规则
+            raise RuntimeError(
+                f"geosite.dat 上游分类 '{code}' 不存在, 规则集 {out_name} 将静默缺失, 拒绝继续"
+            )
         rs = src_rs.copy()
         rs.name = out_name
         rs.category = "geosite"
@@ -838,7 +837,7 @@ def load_skk_rules() -> Dict[str, RuleSet]:
     results: Dict[str, RuleSet] = {}
     unique_urls = list(set(providers.MIHOMO_SKK.values()))
     with ThreadPoolExecutor(max_workers=min(len(unique_urls), 8)) as executor:
-        url_cache = dict(zip(unique_urls, executor.map(fetch_text_url, unique_urls)))
+        url_cache = dict(zip(unique_urls, executor.map(fetch_text_cached, unique_urls)))
 
     for name, url in providers.MIHOMO_SKK.items():
         content = url_cache.get(url, "")

@@ -25,16 +25,15 @@ class TestDownloadFilesParallel:
             os.unlink(out_path)
 
     @patch('utils.download_file')
-    def test_partial_failure(self, mock_download):
-        """One download returns empty → only successful content written."""
-        mock_download.side_effect = ["good.com\n", ""]
+    def test_partial_failure_rejected(self, mock_download):
+        """One download fails with no cache → whole composition rejected (all-or-nothing)."""
+        import pytest
+        mock_download.side_effect = ["good.com\n", RuntimeError("no cache")]
         with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as tf:
             out_path = tf.name
         try:
-            utils.download_files_parallel(out_path, ["http://a.com", "http://b.com"])
-            with open(out_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            assert "good.com" in content
+            with pytest.raises(RuntimeError, match="拒绝合成不完整规则"):
+                utils.download_files_parallel(out_path, ["http://a.com", "http://b.com"])
         finally:
             os.unlink(out_path)
 
@@ -64,13 +63,14 @@ class TestDownloadFilesParallel:
             os.unlink(out_path)
 
     @patch('utils.download_file')
-    def test_all_fail(self, mock_download):
-        """All downloads fail → empty output file."""
+    def test_all_fail_rejected(self, mock_download):
+        """All downloads fail with no cache → RuntimeError, no partial output."""
+        import pytest
         mock_download.return_value = ""
         with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as tf:
             out_path = tf.name
         try:
-            utils.download_files_parallel(out_path, ["http://a.com", "http://b.com"])
-            assert os.path.getsize(out_path) == 0
+            with pytest.raises(RuntimeError, match="拒绝合成不完整规则"):
+                utils.download_files_parallel(out_path, ["http://a.com", "http://b.com"])
         finally:
             os.unlink(out_path)

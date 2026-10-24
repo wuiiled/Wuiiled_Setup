@@ -50,6 +50,10 @@ AI_URLS = [
 # 默认为空以全量转换上游 IP-ASN，如需仅保留 AI 专属 ASN 如 AS399358 Anthropic / AS401518 OpenAI 可在此填入)
 AI_IGNORED_ASNS: set = set()
 
+# 任意源拉取失败时回退"上一次完整拉取"的缓存, 缓存年龄超过该天数则视为失效、
+# 中止构建拒绝合成 (防止长期用陈旧数据静默顶替)。CI 通过 actions/cache 持久化。
+SOURCE_CACHE_MAX_AGE_DAYS: int = 14
+
 FAKE_IP_URLS = [
     "https://raw.githubusercontent.com/vernesong/OpenClash/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list",
     "https://raw.githubusercontent.com/juewuy/ShellCrash/dev/public/fake_ip_filter.list",

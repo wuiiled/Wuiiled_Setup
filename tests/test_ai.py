@@ -186,10 +186,11 @@ def test_asn_authoritative_empty_not_failure_but_double_failure_is():
         cidrs, failed = resolve_asn_to_cidrs({"64512"})
         assert cidrs == set() and failed == []
 
-    # 双源均未返回有效数据: 计入 failed_asns, 供 manager 中止构建
+    # 双源均未返回有效数据且无缓存: 计入 failed_asns, 供 manager 中止构建
+    # (AS64512 已有上一步的合法空集缓存, 会按"上一次完整拉取"回退, 故换无缓存的 ASN)
     with patch("core.fetcher._fetch_raw_text", return_value=""):
-        cidrs, failed = resolve_asn_to_cidrs({"64512", "399358"})
-        assert failed == ["399358", "64512"]
+        cidrs, failed = resolve_asn_to_cidrs({"64598", "399358"})
+        assert failed == ["399358", "64598"]
 
 
 def test_patcher_full_overlap_reports_zero_delta_not_negative():
