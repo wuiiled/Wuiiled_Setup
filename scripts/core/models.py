@@ -27,6 +27,7 @@ class RuleSet:
         domain_keywords: Optional[Set[str]] = None,
         domain_regexes: Optional[Set[str]] = None,
         ip_cidrs: Optional[Set[str]] = None,
+        process_names: Optional[Set[str]] = None,
         raw_srs: Optional[bytes] = None,
         raw_lines: Optional[List[str]] = None,
         source_kind: str = "",  # dat | recipe | self | skk | custom | geoip-srs
@@ -42,6 +43,7 @@ class RuleSet:
         self.domain_keywords: Set[str] = domain_keywords or set()
         self.domain_regexes: Set[str] = domain_regexes or set()
         self.ip_cidrs: Set[str] = ip_cidrs or set()
+        self.process_names: Set[str] = process_names or set()
         self.raw_srs: Optional[bytes] = raw_srs
         self.raw_lines: Optional[List[str]] = raw_lines
         # 来源画像: 由各 loader 填写, 经 manifest 驱动 README "说明" 列渲染,
@@ -63,6 +65,7 @@ class RuleSet:
             domain_keywords=set(self.domain_keywords),
             domain_regexes=set(self.domain_regexes),
             ip_cidrs=set(self.ip_cidrs),
+            process_names=set(self.process_names),
             raw_srs=self.raw_srs,
             raw_lines=list(self.raw_lines) if self.raw_lines is not None else None,
             source_kind=self.source_kind,
@@ -73,7 +76,7 @@ class RuleSet:
 
     @property
     def is_geoip(self) -> bool:
-        return self.category == "geoip" or bool(self.ip_cidrs and not (self.domains or self.domain_suffixes or self.domain_keywords or self.domain_regexes))
+        return self.category == "geoip" or bool(self.ip_cidrs and not (self.domains or self.domain_suffixes or self.domain_keywords or self.domain_regexes or self.process_names))
 
     @property
     def total_count(self) -> int:
@@ -83,25 +86,41 @@ class RuleSet:
             + len(self.domain_keywords)
             + len(self.domain_regexes)
             + len(self.ip_cidrs)
+            + len(self.process_names)
         )
 
     def to_singbox_dict(self, version: int = 5) -> Dict[str, Any]:
-        """Convert RuleSet to Sing-box rule-set JSON structure."""
-        rule_dict: Dict[str, Any] = {}
+        """
+        Convert RuleSet to Sing-box rule-set JSON structure.
+        IMPORTANT (sing-box headless rule semantics):
+        Within a single rule object, `(domain || domain_suffix || domain_keyword || domain_regex || ip_cidr)`
+        is ANDed with `process_name`. To achieve OR semantics between network indicators and process names,
+        `process_name` MUST be emitted as a separate rule entry in the `rules` list.
+        """
+        rules_list: List[Dict[str, Any]] = []
+        net_rule: Dict[str, Any] = {}
         if self.domains:
-            rule_dict["domain"] = sorted(list(self.domains))
+            net_rule["domain"] = sorted(list(self.domains))
         if self.domain_suffixes:
-            rule_dict["domain_suffix"] = sorted(list(self.domain_suffixes))
+            net_rule["domain_suffix"] = sorted(list(self.domain_suffixes))
         if self.domain_keywords:
-            rule_dict["domain_keyword"] = sorted(list(self.domain_keywords))
+            net_rule["domain_keyword"] = sorted(list(self.domain_keywords))
         if self.domain_regexes:
-            rule_dict["domain_regex"] = sorted(list(self.domain_regexes))
+            net_rule["domain_regex"] = sorted(list(self.domain_regexes))
         if self.ip_cidrs:
-            rule_dict["ip_cidr"] = sorted(list(self.ip_cidrs))
+            net_rule["ip_cidr"] = sorted(list(self.ip_cidrs))
+        if net_rule:
+            rules_list.append(net_rule)
+
+        if self.process_names:
+            rules_list.append({"process_name": sorted(list(self.process_names))})
+
+        if not rules_list:
+            rules_list.append({})
 
         return {
             "version": version,
-            "rules": [rule_dict]
+            "rules": rules_list
         }
 
     def to_mihomo_lines(self) -> List[str]:

@@ -22,41 +22,56 @@ def check_singbox() -> bool:
 
 
 def synthesize_composites(rules: Dict[str, RuleSet]) -> None:
-    """合成 sing-box 专属复合规则 (域名 + keyword + regex + IP 同集)。"""
+    """合成 sing-box 专属复合规则 (域名 + keyword + regex + 进程名 + IP 同集)。"""
     composite_specs = [
         ("geosite-custom-direct", "geosite-custom-direct", "geoip-custom-direct"),
         ("geosite-custom-dns", "geosite-custom-dns", "geoip-custom-dns"),
         ("geosite-iptv-!cn", "geosite-iptv-!cn", "geoip-iptv-!cn"),
+        ("geosite-ai", "geosite-ai", "geoip-ai"),
     ]
 
     for comp_name, domain_key, ip_key in composite_specs:
+        if domain_key not in rules and ip_key not in rules:
+            continue
         comp_domains: Set[str] = set()
         comp_suffixes: Set[str] = set()
         comp_keywords: Set[str] = set()
         comp_regexes: Set[str] = set()
+        comp_processes: Set[str] = set()
         comp_ips: Set[str] = set()
         sources: List[str] = []
+        desc = "复合自定义规则 (域名 + IP)"
+        source_kind = "custom"
 
         if domain_key in rules:
-            comp_domains.update(rules[domain_key].domains)
-            comp_suffixes.update(rules[domain_key].domain_suffixes)
-            comp_keywords.update(rules[domain_key].domain_keywords)
-            comp_regexes.update(rules[domain_key].domain_regexes)
-            sources += list(rules[domain_key].sources)
+            dom_rs = rules[domain_key]
+            comp_domains.update(dom_rs.domains)
+            comp_suffixes.update(dom_rs.domain_suffixes)
+            comp_keywords.update(dom_rs.domain_keywords)
+            comp_regexes.update(dom_rs.domain_regexes)
+            comp_processes.update(dom_rs.process_names)
+            sources += list(dom_rs.sources)
+            if dom_rs.description:
+                desc = dom_rs.description
+            if dom_rs.source_kind:
+                source_kind = dom_rs.source_kind
         if ip_key in rules:
             comp_ips.update(rules[ip_key].ip_cidrs)
-            sources += list(rules[ip_key].sources)
+            for s in rules[ip_key].sources:
+                if s not in sources:
+                    sources.append(s)
 
         rules[comp_name] = RuleSet(
             name=comp_name,
             category="geosite",
-            description="复合自定义规则 (域名 + IP)",
+            description=desc,
             domains=comp_domains,
             domain_suffixes=comp_suffixes,
             domain_keywords=comp_keywords,
             domain_regexes=comp_regexes,
+            process_names=comp_processes,
             ip_cidrs=comp_ips,
-            source_kind="custom",
+            source_kind=source_kind,
             sources=sources,
         )
 
@@ -89,7 +104,7 @@ def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sin
     print(f"\n📦 [Sing-box] 正在构建所有规则集并输出至 {output_dir}...")
 
     for name, rs in rules.items():
-        if name in ("geoip-custom-direct", "geoip-custom-dns", "geoip-iptv-!cn"):
+        if name in ("geoip-custom-direct", "geoip-custom-dns", "geoip-iptv-!cn", "geoip-ai"):
             continue
 
         sub_dir = geoip_out if rs.is_geoip else geosite_out

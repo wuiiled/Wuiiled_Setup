@@ -40,7 +40,15 @@ AI_URLS = [
     "https://ruleset.skk.moe/List/non_ip/ai.conf",
     # DustinWin AI 规则
     "https://github.com/DustinWin/ruleset_geodata/raw/mihomo-ruleset/ai.list",
+    # MagicRule GlobalAI (Surge 规则集)
+    "https://magicrule.pages.dev/#/c/Surge/r/24dbbb36-e5c5-4800-8fde-4af469213846",
+    # dler-io AI Suite (Clash Provider)
+    "https://github.com/dler-io/Rules/blob/main/Clash/Provider/AI%20Suite.yaml",
 ]
+
+# 可选排除的泛云厂商 ASN (如泛 VPS 厂商 AS20473 Vultr / AS14061 DigitalOcean;
+# 默认为空以全量转换上游 IP-ASN，如需仅保留 AI 专属 ASN 如 AS399358 Anthropic / AS401518 OpenAI 可在此填入)
+AI_IGNORED_ASNS: set = set()
 
 FAKE_IP_URLS = [
     "https://raw.githubusercontent.com/vernesong/OpenClash/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list",

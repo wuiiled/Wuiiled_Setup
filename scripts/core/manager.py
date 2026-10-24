@@ -16,6 +16,7 @@ from core.models import RuleSet
 from core.cleaner import (
     clean_ip_line,
     clean_mihomo_domain_line,
+    parse_ai_rule_line,
     compact_regexes,
     build_blocklist_b,
     build_whitelist_b,
@@ -24,7 +25,8 @@ from core.cleaner import (
 from core.fetcher import (
     fetch_text_url,
     read_local_file,
-    fetch_tianling_ruleset
+    fetch_tianling_ruleset,
+    resolve_asn_to_cidrs
 )
 from core.patcher import apply_patches, load_patch_file
 from core.geosite_source import parse_geosite_dat, build_tianling_style_cn
@@ -174,7 +176,7 @@ def apply_rule_patches(all_rules: Dict[str, RuleSet]) -> None:
         rs, plain_n, upstream_included, includes = apply_patches(rs, dat_map=_DAT_SOURCE_MAP)
         applied += 1
         for kind, target, merged in includes:
-            if merged == 0:
+            if merged < 0:
                 failed_includes.append((name, kind, target))
         # include 整表合并也是真实来源, 记入来源画像供 manifest/README 渲染
         inc_labels = [_include_label(k, v) for k, v, _n in includes if k in ("dat", "url", "local")]
@@ -183,7 +185,7 @@ def apply_rule_patches(all_rules: Dict[str, RuleSet]) -> None:
         # 含 include 整表合并的集合做覆盖吸收 (删除被更短后缀涵盖的条目);
         # 纯 dat 派生集合不吸收, 保持与天灵 0-Diff 同构。
         absorbed = 0
-        if any(n > 0 for _k, _t, n in includes) and rs.category == "geosite":
+        if any(n >= 0 for _k, _t, n in includes) and rs.category == "geosite":
             kept_dom, kept_suf, absorbed = absorb_covered_domains(rs.domains, rs.domain_suffixes)
             rs.domains, rs.domain_suffixes = kept_dom, kept_suf
         applied_str = f" | 覆盖吸收: -{absorbed:,}" if absorbed else ""
@@ -366,36 +368,115 @@ def load_ads_rules() -> RuleSet:
     )
 
 
-def load_ai_rules() -> RuleSet:
-    """Build geosite-ai."""
+def load_ai_rules(min_domains: int = 0) -> Tuple[RuleSet, RuleSet]:
+    """
+    Build geosite-ai and geoip-ai from providers.AI_URLS.
+    - geosite-ai: domain, domain_suffix, domain_keyword, process_name
+    - geoip-ai: ip_cidr (including IP-ASN resolved to IP-CIDR)
+    """
     work_dir = utils.get_work_dir()
     mod_dir = os.path.join(work_dir, "ai")
     os.makedirs(mod_dir, exist_ok=True)
     raw_ai = os.path.join(mod_dir, "raw_ai.txt")
-    clean_ai = os.path.join(mod_dir, "clean_ai.txt")
-    opt_ai = os.path.join(mod_dir, "opt_ai.txt")
 
     utils.download_files_parallel(raw_ai, providers.AI_URLS)
-    utils.process_normalize_domain(raw_ai, clean_ai, skip_allow_rules=False)
-    utils.optimize_smart_self(clean_ai, opt_ai)
 
-    domain_suffixes = set()
-    if os.path.exists(opt_ai):
-        with open(opt_ai, "r", encoding="utf-8") as f:
+    domains: Set[str] = set()
+    domain_suffixes: Set[str] = set()
+    domain_keywords: Set[str] = set()
+    process_names: Set[str] = set()
+    ip_cidrs: Set[str] = set()
+    ip_asns: Set[str] = set()
+    ignored_asns = {str(a).upper().removeprefix("AS") for a in getattr(providers, "AI_IGNORED_ASNS", set())}
+
+    if os.path.exists(raw_ai):
+        with open(raw_ai, "r", encoding="utf-8") as f:
             for line in f:
-                d = line.strip()
-                if d:
-                    domain_suffixes.add(d)
+                parsed = parse_ai_rule_line(line)
+                if not parsed:
+                    continue
+                rtype, val = parsed
+                if rtype == "domain":
+                    domains.add(val)
+                elif rtype == "domain_suffix":
+                    domain_suffixes.add(val)
+                elif rtype == "domain_keyword":
+                    domain_keywords.add(val)
+                elif rtype == "process_name":
+                    process_names.add(val)
+                elif rtype == "ip_cidr":
+                    ip_cidrs.add(val)
+                elif rtype == "ip_asn":
+                    if val not in ignored_asns:
+                        ip_asns.add(val)
 
-    print(f"  ✅ [原创 AI]    {'geosite-ai':<26} | 规则数: {len(domain_suffixes):,}")
-    return RuleSet(
+    if ip_asns:
+        asn_cidrs = resolve_asn_to_cidrs(ip_asns)
+        if not asn_cidrs:
+            raise RuntimeError(
+                f"AI 规则集 IP-ASN 转换失败 (待解析: {sorted(ip_asns)} -> 0 条 CIDR), 拒绝静默缩水"
+            )
+        print(
+            f"  🔄 [AI ASN]     解析 {len(ip_asns)} 个 IP-ASN "
+            f"({', '.join('AS' + a for a in sorted(ip_asns))}) -> {len(asn_cidrs):,} 条 CIDR"
+        )
+        ip_cidrs.update(asn_cidrs)
+
+    if ip_cidrs:
+        v4_nets = []
+        v6_nets = []
+        for c in ip_cidrs:
+            try:
+                net = ipaddress.ip_network(c, strict=False)
+                if net.version == 4:
+                    v4_nets.append(net)
+                else:
+                    v6_nets.append(net)
+            except ValueError:
+                pass
+        ip_cidrs = {str(n) for n in ipaddress.collapse_addresses(v4_nets)} | {
+            str(n) for n in ipaddress.collapse_addresses(v6_nets)
+        }
+
+    domains, domain_suffixes, _ = absorb_covered_domains(domains, domain_suffixes)
+
+    if min_domains > 0 and (len(domains) + len(domain_suffixes)) < min_domains:
+        raise RuntimeError(
+            f"geosite-ai 域名条数异常偏低 ({len(domains) + len(domain_suffixes)} < {min_domains}), 疑似上游源失效或静默缩水"
+        )
+
+    ai_sources = [
+        "MetaCubeX/meta-rules-dat",
+        "ruleset.skk.moe",
+        "DustinWin/ruleset_geodata",
+        "MagicRule",
+        "dler-io/Rules",
+    ]
+
+    geosite_rs = RuleSet(
         name="geosite-ai",
         category="geosite",
         description="全球主流 AI 域名合集",
+        domains=domains,
         domain_suffixes=domain_suffixes,
+        domain_keywords=domain_keywords,
+        process_names=process_names,
         source_kind="self",
-        sources=["MetaCubeX/meta-rules-dat", "ruleset.skk.moe", "DustinWin/ruleset_geodata"],
+        sources=ai_sources,
     )
+
+    geoip_rs = RuleSet(
+        name="geoip-ai",
+        category="geoip",
+        description="全球主流 AI 服务 IP 与 ASN 网段合集",
+        ip_cidrs=ip_cidrs,
+        source_kind="self",
+        sources=["MagicRule", "dler-io/Rules"],
+    )
+
+    print(f"  ✅ [原创 AI]    {'geosite-ai':<26} | 规则数: {geosite_rs.total_count:,}")
+    print(f"  ✅ [原创 AI]    {'geoip-ai':<26} | 规则数: {geoip_rs.total_count:,}")
+    return geosite_rs, geoip_rs
 
 
 def load_fakeip_rules() -> RuleSet:
@@ -802,14 +883,14 @@ def load_all_rules() -> Dict[str, RuleSet]:
 
     print("\n🚀 [2/5] 构建原创复合提纯规则 (Ad / AI / Fake-IP / Drop / GFW-IP / PCDN / IPTV)...")
     ads = load_ads_rules()
-    ai = load_ai_rules()
+    ai_site, ai_ip = load_ai_rules(min_domains=300)
     fakeip = load_fakeip_rules()
     drop = load_reject_drop_rules()
     gfwip = load_gfwip_rules()
     pcdn = load_pcdn_rules()
     iptv_site, iptv_ip = load_iptv_rules()
 
-    for r in (ads, ai, fakeip, drop, gfwip, pcdn, iptv_site, iptv_ip):
+    for r in (ads, ai_site, ai_ip, fakeip, drop, gfwip, pcdn, iptv_site, iptv_ip):
         all_rules[r.name] = r
 
     print("\n🚀 [3/5] 加载本地自定义规则 (Custom_*)...")

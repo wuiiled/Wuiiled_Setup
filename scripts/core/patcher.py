@@ -223,8 +223,8 @@ def apply_patches(rs: RuleSet, dat_map: Optional[Dict[str, RuleSet]] = None):
             active += 1
         elif kind == "include":
             src = _resolve_include(a, b, dat_map)
-            if src is None:
-                include_stats.append((a, b, 0))
+            if src is None or src.total_count == 0:
+                include_stats.append((a, b, -1))
                 continue
             before = rs.total_count
             _merge_ruleset(src, rs)

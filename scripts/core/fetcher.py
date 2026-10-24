@@ -1,14 +1,19 @@
 # -*- coding: utf-8 -*-
 """
 Robust network fetcher with concurrency, retries, SSL verification,
-local repo file loader, and Tianling authoritative rule-set synchronizer.
+local repo file loader, MagicRule two-hop SPA & GitHub blob URL resolver,
+ASN-to-CIDR converter, and Tianling authoritative rule-set synchronizer.
 """
 
+import json
 import os
+import re
 import ssl
 import time
+import ipaddress
 import urllib.request
-from typing import List, Optional
+from concurrent.futures import ThreadPoolExecutor
+from typing import List, Optional, Set
 
 import utils
 from core.models import RuleSet
@@ -16,31 +21,250 @@ from core.models import RuleSet
 _SSL_CONTEXT = ssl.create_default_context()
 UA = "Mozilla/5.0 (compatible; WuiiledSetupRuleEngine/2.0)"
 
+_GITHUB_BLOB_RE = re.compile(r"^https?://github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)$")
+_MAGICRULE_SPA_RE = re.compile(r"^(https?://[^/]+)/#/c/([^/]+)/r/([0-9a-fA-F-]+)")
+_MAGICRULE_FALLBACKS = {
+    "24dbbb36-e5c5-4800-8fde-4af469213846": (
+        "https://magicrule.pages.dev/data/_shared/artifacts/GlobalAI_rules_7591fffa97b1e679.list"
+    ),
+}
+
+
+def _is_html_payload(text: str) -> bool:
+    """Detect Cloudflare Pages / SPA HTML fallback responses (200 OK with index.html)."""
+    head = text.lstrip()[:256].lower()
+    return head.startswith(("<!doctype html", "<html", "<head", "<meta", "<script"))
+
+
+def _join_base_url(base_url: str, path_or_url: str) -> str:
+    if path_or_url.startswith(("http://", "https://")):
+        return path_or_url
+    return f"{base_url.rstrip('/')}/{path_or_url.lstrip('/')}"
+
 
 def _get_target_urls(url: str) -> List[str]:
-    """Return deduped candidate URLs (origin + ghfast mirror for github)."""
-    urls = [url]
-    if ("raw.githubusercontent.com" in url or "github.com" in url) and "ghfast.top" not in url:
-        mirror = f"https://ghfast.top/{url}"
+    """Return deduped candidate URLs (rewriting github blob -> raw + ghfast mirror)."""
+    m_blob = _GITHUB_BLOB_RE.match(url)
+    if m_blob:
+        owner, repo, branch, path = m_blob.groups()
+        primary = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}"
+    else:
+        primary = url
+
+    urls = [primary]
+    if ("raw.githubusercontent.com" in primary or "github.com" in primary) and "ghfast.top" not in primary:
+        mirror = f"https://ghfast.top/{primary}"
         if mirror not in urls:
             urls.append(mirror)
     return urls
 
 
-def fetch_text_url(url: str, timeout: int = 15, retries: int = 3) -> str:
-    """Fetch text content from a remote URL with retries and mirror fallback."""
+def _fetch_raw_text(url: str, timeout: int = 15, retries: int = 3) -> str:
+    """Low-level text fetcher with retries, mirror fallback, and SPA HTML fallback rejection."""
     candidates = _get_target_urls(url)
     for target in candidates:
         req = urllib.request.Request(target, headers={'User-Agent': UA})
         for attempt in range(retries):
             try:
                 with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as resp:
-                    return resp.read().decode('utf-8', errors='ignore')
+                    text = resp.read().decode('utf-8', errors='ignore')
+                if _is_html_payload(text):
+                    break
+                return text
             except Exception:
                 if attempt < retries - 1:
                     time.sleep(0.5 * (attempt + 1))
-    print(f"⚠️ 下载失败 (所有镜像源均失败): {url}")
     return ""
+
+
+def _extract_artifact_url_from_obj(obj: dict, base_url: str) -> Optional[str]:
+    """
+    Extract the 'rules' artifact URL from a manifest or index entry dict.
+    Supports both list-of-dicts format (`artifacts: [{"key": "rules", "url": "..."}, ...]`)
+    and dict format (`artifacts: {"rules": "..."}`).
+    """
+    artifacts = obj.get("artifacts")
+    if isinstance(artifacts, list):
+        by_key = {}
+        for entry in artifacts:
+            if isinstance(entry, dict):
+                k = str(entry.get("key") or entry.get("name") or entry.get("type") or "").lower()
+                u = entry.get("url") or entry.get("path") or ""
+                if k and u:
+                    by_key[k] = u
+        for pref in ("rules", "rule-set", "rule_set", "domain-set", "domain_set"):
+            if pref in by_key:
+                return _join_base_url(base_url, by_key[pref])
+        for entry in artifacts:
+            if isinstance(entry, dict) and (entry.get("url") or entry.get("path")):
+                return _join_base_url(base_url, entry.get("url") or entry.get("path"))
+    elif isinstance(artifacts, dict):
+        for pref in ("rules", "rule_set", "rule-set", "domain_set", "domain-set"):
+            if artifacts.get(pref):
+                return _join_base_url(base_url, artifacts[pref])
+    for field in ("url", "rules_url"):
+        if obj.get(field):
+            return _join_base_url(base_url, obj[field])
+    return None
+
+
+def _find_magicrule_entry(data, rule_id: str) -> Optional[dict]:
+    """Find the rule entry matching rule_id inside `/data/index/<Client>.json`."""
+    items = []
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        if data.get("id") == rule_id:
+            return data
+        if rule_id in data and isinstance(data[rule_id], dict):
+            return data[rule_id]
+        for v in data.values():
+            if isinstance(v, list):
+                items.extend(v)
+    for item in items:
+        if isinstance(item, dict) and item.get("id") == rule_id:
+            return item
+    return None
+
+
+def _resolve_magicrule_candidates(url: str, timeout: int = 15, retries: int = 3) -> List[str]:
+    """
+    Two-hop dynamic resolver for MagicRule SPA URLs (`#/c/<Client>/r/<UUID>`):
+      Hop 1: Fetch `<base>/data/index/<Client>.json` -> locate entry by `id == <UUID>` -> get `manifest` URL.
+      Hop 2: Fetch `<manifest_url>` -> extract `artifacts` item with `key == "rules"` -> return artifact `.list` URL.
+      Fallback: Known artifact URL if index/manifest endpoints are temporarily unreachable.
+    """
+    m = _MAGICRULE_SPA_RE.match(url)
+    if not m:
+        return [url]
+    base_url, client, rule_id = m.groups()
+    candidates: List[str] = []
+
+    index_url = f"{base_url}/data/index/{client}.json"
+    raw_index = _fetch_raw_text(index_url, timeout=timeout, retries=retries)
+    if raw_index:
+        try:
+            index_data = json.loads(raw_index)
+            entry = _find_magicrule_entry(index_data, rule_id)
+            if entry:
+                direct_art = _extract_artifact_url_from_obj(entry, base_url)
+                if direct_art:
+                    candidates.append(direct_art)
+                manifest_ref = entry.get("manifest") or entry.get("manifest_url") or entry.get("manifestUrl")
+                if manifest_ref:
+                    manifest_url = _join_base_url(base_url, manifest_ref)
+                    raw_manifest = _fetch_raw_text(manifest_url, timeout=timeout, retries=retries)
+                    if raw_manifest:
+                        manifest_data = json.loads(raw_manifest)
+                        if isinstance(manifest_data, dict):
+                            art_url = _extract_artifact_url_from_obj(manifest_data, base_url)
+                            if art_url and art_url not in candidates:
+                                candidates.append(art_url)
+        except Exception as e:
+            print(f"⚠️ MagicRule 动态索引解析异常 ({url}): {e}")
+
+    fallback = _MAGICRULE_FALLBACKS.get(rule_id)
+    if fallback and fallback not in candidates:
+        candidates.append(fallback)
+    return candidates
+
+
+def fetch_text_url(url: str, timeout: int = 15, retries: int = 3) -> str:
+    """Fetch text content from a remote URL with SPA resolution, retries, and mirror fallback."""
+    if _MAGICRULE_SPA_RE.match(url):
+        for cand in _resolve_magicrule_candidates(url, timeout=timeout, retries=retries):
+            content = _fetch_raw_text(cand, timeout=timeout, retries=retries)
+            if content.strip():
+                return content
+        print(f"⚠️ 下载失败 (MagicRule 动态索引与回退源均失败): {url}")
+        return ""
+
+    content = _fetch_raw_text(url, timeout=timeout, retries=retries)
+    if not content:
+        print(f"⚠️ 下载失败 (所有镜像源均失败): {url}")
+    return content
+
+
+def fetch_single_asn_cidrs(asn: str, timeout: int = 15, retries: int = 3) -> Set[str]:
+    """
+    Resolve a single ASN (e.g. '399358' or 'AS399358') into announced IPv4/IPv6 CIDRs.
+    1. Primary: ipverse/as-ip-blocks aggregated.json (GitHub Raw + ghfast mirror)
+    2. Fallback: RIPEstat Announced Prefixes Data API
+    """
+    clean_asn = re.sub(r"^as", "", str(asn).strip(), flags=re.IGNORECASE).strip()
+    if not clean_asn.isdigit():
+        return set()
+
+    cidrs: Set[str] = set()
+
+    # 1. Try ipverse/as-ip-blocks (fast, aggregated, supports GitHub mirror)
+    ipverse_url = f"https://raw.githubusercontent.com/ipverse/as-ip-blocks/master/as/{clean_asn}/aggregated.json"
+    raw_ipverse = _fetch_raw_text(ipverse_url, timeout=timeout, retries=retries)
+    if raw_ipverse:
+        try:
+            data = json.loads(raw_ipverse)
+            prefixes = data.get("prefixes") or {}
+            for key in ("ipv4", "ipv6"):
+                for p in prefixes.get(key) or []:
+                    try:
+                        cidrs.add(str(ipaddress.ip_network(str(p).strip(), strict=False)))
+                    except ValueError:
+                        pass
+        except Exception:
+            pass
+
+    # 2. Fallback to RIPEstat global BGP announced-prefixes API if ipverse returned nothing
+    if not cidrs:
+        ripe_url = f"https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS{clean_asn}"
+        raw_ripe = _fetch_raw_text(ripe_url, timeout=timeout, retries=retries)
+        if raw_ripe:
+            try:
+                data = json.loads(raw_ripe)
+                items = (data.get("data") or {}).get("prefixes") or []
+                for item in items:
+                    p = item.get("prefix") if isinstance(item, dict) else None
+                    if p:
+                        try:
+                            cidrs.add(str(ipaddress.ip_network(str(p).strip(), strict=False)))
+                        except ValueError:
+                            pass
+            except Exception:
+                pass
+
+    if not cidrs:
+        print(f"⚠️ ASN 转换未获取到网段: AS{clean_asn}")
+    return cidrs
+
+
+def resolve_asn_to_cidrs(asns: Set[str], timeout: int = 15, retries: int = 3) -> Set[str]:
+    """Concurrently resolve a set of ASNs into deduplicated, collapsed IPv4/IPv6 CIDRs."""
+    if not asns:
+        return set()
+    sorted_asns = sorted(asns)
+    raw_cidrs: Set[str] = set()
+    with ThreadPoolExecutor(max_workers=min(len(sorted_asns), 8)) as executor:
+        futures = [executor.submit(fetch_single_asn_cidrs, a, timeout, retries) for a in sorted_asns]
+        for fut in futures:
+            try:
+                raw_cidrs.update(fut.result())
+            except Exception as e:
+                print(f"⚠️ ASN 并发解析异常: {e}")
+
+    v4_nets = []
+    v6_nets = []
+    for c in raw_cidrs:
+        try:
+            net = ipaddress.ip_network(c, strict=False)
+            if net.version == 4:
+                v4_nets.append(net)
+            else:
+                v6_nets.append(net)
+        except ValueError:
+            pass
+    collapsed = {str(n) for n in ipaddress.collapse_addresses(v4_nets)} | {
+        str(n) for n in ipaddress.collapse_addresses(v6_nets)
+    }
+    return collapsed
 
 
 def fetch_bytes_url(url: str, timeout: int = 15, retries: int = 3) -> bytes:
@@ -93,7 +317,6 @@ def fetch_tianling_ruleset(tag: str, category: str = "geosite", out_name: Option
         print(f"❌ 无法从天灵官方仓库获取 {tag}.srs: {url}")
         return None
 
-    # Decompile .srs to inspect exact definitions
     temp_dir = utils.get_work_dir()
     temp_srs = os.path.join(temp_dir, f"{tag}.srs")
     temp_json = os.path.join(temp_dir, f"{tag}.json")

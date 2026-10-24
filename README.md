@@ -65,7 +65,8 @@ GeoSite 规则直接拉取并解析 Loyalsoldier 官方最新 `geosite.dat` 二�
 | 规则名称 | 作用 | 上游数据源 |
 | :--- | :--- | :--- |
 | **`geosite-ad`** | **终极去广告 / 防追踪**<br>*(剔除数十万重复项与误杀项)* | `pmkol/easymosdns` · AdGuard 官方列表 (1/3/4) · Adobe Telemetry (`a.dove.isdumb.one`) · `Cats-Team/AdRules` · `TG-Twilight/AWAvenue-Ads-Rule` · `OISD Small` · 本地补丁 |
-| **`geosite-ai`** | **全球主流 AI 服务合集**<br>*(自研列表 ∪ dat category-ai-!cn)* | `MetaCubeX` · `skk.moe` · `DustinWin` · dat `category-ai-!cn` |
+| **`geosite-ai`** | **全球主流 AI 服务合集**<br>*(自研列表 ∪ dat category-ai-!cn，Sing-box 复合含域名/进程/IP)* | `MetaCubeX` · `skk.moe` · `DustinWin` · `MagicRule` · `dler-io/Rules` · dat `category-ai-!cn` |
+| **`geoip-ai`** | **全球主流 AI 服务 IP 与 ASN 网段**<br>*(含 IP-ASN 自动转换 CIDR，供 Mihomo 独立订阅)* | `MagicRule` · `dler-io/Rules` · `ipverse/as-ip-blocks` · `RIPEstat` |
 | **`geosite-fakeip-filter`** | **Fake-IP 排除名单**<br>*(正则压缩，消除冗余)* | `OpenClash` · `ShellCrash` · `DustinWin` · `ruleset.skk.moe` · 本地补丁 (`fake-ip-addon.txt`) |
 | **`geosite-pcdn`** | **PCDN 与边缘计算节点拦截**<br>*(保护上行带宽，防运营商限速)* | `wuiiled/PCDN-mihomo-list` · 本地补丁 |
 | **`geosite-reject-drop`** | **高危垃圾流量直接丢弃** | `skk.moe` · 本地名单 |

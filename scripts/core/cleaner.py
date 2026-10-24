@@ -136,6 +136,98 @@ def clean_mihomo_domain_line(line: str) -> Optional[str]:
     return line
 
 
+def parse_ai_rule_line(line: str) -> Optional[Tuple[str, str]]:
+    """
+    Parse a mixed AI rule line (Surge rule-set / Clash YAML provider / Mihomo domain list).
+    Returns (rule_type, normalized_value) where rule_type is one of:
+      'domain', 'domain_suffix', 'domain_keyword', 'ip_cidr', 'ip_asn', 'process_name'
+    Unsupported rule types (such as URL-REGEX, USER-AGENT, PROCESS-PATH, etc.) return None.
+    """
+    line = line.strip()
+    if not line or line.startswith(("#", "!", ";", "//", "<")):
+        return None
+    if "skk.moe" in line.lower():
+        return None
+
+    line = line.split("#", 1)[0].strip()
+    if not line:
+        return None
+
+    if line.lower() in ("payload:", "rules:"):
+        return None
+    if line.startswith("-"):
+        m = re.match(r"^-\s+(.*)$", line)
+        if not m:
+            return None
+        line = m.group(1).strip().strip("'\"")
+        if not line:
+            return None
+
+    if "," in line:
+        parts = [p.strip() for p in line.split(",")]
+        rtype = parts[0].upper()
+        val = parts[1] if len(parts) > 1 else ""
+        if not val:
+            return None
+
+        if rtype in ("DOMAIN", "HOST"):
+            d = idna_domain(val.lower().lstrip(".").rstrip("."))
+            return ("domain", d) if is_valid_domain(d, allow_tld=False) else None
+        if rtype in ("DOMAIN-SUFFIX", "HOST-SUFFIX"):
+            s = idna_domain(val.lower().lstrip("+.").lstrip(".").rstrip("."))
+            return ("domain_suffix", s) if is_valid_domain(s, allow_tld=True) else None
+        if rtype in ("DOMAIN-KEYWORD", "HOST-KEYWORD"):
+            kw = val.lower().strip()
+            return ("domain_keyword", kw) if kw else None
+        if rtype in ("IP-CIDR", "IP-CIDR6", "IP6-CIDR"):
+            cleaned = clean_ip_line(line)
+            if cleaned:
+                try:
+                    return ("ip_cidr", str(ipaddress.ip_network(cleaned, strict=False)))
+                except ValueError:
+                    return None
+            return None
+        if rtype == "IP-ASN":
+            asn = re.sub(r"^as", "", val.strip(), flags=re.IGNORECASE).strip()
+            return ("ip_asn", asn) if asn.isdigit() else None
+        if rtype == "PROCESS-NAME":
+            proc = val.strip()
+            return ("process_name", proc) if proc else None
+        return None
+
+    lower = line.lower()
+    if lower.startswith("full:"):
+        d = idna_domain(line[5:].strip().lower().lstrip(".").rstrip("."))
+        return ("domain", d) if is_valid_domain(d, allow_tld=False) else None
+    if lower.startswith("domain:"):
+        s = idna_domain(line[7:].strip().lower().lstrip("+.").lstrip(".").rstrip("."))
+        return ("domain_suffix", s) if is_valid_domain(s, allow_tld=True) else None
+    if lower.startswith("keyword:"):
+        kw = line[8:].strip().lower()
+        return ("domain_keyword", kw) if kw else None
+    if lower.startswith("regexp:"):
+        return None
+
+    if line.startswith("||") and "^" in line:
+        dom = normalize_domain_line(line)
+        return ("domain_suffix", dom) if dom else None
+
+    if line.startswith("+.") or line.startswith("."):
+        s = idna_domain(line.lstrip("+.").lstrip(".").rstrip(".").lower())
+        return ("domain_suffix", s) if is_valid_domain(s, allow_tld=True) else None
+
+    if is_valid_ip_or_cidr(line):
+        try:
+            return ("ip_cidr", str(ipaddress.ip_network(line, strict=False)))
+        except ValueError:
+            return None
+
+    d = idna_domain(line.lower().rstrip("."))
+    if is_valid_domain(d, allow_tld=False):
+        return ("domain", d)
+    return None
+
+
 def compact_regexes(regex_set: Set[str]) -> List[str]:
     """
     Ultimate regex compactor: safe filtering + intelligent grouping.

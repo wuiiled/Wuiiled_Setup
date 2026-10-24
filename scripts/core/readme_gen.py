@@ -74,7 +74,7 @@ CATEGORY_DEFS = [
     ("geoip", "🌍 GeoIP 地址段网段集合 (IP Networks)", [
         "geoip-cn", "geoip-google", "geoip-telegram", "geoip-twitter",
         "geoip-facebook", "geoip-gfw", "geoip-private", "geoip-stream",
-        "geoip-apple", "geoip-custom-direct", "geoip-custom-dns", "geoip-iptv-!cn"
+        "geoip-apple", "geoip-ai", "geoip-custom-direct", "geoip-custom-dns", "geoip-iptv-!cn"
     ])
 ]
 
@@ -218,6 +218,7 @@ RULE_METADATA: Dict[str, Dict[str, str]] = {
     "geoip-private": {"desc": "🔒 局域网私有保留 IP 网段"},
     "geoip-stream": {"desc": "📻 知名流媒体服务官方 IP 网段"},
     "geoip-apple": {"desc": "🍏 Apple 苹果服务官方 IP 网段"},
+    "geoip-ai": {"desc": "🤖 全球主流 AI 服务 IP 与 ASN 网段合集"},
     "geoip-custom-direct": {"desc": "📌 本地自定义直连 IP 地址网段", "note": "用户本地规则: rules/Custom_Direct_IP.txt"},
     "geoip-custom-dns": {"desc": "📌 本地自定义 DNS 解析 IP 地址", "note": "用户本地规则: rules/Custom_DNS_IP.txt"},
     "geoip-iptv-!cn": {"desc": "IPTV 境外直播与流媒体 IP 节点"},
