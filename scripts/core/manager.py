@@ -24,7 +24,6 @@ from core.cleaner import (
 )
 from core.fetcher import (
     fetch_text_cached,
-    fetch_text_url,
     fetch_published_geoip_ai_cidrs,
     read_local_file,
     fetch_tianling_ruleset,
