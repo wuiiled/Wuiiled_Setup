@@ -99,9 +99,14 @@ def test_parse_ai_rule_line_types_and_filtering():
     assert parse_ai_rule_line("||claude.ai^") == ("domain_suffix", "claude.ai")
     assert parse_ai_rule_line("api.github.com") == ("domain", "api.github.com")
 
-    assert parse_ai_rule_line(r"URL-REGEX,https://www\.google\.com/.*continue=https://gemini\.google\.com.+") is None
-    assert parse_ai_rule_line("USER-AGENT,ChatGPT*") is None
-    assert parse_ai_rule_line("PROCESS-PATH,/Applications/Claude.app") is None
+    # 明确不支持但可识别的类型 -> ("dropped", 类型) 供上层统计 (区别于垃圾行 None)
+    assert parse_ai_rule_line(r"URL-REGEX,https://www\.google\.com/.*continue=https://gemini\.google\.com.+") == (
+        "dropped", "URL-REGEX")
+    assert parse_ai_rule_line("USER-AGENT,ChatGPT*") == ("dropped", "USER-AGENT")
+    assert parse_ai_rule_line("PROCESS-PATH,/Applications/Claude.app") == ("dropped", "PROCESS-PATH")
+    # DOMAIN-WILDCARD (mihomo classical glob 语义): 保留原文进入通配桶
+    assert parse_ai_rule_line("DOMAIN-WILDCARD,*.openai-edge.com") == ("domain_wildcard", "*.openai-edge.com")
+    assert parse_ai_rule_line("DOMAIN-WILDCARD,qhimgs?.com") == ("domain_wildcard", "qhimgs?.com")
     assert parse_ai_rule_line("DOMAIN,7h15.ru1353t.1s.m4d3.by.5ukk4w.skk.moe") is None
     assert parse_ai_rule_line("<!DOCTYPE html>") is None
     assert parse_ai_rule_line("payload:") is None
@@ -225,6 +230,8 @@ def test_ai_end_to_end_singbox_or_semantics_and_mihomo_lint(tmp_path):
         "IP-ASN,399358,no-resolve",
         "PROCESS-NAME,Claude",
         "PROCESS-NAME,ChatGPT.exe",
+        "DOMAIN-WILDCARD,*.wildcard-test.example",
+        "DOMAIN-WILDCARD,qhimgs?.com",
         r"URL-REGEX,https://www\.google\.com/.*continue=https://gemini\.google\.com.+",
     ]) + "\n"
 
@@ -241,6 +248,7 @@ def test_ai_end_to_end_singbox_or_semantics_and_mihomo_lint(tmp_path):
     assert {"openai.com", "claude.ai"} <= geosite_ai.domain_suffixes
     assert geosite_ai.domain_keywords == {"chatgpt"}
     assert geosite_ai.process_names == {"Claude", "ChatGPT.exe"}
+    assert geosite_ai.domain_wildcards == {"*.wildcard-test.example", "qhimgs?.com"}
     assert geosite_ai.ip_cidrs == set()
 
     assert geoip_ai.is_geoip
@@ -280,12 +288,19 @@ def test_ai_end_to_end_singbox_or_semantics_and_mihomo_lint(tmp_path):
     assert r_net["domain_keyword"] == ["chatgpt"]
     assert set(r_net["ip_cidr"]) == {"102.37.57.54/32", "160.79.104.0/21", "2607:6bc0::/32"}
     assert r_proc == {"process_name": ["ChatGPT.exe", "Claude"]}
+    # DOMAIN-WILDCARD (glob) 无损转 domain_regex
+    from core.cleaner import glob_wildcard_to_regex
+    assert set(r_net["domain_regex"]) == {
+        glob_wildcard_to_regex("*.wildcard-test.example"),
+        glob_wildcard_to_regex("qhimgs?.com"),
+    }
 
     # Verify Mihomo separation
     mh_site = (mh_dir / "geosite" / "geosite-ai.txt").read_text(encoding="utf-8").splitlines()
     mh_ip = (mh_dir / "geoip" / "geoip-ai.txt").read_text(encoding="utf-8").splitlines()
-    assert set(mh_site) == {"apple-relay.cloudflare.com", "+.claude.ai", "+.openai.com"}
+    assert set(mh_site) == {"apple-relay.cloudflare.com", "+.claude.ai", "+.openai.com", ".wildcard-test.example"}
     assert not any("KEYWORD" in l or "PROCESS" in l for l in mh_site)
+    assert not any("qhimgs" in l for l in mh_site)  # 含 ? 的 glob 形态语义不等价, 不输出
     assert set(mh_ip) == {"102.37.57.54/32", "160.79.104.0/21", "2607:6bc0::/32"}
 
     # Verify lint_artifacts grammar gate passes with 0 issues

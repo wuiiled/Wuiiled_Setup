@@ -38,6 +38,7 @@ def synthesize_composites(rules: Dict[str, RuleSet]) -> None:
         comp_keywords: Set[str] = set()
         comp_regexes: Set[str] = set()
         comp_processes: Set[str] = set()
+        comp_wildcards: Set[str] = set()
         comp_ips: Set[str] = set()
         sources: List[str] = []
         desc = "复合自定义规则 (域名 + IP)"
@@ -50,6 +51,7 @@ def synthesize_composites(rules: Dict[str, RuleSet]) -> None:
             comp_keywords.update(dom_rs.domain_keywords)
             comp_regexes.update(dom_rs.domain_regexes)
             comp_processes.update(dom_rs.process_names)
+            comp_wildcards.update(dom_rs.domain_wildcards)
             sources += list(dom_rs.sources)
             if dom_rs.description:
                 desc = dom_rs.description
@@ -70,6 +72,7 @@ def synthesize_composites(rules: Dict[str, RuleSet]) -> None:
             domain_keywords=comp_keywords,
             domain_regexes=comp_regexes,
             process_names=comp_processes,
+            domain_wildcards=comp_wildcards,
             ip_cidrs=comp_ips,
             source_kind=source_kind,
             sources=sources,
@@ -105,6 +108,12 @@ def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sin
 
     for name, rs in rules.items():
         if name in ("geoip-custom-direct", "geoip-custom-dns", "geoip-iptv-!cn", "geoip-ai"):
+            continue
+        # 空集合跳过导出: 无条件 headless rule (rules:[{}]) 等于匹配所有流量,
+        # 且 sing-box compile 空集语义危险; 跳过后订阅端保留上一版 (关键集合
+        # 另有 validate_output_invariants 非空守卫兜底)
+        if rs.total_count == 0 and not rs.raw_srs:
+            print(f"  ⚠️ [Sing-box] {name:<26} | 空集合, 跳过导出 (避免 rules:[{{}}] 全匹配语义)")
             continue
 
         sub_dir = geoip_out if rs.is_geoip else geosite_out

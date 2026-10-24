@@ -387,8 +387,10 @@ def load_ai_rules(min_domains: int = 0) -> Tuple[RuleSet, RuleSet]:
     domain_suffixes: Set[str] = set()
     domain_keywords: Set[str] = set()
     process_names: Set[str] = set()
+    domain_wildcards: Set[str] = set()
     ip_cidrs: Set[str] = set()
     ip_asns: Set[str] = set()
+    dropped_counts: Dict[str, int] = {}
     ignored_asns = {str(a).upper().removeprefix("AS") for a in getattr(providers, "AI_IGNORED_ASNS", set())}
 
     if os.path.exists(raw_ai):
@@ -406,11 +408,22 @@ def load_ai_rules(min_domains: int = 0) -> Tuple[RuleSet, RuleSet]:
                     domain_keywords.add(val)
                 elif rtype == "process_name":
                     process_names.add(val)
+                elif rtype == "domain_wildcard":
+                    domain_wildcards.add(val)
                 elif rtype == "ip_cidr":
                     ip_cidrs.add(val)
                 elif rtype == "ip_asn":
                     if val not in ignored_asns:
                         ip_asns.add(val)
+                elif rtype == "dropped":
+                    # 上游存在但当前转换链明确不支持的类型 (URL-REGEX 等):
+                    # 计数打印, 上游格式漂移可感知而非无声消失
+                    dropped_counts[val] = dropped_counts.get(val, 0) + 1
+
+    if dropped_counts:
+        total_dropped = sum(dropped_counts.values())
+        detail = ", ".join(f"{k} x{v}" for k, v in sorted(dropped_counts.items()))
+        print(f"  ⚠️ [AI] 丢弃 {total_dropped} 条不支持类型规则 ({detail})")
 
     if ip_asns:
         asn_cidrs, failed_asns = resolve_asn_to_cidrs(ip_asns)
@@ -480,6 +493,7 @@ def load_ai_rules(min_domains: int = 0) -> Tuple[RuleSet, RuleSet]:
         domain_suffixes=domain_suffixes,
         domain_keywords=domain_keywords,
         process_names=process_names,
+        domain_wildcards=domain_wildcards,
         source_kind="self",
         sources=ai_sources,
     )
@@ -855,10 +869,18 @@ def load_skk_rules() -> Dict[str, RuleSet]:
         is_ip = name.startswith("geoip-") or name.lower().endswith(('_ip', '_ip.txt'))
         domains = set()
         domain_suffixes = set()
+        wildcards = set()
         ip_cidrs = set()
 
         for line in content.splitlines():
-            if 'skk.moe' in line or line.startswith('DOMAIN-WILDCARD,'):
+            if 'skk.moe' in line:
+                continue
+            # DOMAIN-WILDCARD (classical glob 语义): srs 侧无损转 domain_regex,
+            # mihomo 侧仅 `*.字面域名` 形态可映射 domain 行为行 (models 导出层处理)
+            if line.startswith('DOMAIN-WILDCARD,'):
+                wc = line.split(',', 1)[1].strip().lower()
+                if wc:
+                    wildcards.add(wc)
                 continue
             if is_ip:
                 cleaned = clean_ip_line(line)
@@ -885,6 +907,7 @@ def load_skk_rules() -> Dict[str, RuleSet]:
             description=f"SKK 规则 ({name})",
             domains=domains,
             domain_suffixes=domain_suffixes,
+            domain_wildcards=wildcards,
             ip_cidrs=ip_cidrs,
             source_kind="skk",
             sources=["ruleset.skk.moe"],

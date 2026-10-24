@@ -136,6 +136,43 @@ def clean_mihomo_domain_line(line: str) -> Optional[str]:
     return line
 
 
+
+def glob_wildcard_to_regex(pattern: str) -> Optional[str]:
+    """
+    mihomo classical DOMAIN-WILDCARD 的 glob 语义 (component/wildcard):
+    `*` 匹配零或多个任意字符(含点), `?` 恰好一个字符, 全串匹配。
+    无损转换为 sing-box domain_regex (锚定全串)。
+    """
+    p = pattern.strip().lower()
+    if not p or p == "*" or "*" * 3 in p:
+        return None
+    out = ["^"]
+    for ch in p:
+        if ch == "*":
+            out.append(".*")
+        elif ch == "?":
+            out.append(".")
+        else:
+            out.append(re.escape(ch))
+    out.append("$")
+    return "".join(out)
+
+
+def wildcard_prefix_to_mihomo(pattern: str) -> Optional[str]:
+    """
+    glob 通配 -> mihomo domain 行为行的唯一严格等价形态:
+    `*.字面域名` (无 ? 无其他 *) 的 glob 语义 = 任意深度子域且不含自身
+    = domain 行为的 `.字面域名` 行 (component/trie 的 dot-wildcard)。
+    其余形态 (含 ?、中段 *、跨点 *) 语义不等价, 返回 None 交由调用方丢弃并提示。
+    """
+    p = pattern.strip().lower()
+    if not p.startswith("*.") or "?" in p or "*" in p[1:]:
+        return None
+    dom = p[2:].strip(".")
+    if not dom or not is_valid_domain(dom, allow_tld=True):
+        return None
+    return "." + dom
+
 def parse_ai_rule_line(line: str) -> Optional[Tuple[str, str]]:
     """
     Parse a mixed AI rule line (Surge rule-set / Clash YAML provider / Mihomo domain list).
@@ -193,7 +230,12 @@ def parse_ai_rule_line(line: str) -> Optional[Tuple[str, str]]:
         if rtype == "PROCESS-NAME":
             proc = val.strip()
             return ("process_name", proc) if proc else None
-        return None
+        if rtype in ("DOMAIN-WILDCARD", "HOST-WILDCARD"):
+            wc = val.strip().lower()
+            return ("domain_wildcard", wc) if wc and ("*" in wc or "?" in wc) else None
+        # 其余带类型但明确不支持的行: 返回 ("dropped", 类型) 供上层统计,
+        # 与空白/注释/垃圾行 (返回 None) 区分, 上游格式漂移可感知
+        return ("dropped", rtype)
 
     lower = line.lower()
     if lower.startswith("full:"):

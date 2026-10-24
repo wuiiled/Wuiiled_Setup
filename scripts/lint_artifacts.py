@@ -89,7 +89,13 @@ def lint(output_base="output"):
                         if l.startswith(("DOMAIN-KEYWORD,", "DOMAIN-REGEX,")):
                             add(rel, i, f"keyword/regex 未剥离: {l[:40]!r}")
                             continue
-                        body = l[2:] if l.startswith("+.") else l
+                        # domain 行为合法形态: bare(精确) / +.x(含自身) / .x(仅子域) / *.x(label 通配)
+                        if l.startswith("+."):
+                            body = l[2:]
+                        elif l.startswith("."):
+                            body = l[1:]
+                        else:
+                            body = l
                         if "*" in l or " " in body:
                             continue
                         if ":" in body or "/" in body or not is_valid_domain(body, allow_tld=True):

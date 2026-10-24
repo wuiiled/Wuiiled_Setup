@@ -33,15 +33,29 @@ def build_mihomo_rules(rules: Dict[str, RuleSet], output_dir: str = "output/miho
         txt_path = os.path.join(sub_dir, f"{name}.txt")
         mrs_path = os.path.join(sub_dir, f"{name}.mrs")
 
+        # 空集合跳过导出: 空文件/mrs 编译失败无意义, 跳过后订阅端保留上一版
+        # (关键集合另有 validate_output_invariants 非空守卫兜底)
+        if rs.total_count == 0 and rs.raw_lines is None:
+            print(f"  ⚠️ [Mihomo] {name:<26} | 空集合, 跳过导出")
+            continue
+
         lines = rs.to_mihomo_lines()
-        # mihomo 的 domain behavior (txt/mrs) 只有 domain/+.suffix/*.wildcard 三种表达，
-        # 无法承载 keyword/regex 规则：直接编译会把这类行当字面域名塞进 trie（垃圾条目）。
+        # mihomo 的 domain behavior (txt/mrs) 支持 bare/`+.x`/`.x`/`*.x` 域名形态,
+        # 但无法承载 keyword/regex 规则：直接编译会把这类行当字面域名塞进 trie（垃圾条目）。
         # 参照 sing-geosite 系转换产物对 mihomo 形态的统一处理，剥离之；
         # keyword/regex 语义仍完整保留在 singbox 分支的 .srs (domain_regex/domain_keyword) 中。
         pattern_lines = [l for l in lines if l.startswith(("DOMAIN-KEYWORD,", "DOMAIN-REGEX,"))]
         if pattern_lines:
             lines = [l for l in lines if not l.startswith(("DOMAIN-KEYWORD,", "DOMAIN-REGEX,"))]
             print(f"  [Mihomo] {name:<26} | 剥离 {len(pattern_lines)} 条 keyword/regex 规则 (domain 格式不支持, 已保留于 singbox .srs)")
+        # mrs 同样无法承载 process_name; classical glob 通配仅 `*.字面域名` 形态
+        # 在 to_mihomo_lines 内转换为 `.域名` 行, 其余形态在此统计提示
+        if rs.process_names:
+            print(f"  [Mihomo] {name:<26} | 丢弃 {len(rs.process_names)} 条 process_name 规则 (mrs 不支持, 已保留于 singbox .srs)")
+        from core.cleaner import wildcard_prefix_to_mihomo
+        unconvertible_wc = sum(1 for w in rs.domain_wildcards if not wildcard_prefix_to_mihomo(w))
+        if unconvertible_wc:
+            print(f"  [Mihomo] {name:<26} | 丢弃 {unconvertible_wc} 条 glob 通配规则 (含 ?/跨段 *, domain 行为语义不等价, 已保留于 singbox .srs)")
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + ("\n" if lines else ""))
 
