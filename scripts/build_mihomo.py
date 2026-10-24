@@ -8,6 +8,7 @@ import os
 from typing import Dict, Optional
 
 import utils
+from core.cleaner import wildcard_prefix_to_mihomo
 from core.models import RuleSet
 
 
@@ -52,7 +53,6 @@ def build_mihomo_rules(rules: Dict[str, RuleSet], output_dir: str = "output/miho
         # 在 to_mihomo_lines 内转换为 `.域名` 行, 其余形态在此统计提示
         if rs.process_names:
             print(f"  [Mihomo] {name:<26} | 丢弃 {len(rs.process_names)} 条 process_name 规则 (mrs 不支持, 已保留于 singbox .srs)")
-        from core.cleaner import wildcard_prefix_to_mihomo
         unconvertible_wc = sum(1 for w in rs.domain_wildcards if not wildcard_prefix_to_mihomo(w))
         if unconvertible_wc:
             print(f"  [Mihomo] {name:<26} | 丢弃 {unconvertible_wc} 条 glob 通配规则 (含 ?/跨段 *, domain 行为语义不等价, 已保留于 singbox .srs)")

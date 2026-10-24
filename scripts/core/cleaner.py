@@ -137,6 +137,20 @@ def clean_mihomo_domain_line(line: str) -> Optional[str]:
 
 
 
+
+def collapse_cidrs(cidrs) -> set:
+    """IPv4/IPv6 分别聚合相邻与重叠网段, 返回规范化 CIDR 字符串集合。"""
+    v4_nets, v6_nets = [], []
+    for c in cidrs:
+        try:
+            net = ipaddress.ip_network(str(c).strip(), strict=False)
+            (v4_nets if net.version == 4 else v6_nets).append(net)
+        except ValueError:
+            pass
+    return {str(n) for n in ipaddress.collapse_addresses(v4_nets)} | {
+        str(n) for n in ipaddress.collapse_addresses(v6_nets)
+    }
+
 def glob_wildcard_to_regex(pattern: str) -> Optional[str]:
     """
     mihomo classical DOMAIN-WILDCARD 的 glob 语义 (component/wildcard):
@@ -144,7 +158,7 @@ def glob_wildcard_to_regex(pattern: str) -> Optional[str]:
     无损转换为 sing-box domain_regex (锚定全串)。
     """
     p = pattern.strip().lower()
-    if not p or p == "*" or "*" * 3 in p:
+    if not p or set(p) == {"*"}:  # 空模式或全星 (匹配一切) 拒绝转换
         return None
     out = ["^"]
     for ch in p:

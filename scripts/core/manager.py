@@ -14,6 +14,7 @@ import utils
 import providers
 from core.models import RuleSet
 from core.cleaner import (
+    collapse_cidrs,
     clean_ip_line,
     clean_mihomo_domain_line,
     parse_ai_rule_line,
@@ -455,20 +456,7 @@ def load_ai_rules(min_domains: int = 0) -> Tuple[RuleSet, RuleSet]:
         ip_cidrs.update(asn_cidrs)
 
     if ip_cidrs:
-        v4_nets = []
-        v6_nets = []
-        for c in ip_cidrs:
-            try:
-                net = ipaddress.ip_network(c, strict=False)
-                if net.version == 4:
-                    v4_nets.append(net)
-                else:
-                    v6_nets.append(net)
-            except ValueError:
-                pass
-        ip_cidrs = {str(n) for n in ipaddress.collapse_addresses(v4_nets)} | {
-            str(n) for n in ipaddress.collapse_addresses(v6_nets)
-        }
+        ip_cidrs = collapse_cidrs(ip_cidrs)
 
     domains, domain_suffixes, _ = absorb_covered_domains(domains, domain_suffixes)
 

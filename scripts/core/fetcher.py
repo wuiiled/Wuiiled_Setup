@@ -19,6 +19,7 @@ from typing import List, Optional, Set, Tuple
 
 import utils
 import providers
+from core.cleaner import collapse_cidrs
 from core.models import RuleSet
 
 _SSL_CONTEXT = ssl.create_default_context()
@@ -281,21 +282,7 @@ def resolve_asn_to_cidrs(asns: Set[str], timeout: int = 15, retries: int = 3) ->
                 print(f"⚠️ ASN 并发解析异常 (AS{asn}): {e}")
                 failed_asns.append(asn)
 
-    v4_nets = []
-    v6_nets = []
-    for c in raw_cidrs:
-        try:
-            net = ipaddress.ip_network(c, strict=False)
-            if net.version == 4:
-                v4_nets.append(net)
-            else:
-                v6_nets.append(net)
-        except ValueError:
-            pass
-    collapsed = {str(n) for n in ipaddress.collapse_addresses(v4_nets)} | {
-        str(n) for n in ipaddress.collapse_addresses(v6_nets)
-    }
-    return collapsed, failed_asns
+    return collapse_cidrs(raw_cidrs), failed_asns
 
 
 def fetch_bytes_url(url: str, timeout: int = 15, retries: int = 3) -> bytes:

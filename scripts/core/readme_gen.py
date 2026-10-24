@@ -6,7 +6,6 @@ Completely replaces the fragile inline Bash script in GitHub Actions.
 """
 
 import os
-import sys
 import json
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Set

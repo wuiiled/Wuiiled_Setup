@@ -6,7 +6,6 @@ Guarantees 100% Zero-Diff alignment with Tianling Shen for all Tianling rulesets
 """
 
 import os
-import sys
 import json
 from typing import Dict, List, Optional, Set
 

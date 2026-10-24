@@ -81,16 +81,6 @@ def _active_patch_rules(local_name: str) -> tuple:
     return entries, suffixes
 
 
-def active_patch_entries(local_name: str) -> set:
-    """兼容旧接口: 当前仍生效的手动补丁条目。"""
-    return _active_patch_rules(local_name)[0]
-
-
-def active_patch_suffixes(local_name: str) -> set:
-    """兼容旧接口: 当前仍生效的 domain_suffix 补丁。"""
-    return _active_patch_rules(local_name)[1]
-
-
 def _is_covered_by_patch_suffixes(item: str, patches: set) -> bool:
     """检查上游条目是否被本地补丁 (patches) 中的父后缀所覆盖。"""
     clean = item.lstrip(".")
