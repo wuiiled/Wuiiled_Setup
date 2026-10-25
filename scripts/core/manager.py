@@ -802,7 +802,7 @@ def load_iptv_rules() -> Tuple[RuleSet, RuleSet]:
     return geosite_rs, geoip_rs
 
 
-def load_stream_rules(min_domains: int = 1100) -> Tuple[RuleSet, RuleSet]:
+def load_stream_rules() -> Tuple[RuleSet, RuleSet]:
     """
     Build geosite-stream and geoip-stream:
     - dat 分类整表合并 (providers.STREAM_DAT_CATEGORIES, 源自 _DAT_SOURCE_MAP)
@@ -891,12 +891,6 @@ def load_stream_rules(min_domains: int = 1100) -> Tuple[RuleSet, RuleSet]:
         domain_wildcards |= src.domain_wildcards
 
     domains, domain_suffixes, _ = absorb_covered_domains(domains, domain_suffixes)
-
-    if len(domains) + len(domain_suffixes) < min_domains:
-        raise RuntimeError(
-            f"geosite-stream 域名条数异常偏低 ({len(domains) + len(domain_suffixes)} < {min_domains}), "
-            "疑似上游源失效或静默缩水"
-        )
 
     ip_cidrs = collapse_cidrs(ip_cidrs)
 

@@ -76,6 +76,13 @@ jobs:
         tar -xzf sing-box.tar.gz
         sudo mv sing-box-${sb_version_num}-linux-amd64/sing-box /usr/local/bin/
 
+    # 部署门禁: 快速测试层不过即拦截构建与部署 (test.yaml 的结果不阻塞本工作流,
+    # 部署前的测试门禁需自带; e2e/0-Diff 由下方 Validate 步骤按事件类型执行)
+    - name: Fast tests (deploy gate)
+      run: |
+        pip install -r requirements-dev.txt
+        PYTHONPATH=scripts python3 -m pytest tests/ -m "not e2e" -q --tb=short
+
     - name: Run Python Builders
       run: |
         export LC_ALL=C

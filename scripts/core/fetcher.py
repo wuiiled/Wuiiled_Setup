@@ -434,6 +434,8 @@ def fetch_tianling_ruleset(tag: str, category: str = "geosite", out_name: Option
       - sing-geoip / rule-set branch
     Decompiles .srs using sing-box to extract exact domain, domain_suffix, regex, keyword, and ip_cidr.
     Returns a RuleSet containing raw_srs and exact parsed elements.
+    下载失败 (fetch_bytes_cached) 与反编译失败均直接抛错中止构建——
+    残缺的静默跳过会让订阅分支带着缺失集合停更且不可见。
     """
     rule_name = out_name or tag
     repo = "sing-geoip" if category == "geoip" else "sing-geosite"
@@ -479,9 +481,6 @@ def fetch_tianling_ruleset(tag: str, category: str = "geosite", out_name: Option
             ip_cidrs=ip_cidrs,
             raw_srs=srs_bytes
         )
-    except Exception as e:
-        print(f"⚠️ 天灵规则 {tag} 反编译提取失败: {e}")
-        return None
     finally:
         for p in (temp_srs, temp_json):
             if os.path.exists(p):
