@@ -27,6 +27,9 @@ def synthesize_composites(rules: Dict[str, RuleSet]) -> None:
         ("geosite-custom-dns", "geosite-custom-dns", "geoip-custom-dns"),
         ("geosite-iptv-!cn", "geosite-iptv-!cn", "geoip-iptv-!cn"),
         ("geosite-ai", "geosite-ai", "geoip-ai"),
+        # stream: 全量复合集 (域名+keyword+wildcard+IP) 落 geosite-stream.srs;
+        # geoip-stream 不在下方跳过列表, 仍独立导出 ip-only 的 geoip-stream.srs
+        ("geosite-stream", "geosite-stream", "geoip-stream"),
     ]
 
     for comp_name, domain_key, ip_key in composite_specs:

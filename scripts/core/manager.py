@@ -794,6 +794,135 @@ def load_iptv_rules() -> Tuple[RuleSet, RuleSet]:
     return geosite_rs, geoip_rs
 
 
+def load_stream_rules(min_domains: int = 1100) -> Tuple[RuleSet, RuleSet]:
+    """
+    Build geosite-stream and geoip-stream:
+    - dat 分类整表合并 (providers.STREAM_DAT_CATEGORIES, 源自 _DAT_SOURCE_MAP)
+      ∪ sve1r ForeignMedia (QuantumultX: host/host-suffix/host-keyword/host-wildcard/ip-cidr/ip6-cidr)
+      ∪ skk stream.conf (Surge: IP-CIDR/IP-CIDR6, 实测主体为 Netflix Open Connect 网段)
+    - geosite-stream: 域名/keyword/wildcard/regex (IR 层不含 IP;
+      sing-box 侧由 build_singbox.synthesize_composites 合成含 IP 的全量集合)
+    - geoip-stream: 上述两源的 IPv4/IPv6 网段聚合, 各平台独立导出
+      (mihomo/singbox 均为裸 CIDR, 不带 no-resolve)
+    user-agent 等 IR 无法表达的规则类型按 AI loader 惯例计数丢弃, 上游格式漂移可感知。
+    """
+    work_dir = utils.get_work_dir()
+    mod_dir = os.path.join(work_dir, "stream")
+    os.makedirs(mod_dir, exist_ok=True)
+    raw_stream = os.path.join(mod_dir, "raw_stream.txt")
+    utils.download_files_parallel(raw_stream, providers.STREAM_URLS)
+
+    domains: Set[str] = set()
+    domain_suffixes: Set[str] = set()
+    domain_keywords: Set[str] = set()
+    domain_wildcards: Set[str] = set()
+    domain_regexes: Set[str] = set()
+    ip_cidrs: Set[str] = set()
+    dropped_counts: Dict[str, int] = {}
+
+    if os.path.exists(raw_stream):
+        with open(raw_stream, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "skk.moe" in line.lower():
+                    continue
+                low = line.lower()
+                if low.startswith(("ip-cidr,", "ip-cidr6,", "ip6-cidr,")):
+                    cleaned_ip = clean_ip_line(line)
+                    if cleaned_ip:
+                        try:
+                            ip_cidrs.add(str(ipaddress.ip_network(cleaned_ip, strict=False)))
+                        except ValueError:
+                            pass
+                    continue
+                if low.startswith("host-suffix,"):
+                    val = line.split(",", 2)[1].strip().lower().lstrip("+.").lstrip(".")
+                    if val:
+                        domain_suffixes.add(val)
+                    continue
+                if low.startswith("host-keyword,"):
+                    val = line.split(",", 2)[1].strip().lower()
+                    if val:
+                        domain_keywords.add(val)
+                    continue
+                if low.startswith("host-wildcard,"):
+                    val = line.split(",", 2)[1].strip().lower()
+                    if val:
+                        domain_wildcards.add(val)
+                    continue
+                if low.startswith("host,"):
+                    val = line.split(",", 2)[1].strip().lower().lstrip("+.")
+                    if val:
+                        domains.add(val)
+                    continue
+                if low.startswith("user-agent,"):
+                    dropped_counts["user-agent"] = dropped_counts.get("user-agent", 0) + 1
+                    continue
+                if "," in line:
+                    dropped_counts["其他带逗号行"] = dropped_counts.get("其他带逗号行", 0) + 1
+                    continue
+                domain_suffixes.add(line.lstrip("+.").lstrip(".").lower())
+
+    if dropped_counts:
+        total_dropped = sum(dropped_counts.values())
+        detail = ", ".join(f"{k} x{v}" for k, v in sorted(dropped_counts.items()))
+        print(f"  ⚠️ [Stream] 丢弃 {total_dropped} 条不支持类型规则 ({detail})")
+
+    # dat 分类整表合并 (load_tianling_rules 先行运行, _DAT_SOURCE_MAP 已就绪)
+    dat_missing = [c for c in providers.STREAM_DAT_CATEGORIES if c not in _DAT_SOURCE_MAP]
+    if dat_missing:
+        raise RuntimeError(
+            f"geosite-stream 的 dat 分类不存在: {', '.join(dat_missing)}, 拒绝静默缩水"
+        )
+    for code in providers.STREAM_DAT_CATEGORIES:
+        src = _DAT_SOURCE_MAP[code]
+        domains |= src.domains
+        domain_suffixes |= src.domain_suffixes
+        domain_keywords |= src.domain_keywords
+        domain_regexes |= src.domain_regexes
+        domain_wildcards |= src.domain_wildcards
+
+    domains, domain_suffixes, _ = absorb_covered_domains(domains, domain_suffixes)
+
+    if len(domains) + len(domain_suffixes) < min_domains:
+        raise RuntimeError(
+            f"geosite-stream 域名条数异常偏低 ({len(domains) + len(domain_suffixes)} < {min_domains}), "
+            "疑似上游源失效或静默缩水"
+        )
+
+    ip_cidrs = collapse_cidrs(ip_cidrs)
+
+    geosite_rs = RuleSet(
+        name="geosite-stream",
+        category="geosite",
+        description="境外流媒体总集 (dat 分类 × sve1r ForeignMedia, 域名+keyword+wildcard)",
+        domains=domains,
+        domain_suffixes=domain_suffixes,
+        domain_keywords=domain_keywords,
+        domain_regexes=domain_regexes,
+        domain_wildcards=domain_wildcards,
+        source_kind="self",
+        sources=[
+            f"Loyalsoldier dat ({len(providers.STREAM_DAT_CATEGORIES)} 分类)",
+            "sve1r/Rules-For-Quantumult-X",
+        ],
+    )
+
+    geoip_rs = RuleSet(
+        name="geoip-stream",
+        category="geoip",
+        description="流媒体服务 IP 网段 (sve1r + skk, 主体 Netflix Open Connect)",
+        ip_cidrs=ip_cidrs,
+        source_kind="self",
+        sources=["sve1r/Rules-For-Quantumult-X", "ruleset.skk.moe"],
+    )
+
+    print(f"  ✅ [Stream]     {'geosite-stream':<26} | 规则数: {geosite_rs.total_count:,}")
+    print(f"  ✅ [Stream]     {'geoip-stream':<26} | 规则数: {geoip_rs.total_count:,}")
+
+    return geosite_rs, geoip_rs
+
+
 def load_custom_rules() -> Dict[str, RuleSet]:
     """Load local custom rules from rules/ directory."""
     results: Dict[str, RuleSet] = {}
@@ -911,7 +1040,7 @@ def load_all_rules() -> Dict[str, RuleSet]:
     print("\n🚀 [1/5] 拉取权威规则 (Loyalsoldier dat 原生解析 GeoSites + 天灵配方 cn + GeoIPs)...")
     all_rules = load_tianling_rules()
 
-    print("\n🚀 [2/5] 构建原创复合提纯规则 (Ad / AI / Fake-IP / Drop / GFW-IP / PCDN / IPTV)...")
+    print("\n🚀 [2/5] 构建原创复合提纯规则 (Ad / AI / Fake-IP / Drop / GFW-IP / PCDN / IPTV / Stream)...")
     ads = load_ads_rules()
     ai_site, ai_ip = load_ai_rules(min_domains=300)
     fakeip = load_fakeip_rules()
@@ -919,8 +1048,9 @@ def load_all_rules() -> Dict[str, RuleSet]:
     gfwip = load_gfwip_rules()
     pcdn = load_pcdn_rules()
     iptv_site, iptv_ip = load_iptv_rules()
+    stream_site, stream_ip = load_stream_rules()
 
-    for r in (ads, ai_site, ai_ip, fakeip, drop, gfwip, pcdn, iptv_site, iptv_ip):
+    for r in (ads, ai_site, ai_ip, fakeip, drop, gfwip, pcdn, iptv_site, iptv_ip, stream_site, stream_ip):
         all_rules[r.name] = r
 
     print("\n🚀 [3/5] 加载本地自定义规则 (Custom_*)...")

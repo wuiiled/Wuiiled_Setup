@@ -64,6 +64,8 @@ GeoSite 规则直接拉取并解析 Loyalsoldier 官方最新 `geosite.dat` 二�
 
 | 规则名称 | 作用 | 上游数据源 |
 | :--- | :--- | :--- |
+| **`geosite-stream`** | **境外流媒体总集**<br>*(dat 39 分类 × sve1r 深度合成, 域名+keyword+wildcard)* | `Loyalsoldier dat` · `sve1r/Rules-For-Quantumult-X` |
+| **`geoip-stream`** | **流媒体服务 IP 网段**<br>*(IPv4/IPv6 聚合, 主体 Netflix Open Connect)* | `sve1r/Rules-For-Quantumult-X` · `ruleset.skk.moe` |
 | **`geosite-ad`** | **终极去广告 / 防追踪**<br>*(剔除数十万重复项与误杀项)* | `pmkol/easymosdns` · AdGuard 官方列表 (1/3/4) · Adobe Telemetry (`a.dove.isdumb.one`) · `Cats-Team/AdRules` · `TG-Twilight/AWAvenue-Ads-Rule` · `OISD Small` · 本地补丁 |
 | **`geosite-ai`** | **全球主流 AI 服务合集**<br>*(自研列表 ∪ dat category-ai-!cn，Sing-box 复合含域名/进程/IP)* | `MetaCubeX` · `skk.moe` · `DustinWin` · `MagicRule` · `dler-io/Rules` · dat `category-ai-!cn` |
 | **`geoip-ai`** | **全球主流 AI 服务 IP 与 ASN 网段**<br>*(含 IP-ASN 自动转换 CIDR，供 Mihomo 独立订阅)* | `MagicRule` · `dler-io/Rules` · `ipverse/as-ip-blocks` · `RIPEstat` |

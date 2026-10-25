@@ -34,7 +34,7 @@ CATEGORY_DEFS = [
         "geosite-instagram", "geosite-threads", "geosite-reddit", "geosite-bluesky", "geosite-tiktok"
     ]),
     ("media", "🎬 影音流媒体与娱乐 (Media & Streaming)", [
-        "geosite-media", "geosite-entertainment", "geosite-youtube", "geosite-netflix",
+        "geosite-stream", "geosite-media", "geosite-entertainment", "geosite-youtube", "geosite-netflix",
         "geosite-disney", "geosite-spotify", "geosite-apple-tvplus", "geosite-hbo",
         "geosite-hulu", "geosite-primevideo", "geosite-twitch", "geosite-bahamut",
         "geosite-abema", "geosite-niconico", "geosite-dmm", "geosite-pixiv",
@@ -130,6 +130,7 @@ RULE_METADATA: Dict[str, Dict[str, str]] = {
     "geosite-soundcloud": {"desc": "SoundCloud 原创音乐与音频分享"},
     "geosite-tidal": {"desc": "TIDAL HiFi 无损高品质音乐流媒体"},
     "geosite-iptv-!cn": {"desc": "IPTV 境外直播与电视流媒体服务"},
+    "geosite-stream": {"desc": "境外流媒体总集: dat 39 分类 × sve1r ForeignMedia 深度合成 (域名+keyword+wildcard)"},
 
     # 🎮 Gaming
     "geosite-games": {"desc": "全球热门游戏与联机加速合集"},
@@ -215,7 +216,7 @@ RULE_METADATA: Dict[str, Dict[str, str]] = {
     "geoip-facebook": {"desc": "📘 Meta / Facebook 官方数据中心网段"},
     "geoip-gfw": {"desc": "🧱 GFW 投毒 IP 与伪造靶心网段拦截"},
     "geoip-private": {"desc": "🔒 局域网私有保留 IP 网段"},
-    "geoip-stream": {"desc": "📻 知名流媒体服务官方 IP 网段"},
+    "geoip-stream": {"desc": "📻 流媒体服务 IP 网段 (sve1r + skk 双源, 主体 Netflix Open Connect)"},
     "geoip-apple": {"desc": "🍏 Apple 苹果服务官方 IP 网段"},
     "geoip-ai": {"desc": "🤖 全球主流 AI 服务 IP 与 ASN 网段合集"},
     "geoip-custom-direct": {"desc": "📌 本地自定义直连 IP 地址网段", "note": "用户本地规则: rules/Custom_Direct_IP.txt"},

@@ -77,6 +77,42 @@ IPTV_URLS = [
     "https://raw.githubusercontent.com/marcuccilli/Cathy/main/cathy_surge.list",
 ]
 
+# geosite-stream 境外流媒体总集的 dat 分类清单 (2026-10-26 逐项核对 v2fly
+# domain-list-community data/ 目录, 全部存在独立条目)。
+# 范围收紧原则 (2026-10-26 二次修订): 只收"视频/音频流媒体服务本体",
+# 不收超范围的企业条目 (sony/sky/nbcuniversal/cbs/kakao 等整团域) 与
+# 新闻机构 (cnn/nytimes/...由 sve1r ForeignMedia 分组按需覆盖)。
+# 换名/父类调用: Amazon->primevideo, AppleTV->apple-tvplus, DisneyPlus->disney,
+#   AbemaTV->abema, ViuTV->viu, EncoreTVB->tvb, FoxNow->fox, BBCiPlayer->bbc,
+#   HBO/HBO_GO_HKG->hbo (dat 单文件含各区 hbogo), Hulu/HuluJapan->hulu (含 hulu.jp),
+#   YouTube/YouTubeMusic->youtube (后缀语义覆盖 Music)
+# 标签中 dat 无条目的 (由 sve1r 分组覆盖): All4, AppleNews, HWTV, ITV, Iwara,
+#   JOOX, LineTV(dat line 为整个通讯软件), My5, NivodTV, Pandora, Qobuz, TaiWanGood
+# 视频流补充 (用户标签之外, 已核对内容紧凑且不与 category-porn /
+#   category-social-media-!cn 重叠): tver/hamivideo/formula1/hotstar/amc/
+#   catchplay/imdb/nhk/rumble
+# 补充候选中明确排除: dmm (include:dmm-porn 与 geosite-porn 重叠),
+#   bilibili (国内服务, 含游戏/漫画/猫耳FM), bangumi (番组计划为数据库非视频流),
+#   iqiyi/youku (国内服务; iqiyi 另混国际版域名)
+STREAM_DAT_CATEGORIES = (
+    # 用户标签映射 (43 标签 -> dat 可直调 30 分类)
+    "netflix", "disney", "hbo", "hulu", "primevideo", "apple-tvplus", "youtube",
+    "fox", "abc", "pbs", "bbc", "discoveryplus", "dazn",
+    "spotify", "tidal", "deezer", "soundcloud", "kkbox",
+    "bahamut", "abema", "niconico", "kktv", "litv", "mytvsuper", "japonx",
+    "tiktok", "twitch", "viu", "tvb", "olevod",
+    # 视频流补充 (标签之外)
+    "tver", "hamivideo", "formula1", "hotstar", "amc", "catchplay",
+    "imdb", "nhk", "rumble",
+)
+
+# 流媒体合成源: sve1r ForeignMedia (QuantumultX 格式, 含域名/keyword/wildcard/IPv4+IPv6)
+# + skk stream.conf (Surge 格式, RDAP 实测主体为 Netflix Open Connect 网段)
+STREAM_URLS = [
+    "https://raw.githubusercontent.com/sve1r/Rules-For-Quantumult-X/develop/Rules/Media/ForeignMedia.list",
+    "https://ruleset.skk.moe/List/ip/stream.conf",
+]
+
 # 注: 原 CN_URLS_1/CN_URLS_2 (cn-additional-list + SKK domestic) 已迁移至
 # rules/patches/geosite-cn.txt 的 include 指令, 与天灵配方 cn 统一经补丁通道合并。
 
@@ -105,7 +141,8 @@ MIHOMO_SKK = {
     "geosite-apple-services": "https://ruleset.skk.moe/Clash/non_ip/apple_services.txt",
     "geosite-apple-cn": "https://ruleset.skk.moe/Clash/non_ip/apple_cn.txt",
     "geosite-apple-cdn": "https://ruleset.skk.moe/Clash/domainset/apple_cdn.txt",
-    "geoip-stream": "https://ruleset.skk.moe/List/ip/stream.conf",
+    # geoip-stream 已迁移至 manager.load_stream_rules (sve1r + skk 双源合成,
+    # 不再是 skk stream.conf 单源原样同步)
     "geoip-apple": "https://ruleset.skk.moe/List/ip/apple_services.conf",
 }
 
