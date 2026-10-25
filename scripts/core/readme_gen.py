@@ -133,9 +133,9 @@ RULE_METADATA: Dict[str, Dict[str, str]] = {
     "geosite-stream": {"desc": "境外流媒体总集: dat 39 分类 × sve1r ForeignMedia 深度合成 (域名+keyword+wildcard)"},
 
     # 🎮 Gaming
-    "geosite-games": {"desc": "全球热门游戏与联机加速合集"},
-    "geosite-games-cn": {"desc": "国内主流网络游戏与加速服务"},
-    "geosite-games-!cn": {"desc": "外服主机与端游联机加速合集"},
+    "geosite-games": {"desc": "全球游戏聚合: 厂商/平台 + 全部下载节点(CN+海外) + 加速器"},
+    "geosite-games-cn": {"desc": "国内游戏 + 中国区下载节点(@cn) + 加速器域名"},
+    "geosite-games-!cn": {"desc": "境外游戏 + 海外下载/更新节点 (已剔除 @cn 中国区节点)"},
     "geosite-steam": {"desc": "Valve Steam 全球最大游戏平台"},
     "geosite-epicgames": {"desc": "Epic Games 游戏商城与虚幻联机"},
     "geosite-playstation": {"desc": "Sony PlayStation Network (PSN)"},

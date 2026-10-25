@@ -1,0 +1,6 @@
+# geosite-games-!cn 重新定义 (2026-10-26):
+#   境外 games + 游戏平台海外下载/更新节点 (category-game-platforms-download
+#   完整合入后剔除 @cn 标记的中国区下载节点)。
+# 加法合并保持与天灵上游 0-Diff 同构 (仅校验上游无缺失, 不做覆盖吸收)。
+include:dat:category-game-platforms-download
+exclude:dat:category-game-platforms-download@cn

@@ -165,10 +165,14 @@ def apply_rule_patches(all_rules: Dict[str, RuleSet]) -> None:
     """
     统一补丁通道: 对 rules/patches/<规则集名>.txt 存在的规则集应用:
       - 手动补丁规则行 (上游已收录的行在运行期跳过并日志标注, 补丁文件保持只读);
-      - include 指令 (dat 分类 / 外部 URL / 本地文件 的整表合并)。
+      - include 指令 (dat 分类 / 外部 URL / 本地文件 的整表合并);
+      - exclude:dat 指令 (从当前集合差集移除某 dat 分类, 如剔除 @cn 属性子集)。
     所有集合 (dat 派生 / 自研 / 自定义 / SKK) 共用同一条通道, 逻辑单一稳定。
-    include 解析失败 (下载失败/分类不存在/来源为空, 计 -1) 时中止构建, 防止规则集静默缩水;
-    来源有效但条目已全部被覆盖时诚实计 +0 放行。
+    include/exclude 解析失败 (下载失败/分类不存在/来源为空, 计 -1) 时中止构建,
+    防止规则集静默缩水; 来源有效但条目已全部被覆盖时诚实计 +0 放行。
+    含 include 的集合做覆盖吸收 (删除被更短后缀涵盖的条目), 吸收仅作用于
+    include 引入的增量——基座条目 (补丁前快照) 参与涵盖判定但绝不被删,
+    统一保持与上游 0-Diff 同构, 无需按集合特判。
     """
     print("\n🚀 [5/5] 应用本地补丁与列表合并 (rules/patches/)...")
     applied = 0
@@ -176,32 +180,36 @@ def apply_rule_patches(all_rules: Dict[str, RuleSet]) -> None:
     for name, rs in all_rules.items():
         if not load_patch_file(name):
             continue
+        # 补丁前基座快照: 吸收时作为 protect 传入 (参与涵盖、绝不被删)
+        base_snapshot = set(rs.domains) | set(rs.domain_suffixes)
         rs, plain_n, upstream_included, includes = apply_patches(rs, dat_map=_DAT_SOURCE_MAP)
         applied += 1
         for kind, target, merged in includes:
             if merged < 0:
                 failed_includes.append((name, kind, target))
         # include 整表合并也是真实来源, 记入来源画像供 manifest/README 渲染
+        # (exclude 是差集操作, 不属于来源, 不计入)
         inc_labels = [_include_label(k, v) for k, v, _n in includes if k in ("dat", "url", "local")]
         if inc_labels:
             rs.sources = list(rs.sources) + inc_labels
-        # 含 include 整表合并的集合做覆盖吸收 (删除被更短后缀涵盖的条目);
-        # 纯 dat 派生集合不吸收, 保持与天灵 0-Diff 同构。
         absorbed = 0
-        if any(n >= 0 for _k, _t, n in includes) and rs.category == "geosite":
-            kept_dom, kept_suf, absorbed = absorb_covered_domains(rs.domains, rs.domain_suffixes)
+        has_includes = any(k in ("dat", "url", "local") and n >= 0 for k, _t, n in includes)
+        if has_includes and rs.category == "geosite":
+            kept_dom, kept_suf, absorbed = absorb_covered_domains(
+                rs.domains, rs.domain_suffixes, protect=base_snapshot)
             rs.domains, rs.domain_suffixes = kept_dom, kept_suf
         applied_str = f" | 覆盖吸收: -{absorbed:,}" if absorbed else ""
         inc_str = " | ".join(
-            f"{k}:{t} ({'失败' if n < 0 else f'+{n:,}'})" for k, t, n in includes
+            f"{k}:{t} ({'失败' if n < 0 else (f'-{n:,}' if k.startswith('exclude') else f'+{n:,}')})"
+            for k, t, n in includes
         ) if includes else "-"
         extra = f" | 上游已收录: {len(upstream_included)}" if upstream_included else ""
         print(f"  📝 [补丁] {name:<26} | 手动补丁: {plain_n} | include: {inc_str}{applied_str}{extra}")
     print(f"  ✅ 共应用 {applied} 个规则集的本地补丁")
     if failed_includes:
-        detail = "; ".join(f"{n} <- include:{k}:{t}" for n, k, t in failed_includes)
+        detail = "; ".join(f"{n} <- {k}:{t}" for n, k, t in failed_includes)
         raise RuntimeError(
-            "include 指令解析失败 (下载失败/来源不存在/合并 0 条), "
+            "include/exclude 指令解析失败 (下载失败/来源不存在/合并 0 条), "
             f"为防止规则集静默缩水中止构建: {detail}"
         )
 

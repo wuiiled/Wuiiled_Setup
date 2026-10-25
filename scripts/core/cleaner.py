@@ -348,11 +348,20 @@ def compact_regexes(regex_set: Set[str]) -> List[str]:
     return sorted(step3)
 
 
-def absorb_covered_domains(domains: Set[str], suffixes: Set[str]) -> Tuple[Set[str], Set[str], int]:
+def absorb_covered_domains(domains: Set[str], suffixes: Set[str], protect=frozenset()) -> Tuple[Set[str], Set[str], int]:
     """
-    覆盖吸收: 删除被更短后缀语义涵盖的条目。仅用于 include 合并集 (cn/ai 等)，
-    dat 派生集合不做吸收 (保持与天灵 0-Diff 同构)。
+    覆盖吸收: 删除被更短后缀语义涵盖的条目。
+    protect: 不可删除的条目 (归一化后匹配, 仍参与涵盖判定)。
+    补丁通道用它实现基座保护——基座 (上游 dat 转录/自研基础集) 条目可涵盖
+    include 引入的增量, 自身绝不被删 (保持与上游 0-Diff 同构);
+    吸收仅作用于补丁会话引入的增量冗余。
     """
+    prot = set()
+    for x in protect:
+        x = x.strip().lower().lstrip(".")
+        if x:
+            prot.add(x)
+            prot.add(x.rstrip("."))
     kept_suffixes: Set[str] = set()
     removed = 0
     label_map: Dict[str, str] = {}
@@ -372,7 +381,8 @@ def absorb_covered_domains(domains: Set[str], suffixes: Set[str]) -> Tuple[Set[s
     covered_suffixes = 0
     for key, orig in label_map.items():
         parts = key.split(".")
-        if any(".".join(parts[i:]) in label_map for i in range(1, len(parts))):
+        covered_by_shorter = any(".".join(parts[i:]) in label_map for i in range(1, len(parts)))
+        if covered_by_shorter and key not in prot:
             covered_suffixes += 1
         else:
             kept_suffixes.add(orig)
@@ -383,7 +393,7 @@ def absorb_covered_domains(domains: Set[str], suffixes: Set[str]) -> Tuple[Set[s
         key = d.strip().lower().lstrip(".")
         parts = key.split(".")
         covered = key in label_map or any(".".join(parts[i:]) in label_map for i in range(1, len(parts)))
-        if not covered:
+        if not covered or key in prot:
             kept_domains.add(d)
         else:
             removed += 1

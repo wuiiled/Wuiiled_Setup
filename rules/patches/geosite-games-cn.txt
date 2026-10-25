@@ -1,0 +1,5 @@
+# geosite-games-cn 重新定义 (2026-10-26):
+#   国内 games + 游戏平台中国区下载节点 (@cn 属性视图) + 国内游戏加速器域名
+#   (category-game-accelerator-cn: 雷神/UU/迅游等 30+ 家官网与 API)。
+include:dat:category-game-platforms-download@cn
+include:dat:category-game-accelerator-cn

@@ -11,6 +11,9 @@ skipped at runtime and reported in the log (上游已收录), never rewritten on
   keyword:      -> domain_keyword
   regexp:       -> domain_regex
   include:dat:<分类码>      合并 dat 解析出的其他分类 (如 include:dat:category-ai-!cn)
+                            属性视图同样可用 (如 include:dat:category-game-platforms-download@cn)
+  exclude:dat:<分类码>      从当前集合差集移除该 dat 分类 (仅支持 dat; 配合 include 实现
+                            "合并全量再剔除属性子集", 如 platforms-download 剔除 @cn 中国区)
   include:url:<URL>         下载外部列表并清洗后合并
   include:local:<相对路径>  合并本地文件 (相对仓库根)
   以 # 开头为注释
@@ -19,8 +22,9 @@ include 合并的清洗规则 (与 04699e9 版本 gen_cn 语义一致):
   裸域名 -> domain_suffix; '+.'/'.' 前缀 -> domain_suffix;
   'domain-suffix,'/'domain,' -> 原语义 (suffix/domain); 'full:' -> domain;
   'keyword:'/'regexp:' -> 对应类型; 空行/#注释/含 skk.moe 水印的行跳过。
-include 属于"整表合并", 上游随其自行更新; 解析失败 (下载失败/分类不存在/合并 0 条)
-会在 apply_patches 的调用方处中止构建, 防止规则集静默缩水。
+include/exclude 属于"整表操作", 上游随其自行更新; 解析失败 (下载失败/分类不存在/
+include 合并 0 条 / exclude 目标不存在) 会在 apply_patches 的调用方处中止构建,
+防止规则集静默缩水。exclude 移除 0 条视为合法 (目标子集本就不在集合中)。
 """
 
 import os
@@ -33,7 +37,7 @@ from core.models import RuleSet
 
 PATCH_DIR = "rules/patches"
 
-_INCLUDE_RE = re.compile(r"^include:(dat|url|local):(\S+)\s*$")
+_INCLUDE_RE = re.compile(r"^(include|exclude):(dat|url|local):(\S+)\s*$")
 
 
 def _clean_list_line(line: str) -> Optional[Tuple[str, str]]:
@@ -74,7 +78,8 @@ def _clean_list_line(line: str) -> Optional[Tuple[str, str]]:
 def _parse_patch_line(line: str):
     """
     Parse one patch line.
-    返回 ('rule', rule_type, value) / ('include', kind, target) / (None, None, None)。
+    返回 ('rule', rule_type, value) / ('include', kind, target) /
+          ('exclude', kind, target) / (None, None, None)。
     """
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
@@ -82,7 +87,7 @@ def _parse_patch_line(line: str):
 
     m = _INCLUDE_RE.match(stripped)
     if m:
-        return "include", m.group(1), m.group(2)
+        return m.group(1), m.group(2), m.group(3)
 
     if stripped.startswith("full:"):
         return "rule", "domain", stripped[5:]
@@ -110,8 +115,8 @@ def load_patch_file(ruleset_name: str) -> List[tuple]:
             kind, a, b = _parse_patch_line(raw)
             if kind == "rule" and a and b:
                 results.append(("rule", a, b, raw.rstrip("\n")))
-            elif kind == "include" and b:
-                results.append(("include", a, b, raw.rstrip("\n")))
+            elif kind in ("include", "exclude") and b:
+                results.append((kind, a, b, raw.rstrip("\n")))
     return results
 
 
@@ -237,5 +242,27 @@ def apply_patches(rs: RuleSet, dat_map: Optional[Dict[str, RuleSet]] = None):
             suf_low.update(s.lstrip(".").lower() for s in src.domain_suffixes)
             kw_low.update(k.lower() for k in src.domain_keywords)
             include_stats.append((a, b, rs.total_count - before))
+        elif kind == "exclude":
+            # 差集移除: 仅支持 dat (url/local 无稳定重解析语义, 误用即失败);
+            # 目标不存在则 -1 由调用方中止构建, 移除 0 条视为合法。
+            if a != "dat":
+                print(f"    ⚠️ exclude:{a}:{b} 不受支持 (差集仅支持 dat), 已计为失败")
+                include_stats.append((f"exclude:{a}", b, -1))
+                continue
+            if dat_map is None:
+                print(f"    ⚠️ exclude:dat:{b} 被跳过 (当前上下文无 dat 源)")
+                include_stats.append(("exclude:dat", b, -1))
+                continue
+            src = dat_map.get(b.lower())
+            if src is None:
+                print(f"    ⚠️ exclude:dat:{b} 被跳过 (dat 中不存在该分类)")
+                include_stats.append(("exclude:dat", b, -1))
+                continue
+            before = rs.total_count
+            rs.domains -= src.domains
+            rs.domain_suffixes -= src.domain_suffixes
+            rs.domain_keywords -= src.domain_keywords
+            rs.domain_regexes -= src.domain_regexes
+            include_stats.append(("exclude:dat", b, before - rs.total_count))
 
     return rs, active, upstream_included, include_stats

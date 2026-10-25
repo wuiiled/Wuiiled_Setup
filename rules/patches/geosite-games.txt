@@ -1,0 +1,6 @@
+# geosite-games 重新定义 (2026-10-26):
+#   全量聚合 = 完整 category-game-platforms-download (CN + 非 CN 下载节点)
+#   + category-game-accelerator-cn 加速器域名。
+#   语义等价于重定义后的 geosite-games-cn ∪ geosite-games-!cn。
+include:dat:category-game-platforms-download
+include:dat:category-game-accelerator-cn
