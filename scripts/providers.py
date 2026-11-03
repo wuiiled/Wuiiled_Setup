@@ -13,25 +13,31 @@ ALLOW_URLS = [
     "https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exceptions.txt",
     # anudeepND whitelist
     "https://raw.githubusercontent.com/anudeepND/whitelist/master/domains/whitelist.txt",
+    # anti-AD 官方白名单
+    #"https://raw.githubusercontent.com/privacy-protection-tools/dead-horse/master/anti-ad-white-list.txt",
 ]
 
 ADS_BLOCK_URLS = [
     # EasyMosdns ad_domain_list
-    "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt",
+    #"https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt",
     # AdGuard DNS Filter
     "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt",
     # Peter Lowe's Blocklist
     "https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt",
     # Dan Pollock's List
-    "https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt",
+    #"https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt",
     # Adobe Telemetry
     "https://a.dove.isdumb.one/pihole.txt",
     # Cats-Team adrules_domainset
-    "https://raw.githubusercontent.com/Cats-Team/AdRules/main/adrules_domainset.txt",
+    #"https://raw.githubusercontent.com/Cats-Team/AdRules/main/adrules_domainset.txt",
     # AWAvenue Ads Rule Geosite
-    "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Geosite.txt",
+    #"https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Geosite.txt",
     # OISD Small
-    "https://raw.githubusercontent.com/sjhgvr/oisd/main/domainswild_small.txt",
+    "https://raw.githubusercontent.com/sjhgvr/oisd/main/oisd_small.txt",
+    # anti-AD
+    "https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-adguard.txt",
+    # Hagezi Blocklists Light
+    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/light.txt",
 ]
 
 AI_URLS = [
