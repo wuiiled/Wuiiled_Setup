@@ -15,6 +15,8 @@ ALLOW_URLS = [
     "https://raw.githubusercontent.com/anudeepND/whitelist/master/domains/whitelist.txt",
     # anti-AD 官方白名单
     #"https://raw.githubusercontent.com/privacy-protection-tools/dead-horse/master/anti-ad-white-list.txt",
+    # ad-whitelist-bot
+    "https://raw.githubusercontent.com/wuiiled/ad-whitelist-bot/main/output/merged_false_positive_whitelist.txt"
 ]
 
 ADS_BLOCK_URLS = [
