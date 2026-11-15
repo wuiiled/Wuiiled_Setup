@@ -6,17 +6,22 @@ All local addons and custom rules are loaded directly from disk in manager.py.
 
 TARGET_BRANCHES = ("singbox", "mihomo", "smartdns", "mosdns-x", "adg")
 
+# 白名单双层产物(wuiiled/ad-whitelist-bot 唯一合成点, 本仓零白名单合成):
+#   main  = 后缀档 — 策展引用层(Cats/AdRules/anudeep/AdGuard exceptions)+ 深条目,
+#           放行语义覆盖其全部子域(cloudfront.net 等基础设施放行在此档)
+#   exact = 精确档 — 裁决型来源的裸域条目(anti-AD php/AWAvenue/AdGuard DNS filter),
+#           消费端按整域精确匹配、不参与祖先连坐, 否则会连坐清除各黑名单源
+#           的同族广告规则(tanx/yximgs/ucweb/co.in 等整族)
+# 历史注: 2026-11-15 前本文件直接拉取 Cats dns-allowlist / AdGuardSDNSFilter
+# exceptions / anudeepND whitelist 三份原始源自行合成; 三者已并入 bot 收割
+# ( Cats 注释 #N 转 issue 链接, 单管道 @@|x^| 容忍解析), 换取溯源/冲突检测/
+# deny 层生效与裸域精确档。anti-AD dead-horse 白名单 2023-08 死, 勿接。
 ALLOW_URLS = [
-    # Cats-Team dns-allowlist
-    "https://raw.githubusercontent.com/Cats-Team/AdRules/script/mod/rules/dns-allowlist.txt",
-    # AdGuard SDNS Filter exceptions
-    "https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exceptions.txt",
-    # anudeepND whitelist
-    "https://raw.githubusercontent.com/anudeepND/whitelist/master/domains/whitelist.txt",
-    # anti-AD 官方白名单
-    #"https://raw.githubusercontent.com/privacy-protection-tools/dead-horse/master/anti-ad-white-list.txt",
-    # ad-whitelist-bot
     "https://raw.githubusercontent.com/wuiiled/ad-whitelist-bot/main/output/merged_false_positive_whitelist.txt"
+]
+
+ALLOW_EXACT_URLS = [
+    "https://raw.githubusercontent.com/wuiiled/ad-whitelist-bot/main/output/merged_false_positive_whitelist_exact.txt"
 ]
 
 ADS_BLOCK_URLS = [

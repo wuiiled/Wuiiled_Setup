@@ -199,9 +199,21 @@ def optimize_smart_self(input_file, output_file):
             f.write('\n'.join(result_lines) + '\n')
 
 
-def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
+def apply_advanced_whitelist_filter(block_in, allow_in, final_out, exact_in=None):
+    """Whitelist subtraction over the optimized block set.
+
+    Two allow tiers (products from ad-whitelist-bot):
+    - allow_in  (suffix tier): rescues itself, all ancestors of a block rule
+      (宽 allow 杀窄 block), and ancestors of the allow entry (窄 allow 杀宽
+      block, parents-branch) — semantics unchanged from the single-tier era;
+    - exact_in  (exact tier): rescues ONLY the block rule that equals the
+      entry itself. Bare two-label entries adjudicated by the upstream
+      projects would otherwise wipe whole rule families (tanx/yximgs/co.in
+      等) from every source via suffix semantics.
+    """
     allow_set = set()
     allow_parents_set = set()
+    allow_exact = set()
 
     if os.path.exists(allow_in):
         with open(allow_in, 'r', encoding='utf-8') as f:
@@ -214,6 +226,14 @@ def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
                 for i in range(1, len(parts)):
                     allow_parents_set.add(".".join(parts[i:]))
 
+    if exact_in and os.path.exists(exact_in):
+        with open(exact_in, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip().lower().lstrip('+').lstrip('.')
+                if not line or line.startswith('#'):
+                    continue
+                allow_exact.add(line)
+
     final_lines = []
     if os.path.exists(block_in):
         with open(block_in, 'r', encoding='utf-8') as f:
@@ -222,6 +242,8 @@ def apply_advanced_whitelist_filter(block_in, allow_in, final_out):
                 if not original or original.startswith('#'):
                     continue
                 pure = original.lower().lstrip('+').lstrip('.')
+                if pure in allow_exact:
+                    continue
                 if pure in allow_parents_set or any(anc in allow_set for anc in _domain_ancestors(pure)):
                     continue
                 final_lines.append(original)

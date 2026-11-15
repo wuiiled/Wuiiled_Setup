@@ -287,9 +287,12 @@ def load_ads_rules() -> RuleSet:
     clean_ads_path = os.path.join(mod_dir, "clean_ads.txt")
     filter_ads_path = os.path.join(mod_dir, "filter_ads.txt")
     raw_allow_path = os.path.join(mod_dir, "raw_allow.txt")
+    raw_allow_exact_path = os.path.join(mod_dir, "raw_allow_exact.txt")
     clean_allow_path = os.path.join(mod_dir, "clean_allow.txt")
+    clean_allow_exact_path = os.path.join(mod_dir, "clean_allow_exact.txt")
     opt_ads_path = os.path.join(mod_dir, "opt_ads.txt")
     opt_allow_path = os.path.join(mod_dir, "opt_allow.txt")
+    opt_allow_exact_path = os.path.join(mod_dir, "opt_allow_exact.txt")
     final_ads_path = os.path.join(mod_dir, "final_ads.txt")
 
     # 1. Download online ad sources
@@ -305,8 +308,9 @@ def load_ads_rules() -> RuleSet:
     utils.process_normalize_domain(raw_ads_path, clean_ads_path, skip_allow_rules=True)
     utils.apply_keyword_filter(clean_ads_path, filter_ads_path)
 
-    # 4. Prepare allowlist
+    # 4. Prepare allowlist (suffix tier from bot main product) + exact tier
     utils.download_files_parallel(raw_allow_path, providers.ALLOW_URLS)
+    utils.download_files_parallel(raw_allow_exact_path, providers.ALLOW_EXACT_URLS)
     local_exclude = read_local_file("rules/addons/exclude-keyword.txt")
     local_custom_direct = read_local_file("rules/Custom_Direct_DOMAIN.txt")
 
@@ -322,18 +326,24 @@ def load_ads_rules() -> RuleSet:
                 if l and not l.startswith('#'):
                     f.write(l + "\n")
 
-    # 5. Normalize allowlist, optimize both, and apply advanced whitelist subtraction
+    # 5. Normalize allowlists, optimize both, and apply whitelist subtraction
     utils.process_normalize_domain(raw_allow_path, clean_allow_path, skip_allow_rules=False)
+    utils.process_normalize_domain(raw_allow_exact_path, clean_allow_exact_path, skip_allow_rules=False)
     utils.optimize_smart_self(filter_ads_path, opt_ads_path)
     utils.optimize_smart_self(clean_allow_path, opt_allow_path)
-    utils.apply_advanced_whitelist_filter(opt_ads_path, opt_allow_path, final_ads_path)
+    utils.optimize_smart_self(clean_allow_exact_path, opt_allow_exact_path)
+    utils.apply_advanced_whitelist_filter(opt_ads_path, opt_allow_path, final_ads_path,
+                                          exact_in=opt_allow_exact_path)
 
-    # Persist shared optimized allowlist so downstream consumers (reject-drop)
-    # reuse it instead of reading a nonexistent path.
+    # Persist shared optimized allowlists so downstream consumers (reject-drop)
+    # reuse them instead of reading a nonexistent path.
     shared_allow_path = os.path.join(work_dir, "shared", "opt_allow.txt")
     os.makedirs(os.path.dirname(shared_allow_path), exist_ok=True)
     if os.path.exists(opt_allow_path):
         utils.safe_copy(opt_allow_path, shared_allow_path)
+    shared_allow_exact_path = os.path.join(work_dir, "shared", "opt_allow_exact.txt")
+    if os.path.exists(opt_allow_exact_path):
+        utils.safe_copy(opt_allow_exact_path, shared_allow_exact_path)
 
     # 黑加白模式: compute precise blocklist B + allow exception list B via pure
     # functions, persist for platform exporters (smartdns/mihomo/adg).
@@ -345,8 +355,13 @@ def load_ads_rules() -> RuleSet:
             raw_block = {l.strip() for l in f if l.strip() and not l.startswith("#")}
         with open(opt_allow_path, "r", encoding="utf-8") as f:
             raw_allow = {l.strip() for l in f if l.strip() and not l.startswith("#")}
-        bl_b = build_blocklist_b(raw_block, raw_allow)
-        wl_b = build_whitelist_b(raw_allow, raw_block, bl_b)
+        raw_allow_exact = set()
+        if os.path.exists(opt_allow_exact_path):
+            with open(opt_allow_exact_path, "r", encoding="utf-8") as f:
+                raw_allow_exact = {l.strip() for l in f
+                                   if l.strip() and not l.startswith("#")}
+        bl_b = build_blocklist_b(raw_block, raw_allow, raw_allow_exact)
+        wl_b = build_whitelist_b(raw_allow | raw_allow_exact, raw_block, bl_b)
         with open(blocklist_b_path, "w", encoding="utf-8") as f:
             f.write("\n".join(sorted(bl_b)) + "\n")
         with open(whitelist_b_path, "w", encoding="utf-8") as f:
@@ -617,13 +632,15 @@ def load_reject_drop_rules() -> RuleSet:
     with open(clean_rd, 'w', encoding='utf-8') as f:
         f.write('\n'.join(sorted(rd_lines)) + '\n')
 
-    # Reuse the shared optimized allowlist produced by load_ads_rules instead of
-    # a nonexistent shared/raw_allow.txt (which silently disabled the whitelist).
+    # Reuse the shared optimized allowlists produced by load_ads_rules instead
+    # of a nonexistent shared/raw_allow.txt (which silently disabled the whitelist).
     clean_rd_allow = os.path.join(work_dir, "shared", "opt_allow.txt")
+    clean_rd_allow_exact = os.path.join(work_dir, "shared", "opt_allow_exact.txt")
     final_rd = os.path.join(mod_dir, "final_rd.txt")
 
     if os.path.exists(clean_rd_allow) and os.path.getsize(clean_rd_allow) > 0:
-        utils.apply_advanced_whitelist_filter(clean_rd, clean_rd_allow, final_rd)
+        utils.apply_advanced_whitelist_filter(clean_rd, clean_rd_allow, final_rd,
+                                              exact_in=clean_rd_allow_exact)
     else:
         print("  [Reject-Drop] WARNING: shared allowlist missing/empty, whitelist filter skipped")
         utils.safe_copy(clean_rd, final_rd)

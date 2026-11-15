@@ -407,15 +407,21 @@ def _domain_ancestors(d: str) -> List[str]:
     return [".".join(parts[i:]) for i in range(len(parts))]
 
 
-def build_blocklist_b(raw_block: Set[str], raw_allow: Set[str]) -> Set[str]:
+def build_blocklist_b(raw_block: Set[str], raw_allow: Set[str],
+                      raw_allow_exact: Set[str] = frozenset()) -> Set[str]:
     """
     Precise blocklist (黑加白模式 黑名单B).
+    raw_allow_exact = 精确档白名单 (ad-whitelist-bot exact 产物): 只放行
+    恰好等于该域的块规则, 不参与祖先连坐 — 与 suffix 档的双向语义互补。
     """
     allow_set = {a for a in (x.strip().lower().lstrip('+').strip('.') for x in raw_allow) if a}
+    allow_exact = {a for a in (x.strip().lower().lstrip('+').strip('.') for x in raw_allow_exact) if a}
     kept = set()
     for b in raw_block:
         b = b.strip().lower().lstrip('+').strip('.')
         if not b:
+            continue
+        if b in allow_exact:
             continue
         if any(anc in allow_set for anc in _domain_ancestors(b)):
             continue
