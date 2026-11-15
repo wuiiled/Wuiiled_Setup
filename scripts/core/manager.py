@@ -361,7 +361,10 @@ def load_ads_rules() -> RuleSet:
                 raw_allow_exact = {l.strip() for l in f
                                    if l.strip() and not l.startswith("#")}
         bl_b = build_blocklist_b(raw_block, raw_allow, raw_allow_exact)
-        wl_b = build_whitelist_b(raw_allow | raw_allow_exact, raw_block, bl_b)
+        # 白名单B 只吃后缀档: exact 档条目永不该成为后缀例外集合的输入
+        # (今日不可达——exact 全为两段裸域,祖先链=[自身,TLD],自身已被
+        #  allow_exact 从 bl_b 剔除——此行是防未来 exact 档出现深条目的保险)
+        wl_b = build_whitelist_b(raw_allow, raw_block, bl_b)
         with open(blocklist_b_path, "w", encoding="utf-8") as f:
             f.write("\n".join(sorted(bl_b)) + "\n")
         with open(whitelist_b_path, "w", encoding="utf-8") as f:
