@@ -37,8 +37,8 @@ ADS_BLOCK_URLS = [
     "https://a.dove.isdumb.one/pihole.txt",
     # Cats-Team adrules_domainset
     #"https://raw.githubusercontent.com/Cats-Team/AdRules/main/adrules_domainset.txt",
-    # AWAvenue Ads Rule Geosite
-    #"https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Geosite.txt",
+    # AWAvenue Ads Rule Geosite No.Unwelcome
+    "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Adguard-No.Unwelcome.txt",
     # OISD Small
     "https://raw.githubusercontent.com/sjhgvr/oisd/main/oisd_small.txt",
     # anti-AD
