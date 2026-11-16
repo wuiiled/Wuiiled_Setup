@@ -302,10 +302,13 @@ def parse_ai_rule_line(line: str) -> Optional[Tuple[str, str]]:
         d = idna_domain(line[5:].strip().lower().lstrip(".").rstrip("."))
         return ("domain", d) if is_valid_domain(d, allow_tld=False) else None
     if lower.startswith("domain:"):
-        # 11-17 审计修正: `domain:` 在 sing-box/clash 语义 = 精确匹配,
-        # 原映射到 domain_suffix 是语义放大(AI 四源现无此格式, 死路径修正)
-        d = idna_domain(line[7:].strip().lower().lstrip(".").rstrip("."))
-        return ("domain", d) if is_valid_domain(d, allow_tld=False) else None
+        # 11-17 复核: 四个 AI 上游(MetaCubeX/DustinWin/skk/MagicRule)实测
+        # 零 `domain:` 冒号前缀行 — 本函数声明的三种格式(Surge/Clash/mihomo)
+        # 也都没有该前缀, 此分支是死路径。语义归属存疑(mosdns 约定=后缀,
+        # sing-box 约定=精确), 维持原实现(suffix)以保持行为面不变; 若未来
+        # 上游真的引入该前缀, 须先按其项目约定裁决再改。
+        s = idna_domain(line[7:].strip().lower().lstrip("+.").lstrip(".").rstrip("."))
+        return ("domain_suffix", s) if is_valid_domain(s, allow_tld=True) else None
     if lower.startswith("keyword:"):
         kw = line[8:].strip().lower()
         return ("domain_keyword", kw) if kw else None

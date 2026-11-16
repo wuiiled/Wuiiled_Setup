@@ -387,7 +387,7 @@ def load_ads_rules() -> RuleSet:
     # 来源画像从 providers 派生 (单一事实源, 11-17 审计: 旧硬编码清单停留在
     # 八源时代, manifest/README 渲染出已删除的来源)
     derived_sources = [
-        providers.ADS_BLOCK_SOURCE_NAMES.get(u.rsplit("/", 1)[-1], u)
+        providers.ADS_BLOCK_SOURCE_NAMES.get(u, u)
         for u in providers.ADS_BLOCK_URLS
     ] + ["本地 reject-addon"]
     return RuleSet(

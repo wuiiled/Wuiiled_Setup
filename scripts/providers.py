@@ -47,19 +47,20 @@ ADS_BLOCK_URLS = [
     "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/light.txt",
 ]
 
-# 来源画像: URL 尾段 → 展示名 (manager.load_ads_rules 的 sources 从这里
+# 来源画像: 完整 URL → 展示名 (manager.load_ads_rules 的 sources 从这里
 # 派生, 与 ADS_BLOCK_URLS 单一事实源绑定, 杜绝双维护漂移 — 11-17 审计:
-# 旧硬编码清单停留在八源时代, 渲染出已删除的来源)
+# 旧硬编码清单停留在八源时代, 渲染出已删除的来源; 键用完整 URL 避免不同
+# 仓库同名文件撞键)
 ADS_BLOCK_SOURCE_NAMES = {
-    "filter_1.txt": "AdGuard DNS filter",
-    "filter_3.txt": "Peter Lowe",
-    "filter_4.txt": "Dan Pollock",
-    "pihole.txt": "isdumb/Pi-hole",
-    "oisd_small.txt": "OISD Small",
-    "anti-ad-adguard.txt": "anti-AD",
-    "light.txt": "HaGeZi",
-    "adrules_domainset.txt": "Cats-Team/AdRules",
-    "ad_domain_list.txt": "easymosdns",
+    "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt": "AdGuard DNS filter",
+    "https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt": "Peter Lowe",
+    "https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt": "Dan Pollock",
+    "https://a.dove.isdumb.one/pihole.txt": "isdumb/Pi-hole",
+    "https://raw.githubusercontent.com/sjhgvr/oisd/main/oisd_small.txt": "OISD Small",
+    "https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-adguard.txt": "anti-AD",
+    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/light.txt": "HaGeZi",
+    "https://raw.githubusercontent.com/Cats-Team/AdRules/main/adrules_domainset.txt": "Cats-Team/AdRules",
+    "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt": "easymosdns",
 }
 
 AI_URLS = [

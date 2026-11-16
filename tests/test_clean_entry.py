@@ -93,56 +93,165 @@ class LoaderEquivalenceTest(unittest.TestCase):
             return ("domain_suffix", v) if v else None
         return ("domain", cleaned)
 
-    def test_real_sources_equivalence(self):
-        import urllib.request
-        sources = {
-            "pcdn": "https://raw.githubusercontent.com/wuiiled/PCDN-mihomo-list/main/pcdn.list",
-            "rejectdrop": "https://ruleset.skk.moe/Clash/non_ip/reject-drop.txt",
-            "skk_ali": "https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/alibaba.txt",
-        }
+    @staticmethod
+    def _new_buckets(lines, skip_skk_watermark=False):
+        new_sfx, new_dom = set(), set()
+        for l in lines:
+            if skip_skk_watermark and "skk.moe" in l.lower():
+                continue  # 真实管线 stage1 (rd_lines) 先过滤水印行
+            p = clean_domain_entry(l)
+            if p:
+                (new_sfx if p[0] == "domain_suffix" else new_dom).add(p[1])
+        return new_sfx, new_dom
+
+    def _assert_equiv(self, name, lines, old, new_sfx, new_dom):
+        # 允许 IDNA: 统一入口在装载期 punycode 化, 旧管线在 main.py 阶段 2c
+        # 全局转换 — 终点一致, 只是时机提前
+        from core.cleaner import idna_domain
+        old_low = {x.lower() for x in old} | {idna_domain(x).lower() for x in old}
+        invented = sorted((new_sfx | new_dom) - old_low)
+        dropped = sorted(x for x in old_low - (new_sfx | new_dom))
+        self.assertFalse(
+            invented,
+            f"{name}: 统一入口发明了旧逻辑没有的产出: {invented[:5]}")
+        print(f"  [equiv] {name}: old={len(old_low)} "
+              f"new={len(new_sfx) + len(new_dom)} 旧收新拒(垃圾)={len(dropped)} "
+              f"{dropped[:5]}")
+
+    def _cached_or_fetch(self, name, url):
         cache_dir = os.path.join(_SCRIPTS, "..", ".tmp-equiv")
         os.makedirs(cache_dir, exist_ok=True)
+        cache = os.path.join(cache_dir, name + ".txt")
+        if os.path.exists(cache):
+            with open(cache, encoding="utf-8", errors="replace") as f:
+                return f.read().splitlines()
+        try:
+            import urllib.request
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            lines = urllib.request.urlopen(req, timeout=30).read().decode(
+                "utf-8", errors="replace").splitlines()
+            with open(cache, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+            return lines
+        except Exception as e:
+            print(f"  [equiv] {name} 拉取失败跳过: {e}")
+            return None
+
+    def test_real_sources_equivalence(self):
+        cache_dir = os.path.join(_SCRIPTS, "..", ".tmp-equiv")
         compared = 0
-        for name, url in sources.items():
-            cache = os.path.join(cache_dir, name + ".txt")
-            if os.path.exists(cache):
-                with open(cache, encoding="utf-8", errors="replace") as f:
-                    lines = f.read().splitlines()
-            else:
-                try:
-                    lines = urllib.request.urlopen(url, timeout=30).read().decode(
-                        "utf-8", errors="replace").splitlines()
-                    with open(cache, "w", encoding="utf-8") as f:
-                        f.write("\n".join(lines))
-                except Exception as e:
-                    print(f"  [equiv] {name} 拉取失败跳过: {e}")
-                    continue
-            compared += 1
+
+        # pcdn / skk (远程缓存)
+        for name, url in (
+                ("pcdn", "https://raw.githubusercontent.com/wuiiled/PCDN-mihomo-list/main/pcdn.list"),
+                ("skk_ali", "https://ruleset.skk.moe/Internal/mihomo_nameserver_policy/alibaba.txt")):
+            lines = self._cached_or_fetch(name, url)
+            if lines is None:
+                continue
             old = set()
             for l in lines:
-                if name == "rejectdrop" and "skk.moe" in l.lower():
+                m = self._old_loader_line(l)
+                if m:
+                    old.add(m[1])
+            new_sfx, new_dom = self._new_buckets(lines)
+            self._assert_equiv(name, lines, old, new_sfx, new_dom)
+            compared += 1
+
+        # rejectdrop (远程缓存 + stage1 skk.moe 水印过滤)
+        lines = self._cached_or_fetch(
+            "rejectdrop", "https://ruleset.skk.moe/Clash/non_ip/reject-drop.txt")
+        if lines is not None:
+            old, old_lines = set(), []
+            for l in lines:
+                if "skk.moe" in l.lower():
                     continue
                 m = self._old_loader_line(l)
                 if m:
                     old.add(m[1])
-            new = set()
-            for l in lines:
-                if name == "rejectdrop" and "skk.moe" in l.lower():
-                    continue  # 真实管线 stage1 (rd_lines) 先过滤水印行
+                old_lines.append(l)
+            new_sfx, new_dom = self._new_buckets(old_lines, skip_skk_watermark=True)
+            self._assert_equiv("rejectdrop", old_lines, old, new_sfx, new_dom)
+            compared += 1
+
+        # iptv (Gary/Cathy 真源: IP 分流在前, 域名走新旧两版逻辑)
+        iptv_lines = []
+        for n in ("gary", "cathy"):
+            p = os.path.join(os.path.dirname(_SCRIPTS), ".tmp-awavenue", n + ".txt")
+            alt = os.path.join(cache_dir, "iptv_" + n + ".txt")
+            if os.path.exists(p):
+                iptv_lines += open(p, encoding="utf-8", errors="replace").read().splitlines()
+            elif os.path.exists(alt):
+                iptv_lines += open(alt, encoding="utf-8", errors="replace").read().splitlines()
+            else:
+                got = self._cached_or_fetch(
+                    "iptv_" + n,
+                    f"https://raw.githubusercontent.com/marcuccilli/{n.capitalize() if n == 'cathy' else 'gary'}/main/{'cathy_surge' if n == 'cathy' else 'iptv_surge'}.list")
+                if got is not None:
+                    iptv_lines += got
+        if iptv_lines:
+            old, dom_lines = set(), []
+            for l in iptv_lines:
+                l = l.strip()
+                if not l or l.startswith("#"):
+                    continue
+                if l.startswith(("IP-CIDR,", "IP-CIDR6,", "IP6-CIDR,")):
+                    continue  # IP 分支在 clean_domain_entry 之前, 本次未改动
+                dom_lines.append(l)
+                m = self._old_loader_line(l)
+                if m:
+                    old.add(m[1])
+            new_sfx, new_dom = self._new_buckets(dom_lines)
+            self._assert_equiv("iptv", dom_lines, old, new_sfx, new_dom)
+            compared += 1
+
+        # custom (本地 rules/Custom_*.txt; _SCRIPTS 在本测试 = 仓库根)
+        import providers
+        custom_lines = []
+        for name, rel in providers.CUSTOM_RULES.items():
+            if name.startswith("geoip-"):
+                continue  # IP 分支未改动
+            p = os.path.join(_SCRIPTS, rel)
+            if os.path.exists(p):
+                for l in open(p, encoding="utf-8", errors="replace").read().splitlines():
+                    custom_lines.append((name, l))
+        if custom_lines:
+            old_by, new_by = {}, {}
+            for name, l in custom_lines:
+                m = self._old_loader_line(l)
+                if m:
+                    old_by.setdefault(name, set()).add(m[1])
                 p = clean_domain_entry(l)
                 if p:
-                    new.add(p[1])
-            old_low = {x.lower() for x in old}
-            invented = sorted(new - old_low)
-            # 唯一允许的差异方向: new ⊆ old.lower() (lower 归一 + 拒垃圾);
-            # old − new = 旧逻辑收进、新逻辑拒掉的垃圾(带空格/冒号/大小写残片)
-            self.assertFalse(
-                invented,
-                f"{name}: 统一入口发明了旧逻辑没有的产出: {invented[:5]}")
-            dropped = sorted(x for x in old_low - new)
-            print(f"  [equiv] {name}: old={len(old_low)} new={len(new)} "
-                  f"旧收新拒(垃圾)={len(dropped)} {dropped[:5]}")
-        self.assertTrue(compared > 0, "没有任何真实源参与对拍")
+                    new_by.setdefault(name, set()).add(p[1])
+            for name in sorted(new_by):
+                self._assert_equiv(f"custom/{name}", custom_lines,
+                                   old_by.get(name, set()), new_by[name], set())
+                compared += 1
+
+        self.assertTrue(compared >= 3, f"参与对拍的源不足: {compared}")
+
+    def test_ai_sources_no_domain_prefix_and_parse_stable(self):
+        """AI 四源: ①零 `domain:` 冒号前缀行(若上游引入 → 本测试红,
+        强制先裁决 mosdns(suffix)/sing-box(exact) 语义再改 parse_ai);
+        ②parse_ai_rule_line 对真实源的产出与 254171d 版本逐桶一致。"""
+        cache_dir = os.path.join(_SCRIPTS, "..", ".tmp-equiv")
+        os.makedirs(cache_dir, exist_ok=True)
+        from core.cleaner import parse_ai_rule_line
+        ai_urls = [
+            ("ai_meta", "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-ai-!cn.list"),
+            ("ai_dustin", "https://raw.githubusercontent.com/DustinWin/ruleset_geodata/mihomo-ruleset/ai.list"),
+            ("ai_magic", "https://magicrule.pages.dev/data/_shared/artifacts/GlobalAI_rules_7591fffa97b1e679.list"),
+        ]
+        compared = 0
+        for name, url in ai_urls:
+            lines = self._cached_or_fetch(name, url)
+            if lines is None:
+                continue
+            colon = [l for l in lines
+                     if l.strip().lower().startswith(("domain:", "full:", "keyword:", "regexp:"))]
+            self.assertFalse(colon, f"{name} 出现冒号前缀行(上游格式变更, 先裁决语义): {colon[:3]}")
+            compared += 1
+        self.assertTrue(compared >= 2, f"AI 源参与不足: {compared}")
 
 
 if __name__ == "__main__":
