@@ -47,6 +47,21 @@ ADS_BLOCK_URLS = [
     "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/light.txt",
 ]
 
+# 来源画像: URL 尾段 → 展示名 (manager.load_ads_rules 的 sources 从这里
+# 派生, 与 ADS_BLOCK_URLS 单一事实源绑定, 杜绝双维护漂移 — 11-17 审计:
+# 旧硬编码清单停留在八源时代, 渲染出已删除的来源)
+ADS_BLOCK_SOURCE_NAMES = {
+    "filter_1.txt": "AdGuard DNS filter",
+    "filter_3.txt": "Peter Lowe",
+    "filter_4.txt": "Dan Pollock",
+    "pihole.txt": "isdumb/Pi-hole",
+    "oisd_small.txt": "OISD Small",
+    "anti-ad-adguard.txt": "anti-AD",
+    "light.txt": "HaGeZi",
+    "adrules_domainset.txt": "Cats-Team/AdRules",
+    "ad_domain_list.txt": "easymosdns",
+}
+
 AI_URLS = [
     # MetaCubeX 海外 AI 分类 (classical list)
     "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/category-ai-!cn.list",

@@ -136,6 +136,52 @@ def clean_mihomo_domain_line(line: str) -> Optional[str]:
     return line
 
 
+def clean_domain_entry(line: str) -> Optional[Tuple[str, str]]:
+    """通用域名行清洗 — 全部 loader 的唯一入口(11-17 审计收口: 此前五个
+    loader 各自手写 `+.`/`.`/lower/校验组合, 口径漂移)。
+
+    约定(与既有各 loader 行为一致, 导出前不改变任何现有产物):
+      `+.`/`.` 前缀 → ('domain_suffix', 裸值); 裸行 → ('domain', 裸值);
+      `domain-suffix,`/`domain,`/`host-suffix,`/`host,` 前缀按原语义映射;
+      行内 `#` 注释剥离; lower + IDNA 归一; IPv4/通配/含空格/路径行拒绝。
+    后缀桶允许单标签 TLD(如 `+.cn` → 'cn'); 非域名桶 (keyword/regex/cidr)
+    返回 None 交由调用方特判。
+    """
+    line = line.strip().lower()
+    if not line or line.startswith(('#', '!', '@@')):
+        return None
+    line = line.split('#', 1)[0].strip()
+    if not line:
+        return None
+
+    typed: Optional[str] = None
+    for pfx in ("domain-suffix,", "host-suffix,", "domain,", "host,"):
+        if line.startswith(pfx):
+            typed = "domain_suffix" if pfx.endswith("suffix,") else "domain"
+            line = line[len(pfx):].split(",", 1)[0].strip()
+            break
+    if typed is None:
+        if line.startswith(("domain-keyword,", "domain-regex,", "ip-cidr,",
+                            "ip-cidr6,", "ip6-cidr,", "ip-asn,", "process-name,",
+                            "user-agent,", "url-regex,")):
+            return None
+        if "," in line:
+            return None
+
+    is_suffix = (typed == "domain_suffix") if typed is not None \
+        else line.startswith(('+.', '.'))
+    body = line[2:] if line.startswith('+.') else \
+        (line[1:] if line.startswith('.') else line)
+    body = body.strip().lstrip('.').rstrip('.').lstrip('+')
+    if (not body or '*' in body or '/' in body or ':' in body or ' ' in body
+            or is_valid_ip_or_cidr(body)):
+        return None
+    d = idna_domain(body)
+    if not is_valid_domain(d, allow_tld=is_suffix):
+        return None
+    return ("domain_suffix" if is_suffix else "domain", d)
+
+
 
 
 def collapse_cidrs(cidrs) -> set:
@@ -256,8 +302,10 @@ def parse_ai_rule_line(line: str) -> Optional[Tuple[str, str]]:
         d = idna_domain(line[5:].strip().lower().lstrip(".").rstrip("."))
         return ("domain", d) if is_valid_domain(d, allow_tld=False) else None
     if lower.startswith("domain:"):
-        s = idna_domain(line[7:].strip().lower().lstrip("+.").lstrip(".").rstrip("."))
-        return ("domain_suffix", s) if is_valid_domain(s, allow_tld=True) else None
+        # 11-17 审计修正: `domain:` 在 sing-box/clash 语义 = 精确匹配,
+        # 原映射到 domain_suffix 是语义放大(AI 四源现无此格式, 死路径修正)
+        d = idna_domain(line[7:].strip().lower().lstrip(".").rstrip("."))
+        return ("domain", d) if is_valid_domain(d, allow_tld=False) else None
     if lower.startswith("keyword:"):
         kw = line[8:].strip().lower()
         return ("domain_keyword", kw) if kw else None
@@ -288,6 +336,9 @@ def compact_regexes(regex_set: Set[str]) -> List[str]:
     """
     Ultimate regex compactor: safe filtering + intelligent grouping.
     Primarily utilized for Fake-IP lists.
+    注意: step1 的折叠(`\\..*\\..*` → `\\..*` 等)与 step2 的数字分组会**放大**
+    匹配面 — 仅适用于 fake-ip filter 这类"多豁免=更安全"的集合, 勿复用于
+    拦截方向的正则。
     """
     if not regex_set:
         return []

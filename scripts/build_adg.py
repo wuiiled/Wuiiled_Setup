@@ -14,6 +14,9 @@ from core.models import RuleSet
 def _write_adg_ruleset(rs: Optional[RuleSet], name: str, output_dir: str) -> None:
     lines = []
     if rs:
+        # 注: IR 的 domains 桶(精确语义)在此导出为 ||domain^(后缀) —
+        # AdGuard Home 无精确块语法, 属平台限制; mihomo/smartdns 侧同一
+        # 集合以 full: 精确表达, 跨平台口径以 OxiDNS 为准。
         lines = [f"||{d.lstrip('.').strip()}^" for d in sorted(rs.domains | rs.domain_suffixes) if d.lstrip('.').strip()]
         if rs.domain_keywords:
             print(f"  [AdGuard] {name} | 跳过 {len(rs.domain_keywords)} 条 keyword 规则 (AdGuard 无对应语义)")

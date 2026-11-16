@@ -17,6 +17,7 @@ from core.cleaner import (
     collapse_cidrs,
     clean_ip_line,
     clean_mihomo_domain_line,
+    clean_domain_entry,
     parse_ai_rule_line,
     compact_regexes,
     build_blocklist_b,
@@ -383,17 +384,19 @@ def load_ads_rules() -> RuleSet:
                     domain_suffixes.add(d)
 
     print(f"  ✅ [原创广告]   {'geosite-ad':<26} | 规则数: {len(domain_suffixes):,}")
+    # 来源画像从 providers 派生 (单一事实源, 11-17 审计: 旧硬编码清单停留在
+    # 八源时代, manifest/README 渲染出已删除的来源)
+    derived_sources = [
+        providers.ADS_BLOCK_SOURCE_NAMES.get(u.rsplit("/", 1)[-1], u)
+        for u in providers.ADS_BLOCK_URLS
+    ] + ["本地 reject-addon"]
     return RuleSet(
         name="geosite-ad",
         category="geosite",
         description="终极去广告与防追踪规则",
         domain_suffixes=domain_suffixes,
         source_kind="self",
-        sources=[
-            "pmkol/easymosdns", "AdGuard Hostlists (1/3/4)", "Dan Pollock",
-            "isdumb/Pi-hole", "Cats-Team/AdRules", "AWAvenue", "OISD Small",
-            "本地 reject-addon",
-        ],
+        sources=derived_sources,
     )
 
 
@@ -654,19 +657,14 @@ def load_reject_drop_rules() -> RuleSet:
     if os.path.exists(final_rd):
         with open(final_rd, "r", encoding="utf-8") as f:
             for line in f:
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    raw_rd_lines.append(line)
-                    if line.startswith('+.'):
-                        suffix = line[2:]
-                        if not suffix:
-                            continue
-                        if '.' not in suffix:
-                            domain_suffixes.add('.' + suffix)
-                        else:
-                            domain_suffixes.add(suffix)
+                parsed = clean_domain_entry(line)
+                if parsed:
+                    bucket, value = parsed
+                    raw_rd_lines.append(value if bucket == "domain" else "+." + value)
+                    if bucket == "domain_suffix":
+                        domain_suffixes.add(value)
                     else:
-                        domains.add(line)
+                        domains.add(value)
 
     print(f"  ✅ [Reject-Drop]{'geosite-reject-drop':<26} | 规则数: {len(domains)+len(domain_suffixes):,}")
     return RuleSet(
@@ -729,19 +727,13 @@ def load_pcdn_rules() -> RuleSet:
     if os.path.exists(raw_pcdn):
         with open(raw_pcdn, 'r', encoding='utf-8') as f:
             for line in f:
-                cleaned = clean_mihomo_domain_line(line)
-                if not cleaned:
-                    continue
-                if cleaned.startswith('+.'):
-                    suffix = cleaned[2:].lstrip('.')
-                    if suffix:
-                        domain_suffixes.add(suffix)
-                elif cleaned.startswith('.'):
-                    suffix = cleaned[1:].lstrip('.')
-                    if suffix:
-                        domain_suffixes.add(suffix)
-                else:
-                    domains.add(cleaned)
+                parsed = clean_domain_entry(line)
+                if parsed:
+                    bucket, value = parsed
+                    if bucket == "domain_suffix":
+                        domain_suffixes.add(value)
+                    else:
+                        domains.add(value)
 
     print(f"  ✅ [PCDN]       {'geosite-pcdn':<26} | 规则数: {len(domains)+len(domain_suffixes):,}")
     return RuleSet(
@@ -786,14 +778,13 @@ def load_iptv_rules() -> Tuple[RuleSet, RuleSet]:
                         except ValueError:
                             pass
                 else:
-                    cleaned_dom = clean_mihomo_domain_line(line)
-                    if cleaned_dom:
-                        if cleaned_dom.startswith("+."):
-                            domain_suffixes.add(cleaned_dom[2:].lstrip("."))
-                        elif cleaned_dom.startswith("."):
-                            domain_suffixes.add(cleaned_dom[1:].lstrip("."))
+                    parsed = clean_domain_entry(line)
+                    if parsed:
+                        bucket, value = parsed
+                        if bucket == "domain_suffix":
+                            domain_suffixes.add(value)
                         else:
-                            domains.add(cleaned_dom)
+                            domains.add(value)
 
     domains, domain_suffixes, _ = absorb_covered_domains(domains, domain_suffixes)
 
@@ -950,15 +941,13 @@ def load_custom_rules() -> Dict[str, RuleSet]:
     results: Dict[str, RuleSet] = {}
     for name, rel_path in providers.CUSTOM_RULES.items():
         content = read_local_file(rel_path)
-        is_ip = name.startswith("geoip-") or name.lower().endswith(('_ip', '_ip.txt'))
+        is_ip = name.startswith("geoip-")
 
         domains = set()
         domain_suffixes = set()
         ip_cidrs = set()
 
         for line in content.splitlines():
-            if 'PROCESS-NAME' in line:
-                continue
             if is_ip:
                 cleaned = clean_ip_line(line)
                 if cleaned:
@@ -968,15 +957,13 @@ def load_custom_rules() -> Dict[str, RuleSet]:
                     except ValueError:
                         pass
             else:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                if line.startswith('+.'):
-                    domain_suffixes.add(line[2:])
-                elif line.startswith('.'):
-                    domain_suffixes.add(line[1:])
-                else:
-                    domains.add(line)
+                parsed = clean_domain_entry(line)
+                if parsed:
+                    bucket, value = parsed
+                    if bucket == "domain_suffix":
+                        domain_suffixes.add(value)
+                    else:
+                        domains.add(value)
 
         cat = "geoip" if is_ip else "geosite"
         rs = RuleSet(
@@ -1030,14 +1017,13 @@ def load_skk_rules() -> Dict[str, RuleSet]:
                     except ValueError:
                         pass
             else:
-                cleaned = clean_mihomo_domain_line(line)
-                if cleaned and cleaned != '+.':
-                    if cleaned.startswith('+.'):
-                        domain_suffixes.add(cleaned[2:])
-                    elif cleaned.startswith('.'):
-                        domain_suffixes.add(cleaned[1:])
+                parsed = clean_domain_entry(line)
+                if parsed:
+                    bucket, value = parsed
+                    if bucket == "domain_suffix":
+                        domain_suffixes.add(value)
                     else:
-                        domains.add(cleaned)
+                        domains.add(value)
 
         cat = "geoip" if is_ip else "geosite"
         rs = RuleSet(

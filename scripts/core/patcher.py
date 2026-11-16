@@ -80,6 +80,9 @@ def _parse_patch_line(line: str):
     Parse one patch line.
     返回 ('rule', rule_type, value) / ('include', kind, target) /
           ('exclude', kind, target) / (None, None, None)。
+    11-17 审计加固: 默认域名行剥行内注释并接受 `+.` 前缀(此前 `+.foo.com`
+    会带着字面 `+` 入库、`foo.com # 注释` 会带着注释入库, 均由 lint 拦截
+    构建失败); regexp:/keyword:/full: 值保持原样(可能合法含 #)。
     """
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
@@ -96,7 +99,12 @@ def _parse_patch_line(line: str):
     if stripped.startswith("regexp:"):
         return "rule", "domain_regex", stripped[7:]
 
-    # 默认: domain_suffix
+    # 默认: domain_suffix (剥行内注释; `+.`/`.` 前缀归一为裸值)
+    stripped = stripped.split("#", 1)[0].strip()
+    if not stripped:
+        return None, None, None
+    if stripped.startswith("+."):
+        return "rule", "domain_suffix", stripped[2:]
     return "rule", "domain_suffix", stripped.lstrip(".")
 
 

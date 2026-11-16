@@ -40,6 +40,11 @@ class RuleSet:
         self.name = name
         self.category = category.lower()
         self.description = description
+        # 存储约定 (11-17 审计收口): domain_suffixes 一律存**裸域名**(不带
+        # `+.`/`.` 前导符) — 前缀是各平台的导出形态 (mihomo `+.`/`.`/OxiDNS
+        # `domain:`), 由导出函数决定, 不入库。唯一例外: fakeip-filter 的
+        # 单标签 TLD 条目带前导点 (sing-box 语义 = 仅子域、不含裸 TLD 自身,
+        # 见 manager.load_fakeip_rules)。
         self.domains: Set[str] = domains or set()
         self.domain_suffixes: Set[str] = domain_suffixes or set()
         self.domain_keywords: Set[str] = domain_keywords or set()
