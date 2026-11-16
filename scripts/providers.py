@@ -61,6 +61,7 @@ ADS_BLOCK_SOURCE_NAMES = {
     "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/light.txt": "HaGeZi",
     "https://raw.githubusercontent.com/Cats-Team/AdRules/main/adrules_domainset.txt": "Cats-Team/AdRules",
     "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt": "easymosdns",
+    "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Adguard-No.Unwelcome.txt": "AWAvenue (广告+隐私)",
 }
 
 AI_URLS = [
