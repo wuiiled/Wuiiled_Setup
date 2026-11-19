@@ -2,3 +2,14 @@
 trollfools.slpmods.net
 +.bilivideo.com
 +.ts.net
+# 2026-11-19 重构补 (DustinWin 移除差集对账: 97 条 unique 未覆盖中仅两族存活且功能性):
+# 1) stun1-4.l.google.com — Chrome WebRTC 主力 STUN。`+.stun.*.*` 通配锚点是
+#    字面 `stun` 标签, 覆盖不到 stunN 编号变体 (DustinWin 独有, 移除后失覆盖)。
+# 2) 高通 GPS 辅助定位家族 — 失覆盖会经代理拖慢 Android 定位, 后缀形态 3 行覆盖 4 条 exact。
+stun1.l.google.com
+stun2.l.google.com
+stun3.l.google.com
+stun4.l.google.com
++.qcomgeo2.com
++.izatcloud.net
++.xtracloud.net

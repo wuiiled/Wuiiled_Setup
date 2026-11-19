@@ -92,8 +92,6 @@ GEOIP_AI_PUBLISHED_URL = "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setu
 FAKE_IP_URLS = [
     "https://raw.githubusercontent.com/vernesong/OpenClash/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list",
     "https://raw.githubusercontent.com/juewuy/ShellCrash/dev/public/fake_ip_filter.list",
-    # DustinWin Fake-IP 过滤
-    "https://raw.githubusercontent.com/DustinWin/ruleset_geodata/mihomo-ruleset/fakeip-filter.list",
     "https://ruleset.skk.moe/Internal/clash_fake_ip_filter.yaml"
 ]
 
@@ -234,9 +232,9 @@ GFW_IPV6_LIST = [
     "2001:470:20::2",
     "2001:7fa::1",
     "2a03:2880:f100::/40",
-    # NOTE: 3ffe::/20 is the mihomo fake-ip v6 range paired with this engine
-    # (network topology v4.4+). Kept so OxiDNS resp_ip fallback can identify
-    # fake-ip answers. Do NOT widen to 3ffe::/16 or it overflows and wrongly
-    # drops legitimate non-fake-ip v6 answers.
-    "3ffe::/20",
+    # NOTE: 3ffe::/16 is the mihomo fake-ip v6 range paired with this engine
+    # (现网 /cus/mihomo fake-ip-range6, 2026-11-19 由旧注释的 /20 对齐)。
+    # Kept so OxiDNS resp_ip fallback can identify fake-ip answers.
+    # 3ffe::/16 为 2006 年退役的 6bone 段, 无合法流量, 全段识别不构成误杀。
+    "3ffe::/16",
 ]

@@ -20,6 +20,7 @@ from core.cleaner import (
     clean_domain_entry,
     parse_ai_rule_line,
     compact_regexes,
+    normalize_fakeip_line,
     build_blocklist_b,
     build_whitelist_b,
     absorb_covered_domains
@@ -529,8 +530,39 @@ def load_ai_rules(min_domains: int = 0) -> Tuple[RuleSet, RuleSet]:
     return geosite_rs, geoip_rs
 
 
+def assemble_fakeip_fields(lines) -> Tuple[Set[str], Set[str], Set[str]]:
+    """将 fakeip-filter 清洗行装配为 sing-box 三字段 (domains/suffixes/regexes)。
+
+    通配转正则用 `[^.]+` 而非 `.*` —— mihomo trie 的 `*` 恰匹配单标签,
+    `.*` 跨点会产出 `^(.*\\.)?stun\\..*$` 级别的过宽豁免; 裸 `*` 映射为
+    `^[^.]+$` (compact_regexes 守卫会丢弃 `^.*$`, 曾致 singbox 缺失
+    mihomo 侧有的单标签豁免)。
+    """
+    domains: Set[str] = set()
+    domain_suffixes: Set[str] = set()
+    domain_regexes: Set[str] = set()
+    for line in lines:
+        if line == '*':
+            domain_regexes.add(r'^[^.]+$')
+        elif line.startswith('+.'):
+            suffix = line[2:]
+            if not suffix:
+                continue
+            if '*' in suffix:
+                escaped = re.escape(suffix).replace(r'\*', r'[^.]+')
+                domain_regexes.add(f"^(?:.+\\.)?{escaped}$")
+            else:
+                domain_suffixes.add('.' + suffix if '.' not in suffix else suffix)
+        elif '*' in line:
+            escaped = re.escape(line).replace(r'\*', r'[^.]+')
+            domain_regexes.add(f"^{escaped}$")
+        else:
+            domains.add(line)
+    return domains, domain_suffixes, domain_regexes
+
+
 def load_fakeip_rules() -> RuleSet:
-    """Build geosite-fakeip-filter with regex compaction."""
+    """Build geosite-fakeip-filter with normalization and regex compaction."""
     work_dir = utils.get_work_dir()
     mod_dir = os.path.join(work_dir, "fakeip")
     os.makedirs(mod_dir, exist_ok=True)
@@ -541,20 +573,17 @@ def load_fakeip_rules() -> RuleSet:
     unique_lines = set()
     if os.path.exists(raw_fakeip_dl):
         with open(raw_fakeip_dl, 'r', encoding='utf-8') as f:
-            for line in f.read().splitlines():
-                line = line.lower()
-                if re.match(r'^\s*(dns:|fake-ip-filter:)', line):
-                    continue
-                line = re.sub(r'^\s*-\s*', '', line).replace('"', '').replace("'", '').replace('\\', '').strip()
-                if line and not line.startswith('#'):
-                    unique_lines.add(line)
+            for raw in f.read().splitlines():
+                norm = normalize_fakeip_line(raw)
+                if norm:
+                    unique_lines.add(norm)
 
     local_addon = read_local_file("rules/addons/fake-ip-addon.txt")
     if local_addon:
-        for line in local_addon.splitlines():
-            line = line.strip().lower()
-            if line and not line.startswith('#'):
-                unique_lines.add(line)
+        for raw in local_addon.splitlines():
+            norm = normalize_fakeip_line(raw)
+            if norm:
+                unique_lines.add(norm)
 
     clean_fakeip = os.path.join(mod_dir, "clean_fakeip.txt")
     final_fakeip = os.path.join(mod_dir, "final_fakeip.txt")
@@ -562,11 +591,7 @@ def load_fakeip_rules() -> RuleSet:
         f.write('\n'.join(sorted(unique_lines)) + '\n')
     utils.optimize_smart_self(clean_fakeip, final_fakeip)
 
-    domains = set()
-    domain_suffixes = set()
-    domain_regexes = set()
     raw_mihomo_lines = []
-
     if os.path.exists(final_fakeip):
         with open(final_fakeip, "r", encoding="utf-8") as f:
             for line in f:
@@ -574,29 +599,11 @@ def load_fakeip_rules() -> RuleSet:
                 if not line or line.startswith('#'):
                     continue
                 raw_mihomo_lines.append(line)
-                if line.startswith('+.'):
-                    suffix = line[2:]
-                    if not suffix:
-                        continue
-                    if '*' in suffix:
-                        escaped = re.escape(suffix).replace(r'\*', '.*')
-                        domain_regexes.add(f"^(.*\\.)?{escaped}$")
-                    else:
-                        if suffix == 'cn':
-                            domain_suffixes.add('cn')
-                        elif '.' not in suffix:
-                            domain_suffixes.add('.' + suffix)
-                        else:
-                            domain_suffixes.add(suffix)
-                elif '*' in line:
-                    escaped = re.escape(line).replace(r'\*', '.*')
-                    domain_regexes.add(f"^{escaped}$")
-                else:
-                    domains.add(line)
 
+    domains, domain_suffixes, domain_regexes = assemble_fakeip_fields(raw_mihomo_lines)
     compacted_regexes = compact_regexes(domain_regexes)
 
-    print(f"  ✅ [Fake-IP]    {'geosite-fakeip-filter':<26} | 规则数: {len(domains)+len(domain_suffixes)+len(compacted_regexes):,}")
+    print(f"  ✅ [Fake-IP]    {'geosite-fakeip-filter':<26} | singbox={len(domains)+len(domain_suffixes)+len(compacted_regexes):,} mihomo={len(raw_mihomo_lines):,}")
     return RuleSet(
         name="geosite-fakeip-filter",
         category="geosite",
@@ -606,7 +613,7 @@ def load_fakeip_rules() -> RuleSet:
         domain_regexes=set(compacted_regexes),
         raw_lines=raw_mihomo_lines,
         source_kind="self",
-        sources=["OpenClash", "ShellCrash", "DustinWin", "ruleset.skk.moe", "本地 fake-ip-addon"],
+        sources=["OpenClash", "ShellCrash", "ruleset.skk.moe", "本地 fake-ip-addon"],
     )
 
 

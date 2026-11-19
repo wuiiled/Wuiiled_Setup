@@ -44,7 +44,9 @@ class RuleSet:
         # `+.`/`.` 前导符) — 前缀是各平台的导出形态 (mihomo `+.`/`.`/OxiDNS
         # `domain:`), 由导出函数决定, 不入库。唯一例外: fakeip-filter 的
         # 单标签 TLD 条目带前导点 (sing-box 语义 = 仅子域、不含裸 TLD 自身,
-        # 见 manager.load_fakeip_rules)。
+        # 见 manager.load_fakeip_rules)。注意 normalize_fakeip_line 已把源里
+        # 的 `*.lan`/`.lan` 统一为 `+.lan`: mihomo 侧 `+.` 含裸 TLD 自身
+        # (有意放宽), sing-box 侧导出仍走上面的点前缀约定, 双核口径不变。
         self.domains: Set[str] = domains or set()
         self.domain_suffixes: Set[str] = domain_suffixes or set()
         self.domain_keywords: Set[str] = domain_keywords or set()

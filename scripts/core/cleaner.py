@@ -25,6 +25,11 @@ _PURE_NUMERIC_RE = re.compile(r'^\d+$')
 # Only reject modifiers that invert or cancel rule semantics ($badfilter, $denyallow)
 _CANCEL_ADG_MODIFIERS = ("$badfilter", "$denyallow=")
 
+# fakeip-filter 行归一 (cleaner.normalize_fakeip_line): 拦截异形行 (如 OpenClash/
+# ShellCrash 双双携带的 "Mijia Cloud"), 剥行内注释, 泛化过滤 YAML 键
+_YAML_KEY_RE = re.compile(r'^[a-z0-9_-]+\s*:')
+_VALID_FAKEIP_RE = re.compile(r'^(?:\+\.)?[a-z0-9._*-]+$')
+
 
 def idna_domain(value: str) -> str:
     """非 ASCII 域名转 punycode (IDNA)。"""
@@ -333,6 +338,30 @@ def parse_ai_rule_line(line: str) -> Optional[Tuple[str, str]]:
     if is_valid_domain(d, allow_tld=False):
         return ("domain", d)
     return None
+
+
+def normalize_fakeip_line(raw: str) -> Optional[str]:
+    """归一化单行 fakeip-filter 规则; 过滤注释、空行、YAML 键与异形行。
+
+    与旧 ad-hoc 清洗的差异: 字符集白名单拦截 "Mijia Cloud" 类垃圾行, 行内
+    `#` 注释剥离, YAML 键过滤泛化 (skk 的 `dns:`→`fake-ip-filter:` 嵌套键、
+    未来可能的 `payload:` 一并覆盖), `*.x`/`.x` 统一为 `+.x` (跨源去重;
+    mihomo 侧 +. 含裸 TLD 自身, 属有意放宽)。
+    """
+    line = raw.split('#', 1)[0].strip().lower()
+    if not line or _YAML_KEY_RE.match(line):
+        return None
+    line = re.sub(r'^-\s*', '', line).strip(" '\"\t\\")
+    if not line or line in ('.', '*.', '+.', '+'):
+        return None
+    line = line.rstrip('.')
+    if not line or not _VALID_FAKEIP_RE.match(line):
+        return None
+    if line.startswith('*.') and '*' not in line[2:]:
+        line = '+.' + line[2:]
+    elif line.startswith('.') and '*' not in line[1:]:
+        line = '+.' + line[1:]
+    return line
 
 
 def compact_regexes(regex_set: Set[str]) -> List[str]:
