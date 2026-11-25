@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wuiiled-setup"
+version = "2.1.0"
+description = "All-in-One multi-platform network routing ruleset builder (Sing-box / Mihomo / OxiDNS / MosDNS-X / AdGuard Home)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = [
+    "protobuf>=4.25.1,<7",
+    "maxminddb>=2.6,<4",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["scripts"]
+testpaths = ["tests"]
+addopts = "-p no:asyncio"
+markers = [
+    "e2e: 端到端层 (需要构建产物 output/ + 网络 + sing-box; 日常开发用 -m \"not e2e\" 跳过, 发版前全量跑)",
+]

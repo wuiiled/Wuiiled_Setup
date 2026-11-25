@@ -31,7 +31,7 @@ import os
 import re
 from typing import Dict, List, Optional, Tuple
 from core.cleaner import clean_mihomo_domain_line
-from core.fetcher import read_local_file
+from core.fetcher import fetch_text_cached, read_local_file
 from core.models import RuleSet
 
 
@@ -169,9 +169,8 @@ def _resolve_include(kind: str, target: str, dat_map: Optional[Dict[str, RuleSet
             print(f"    ⚠️ include:dat:{target} 被跳过 (dat 中不存在该分类)")
         return rs
     if kind == "url":
-        import utils
         try:
-            content = utils.download_file(target)
+            content = fetch_text_cached(target)
         except RuntimeError as e:
             # 拉取失败且无"上一次完整拉取"缓存: 返回 None 由 -1 守卫聚合报错中止构建
             print(f"    ❌ include:url 拉取失败: {e}")

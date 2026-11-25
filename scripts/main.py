@@ -1,31 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
-import sys
 import shutil
+import sys
 from concurrent.futures import ThreadPoolExecutor
 
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
-from core.manager import load_all_rules
-from core.readme_gen import generate_all_readmes, write_manifest
+import build_adg
+import build_mihomo
+import build_mosdns
+import build_singbox
+import build_smartdns
 import providers
 import utils
-import build_singbox
-import build_mihomo
-import build_smartdns
-import build_mosdns
-import build_adg
+from core.manager import load_all_rules
+from core.readme_gen import generate_all_readmes, write_manifest
+from core.validators import DEFAULT_MIN_COUNTS
 
 
 def main():
     print("==================================================")
-    print("🚀 All-in-One 网络分流规则统一构建引擎 (2.0)")
+    print("🚀 All-in-One 网络分流规则统一构建引擎 (2.1)")
     print("==================================================")
 
-    # 阶段 1: 加载并清洗所有标准规则 (RuleSet IR)
+    # 阶段 1: 加载、清洗并打补丁 (纯内存 canonical RuleSet IR)
     try:
         rules = load_all_rules()
     except Exception as e:
@@ -34,28 +35,18 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
-    # 阶段 2: 预合成 sing-box 复合规则 (域名+IP), 对主字典一次完成,
-    # 避免并行构建期间原地改写共享 dict 的竞态
-    build_singbox.synthesize_composites(rules)
-
-    # 阶段 2b: 预渲染 geosite-ad 的统一 AdGuard 源文件
-    # (adg 分支直接发布, singbox 分支转 srs —— 两分支同源派生, 单一渲染实现)
-    utils.render_adguard_geosite_ad()
-
-    # 阶段 2c: 非 ASCII 域名统一转 punycode (unicode 条目在任何消费者中永不命中)
+    # 阶段 2: 非 ASCII 域名统一转 punycode
     utils.idna_normalize_rules(rules)
 
-    # 阶段 3: 落来源画像 manifest (供各分支 README 渲染真实来源与已验证平台)
+    # 阶段 3: 落来源画像 manifest (仅记录权威 IR, 未受 sing-box 复合规则污染)
     write_manifest(rules, "output")
 
-    # 阶段 4: 并行导出所有目标平台 (零耦合独立构建)
-    # 重置各分支输出目录, 保证本地多次构建的无状态幂等性 (杜绝旧产物脏残留)
+    # 阶段 4: 重置输出目录并并行导出五大目标平台 (各自拿到独立浅拷贝)
     for branch in providers.TARGET_BRANCHES:
         b_dir = os.path.join("output", branch)
         if os.path.isdir(b_dir):
             shutil.rmtree(b_dir)
 
-    # 每个构建器拿到 dict(rules) 独立快照, 构建器之间互不可见写入
     print("\n🚀 [阶段 4/5] 并行构建所有目标平台专属规则...")
     with ThreadPoolExecutor() as executor:
         futures = {
@@ -74,8 +65,8 @@ def main():
                 traceback.print_exc()
                 sys.exit(1)
 
-    # 阶段 4b: 关键产物不变量与编译完整性校验 (空集/缺失/二进制编译失败 → 拒绝发布)
-    utils.validate_output_invariants("output")
+    # 阶段 4b: 关键产物不变量、基线底线与编译完整性校验
+    utils.validate_output_invariants("output", min_counts=DEFAULT_MIN_COUNTS)
     utils.assert_no_compile_failures()
 
     # 阶段 5: 自动生成各平台规范 README 导航页

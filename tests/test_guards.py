@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
-"""守卫与归一测试: 产物不变量校验、IDNA 归一、黑加白缺失硬失败。"""
+"""守卫与归一测试: 产物不变量校验、基线底线守卫、IDNA 归一、AdGuard IR 渲染。"""
 import pytest
 
 import providers
 import utils
 from core.models import RuleSet
 
-
-# ---------- validate_output_invariants ----------
 
 def _full_tree(tmp_path):
     """构造满足全部不变量的最小 output 树。"""
@@ -45,7 +43,6 @@ def test_validate_output_invariants_pass(tmp_path):
 
 def test_validate_output_invariants_fails_on_empty_set(tmp_path):
     _full_tree(tmp_path)
-    # 模拟上游整体失败: OxiDNS 白名单中的集合被发布为空
     victim = None
     for sub in ("geosite", "geoip"):
         p = tmp_path / "smartdns" / sub
@@ -57,7 +54,13 @@ def test_validate_output_invariants_fails_on_empty_set(tmp_path):
         utils.validate_output_invariants(str(tmp_path), require_binaries=False)
 
 
-# ---------- IDNA 归一 ----------
+def test_validate_output_invariants_min_counts_circuit_breaker(tmp_path):
+    _full_tree(tmp_path)
+    with pytest.raises(RuntimeError, match="条数异常偏低"):
+        utils.validate_output_invariants(
+            str(tmp_path), require_binaries=False, min_counts={"geosite-ad": 500}
+        )
+
 
 def test_idna_normalize_converts_unicode_domain():
     rs = RuleSet(name="geosite-custom-emby", category="geosite",
@@ -80,26 +83,25 @@ def test_idna_normalize_leaves_ascii_and_keywords():
     assert before == (rs.domains, rs.domain_suffixes, rs.domain_keywords, rs.domain_regexes)
 
 
-# ---------- 黑加白缺失硬失败 ----------
-
-def test_load_blackwhite_missing_raises(tmp_path):
-    empty_dir = tmp_path / "ads"
-    empty_dir.mkdir()
-    with pytest.raises(RuntimeError, match="黑加白中间产物缺失"):
-        utils.load_blackwhite_rulesets(work_dir=str(tmp_path))
-
-
-def test_load_blackwhite_empty_file_warns_and_skips(tmp_path):
-    ads = tmp_path / "ads"
-    ads.mkdir()
-    (ads / "blocklist_b.txt").write_text("doubleclick.net\n", encoding="utf-8")
-    (ads / "whitelist_b.txt").write_text("", encoding="utf-8")
-    out = utils.load_blackwhite_rulesets(work_dir=str(tmp_path))
-    assert "geosite-ad-precise" in out
-    assert "geosite-ad-allow" not in out
+def test_render_adguard_lines_from_ir():
+    rules = {
+        "geosite-ad-precise": RuleSet(
+            name="geosite-ad-precise", category="geosite",
+            domain_suffixes={"doubleclick.net", "ads.example.com"},
+        ),
+        "geosite-ad-allow": RuleSet(
+            name="geosite-ad-allow", category="geosite",
+            domain_suffixes={"fls.doubleclick.net"},
+        ),
+    }
+    lines = utils.render_adguard_lines(rules)
+    assert lines == ["||ads.example.com^", "||doubleclick.net^", "@@||fls.doubleclick.net^"]
 
 
-# ---------- include:local 路径 (2026-09-28 发现其自引入即损坏: 误引 utils.read_local_file) ----------
+def test_render_adguard_lines_missing_precise_raises():
+    with pytest.raises(RuntimeError, match="geosite-ad-precise"):
+        utils.render_adguard_lines({})
+
 
 def test_include_local_resolves():
     from core.patcher import _resolve_include
@@ -112,28 +114,21 @@ def test_include_local_missing_returns_none():
     assert _resolve_include("local", "rules/patches/__.nonexistent.__", None) is None
 
 
-# ---------- 路径遍历安全防护 (M1) ----------
-
 def test_read_local_file_path_traversal():
     from core.fetcher import read_local_file
-    # 相对跨目录逃逸
     assert read_local_file("../../something_sensitive.txt") == ""
     assert read_local_file("../../../etc/passwd") == ""
-    # 绝对路径注入 (Windows 跨盘符及 Linux 绝对路径)
     assert read_local_file("C:\\Windows\\win.ini") == ""
     assert read_local_file("D:\\confidential.txt") == ""
     assert read_local_file("/etc/passwd") == ""
 
 
-# ---------- 编译完整性守卫 (M2) ----------
-
 def test_assert_no_compile_failures():
     utils._COMPILE_FAILURES.clear()
     try:
-        utils.assert_no_compile_failures()  # 无失败记录应正常通过
+        utils.assert_no_compile_failures()
         utils._COMPILE_FAILURES.append("geosite-test.srs")
         with pytest.raises(RuntimeError, match="编译产物完整性校验失败"):
             utils.assert_no_compile_failures()
     finally:
         utils._COMPILE_FAILURES.clear()
-

@@ -1,42 +1,26 @@
 # -*- coding: utf-8 -*-
 """
-SmartDNS Branch Rule Exporter.
-Decoupled: receives canonical RuleSet IR and generates rules for the smartdns branch (OxiDNS consumer).
+SmartDNS Branch Rule Exporter (OxiDNS consumer syntax).
 """
 
-import os
 from typing import Dict, Optional
 
 import utils
 from core.models import RuleSet
 
 
-def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/smartdns"):
-    geosite_out = os.path.join(output_dir, "geosite")
-    geoip_out = os.path.join(output_dir, "geoip")
-    os.makedirs(geosite_out, exist_ok=True)
-    os.makedirs(geoip_out, exist_ok=True)
-
-    rules = utils.select_oxidns_rules(rules)
-    print(f"\n📦 [SmartDNS] 正在构建 {len(rules)} 个 OxiDNS 订阅规则并输出至 {output_dir}...")
-
-    for name, rs in rules.items():
-        sub_dir = geoip_out if rs.is_geoip else geosite_out
-        out_path = os.path.join(sub_dir, f"{name}.txt")
-        smartdns_lines = utils.format_oxidns_lines(rs, domain_prefix="", flatten_host_cidr=True)
-        with open(out_path, 'w', encoding='utf-8') as f:
-            f.write("\n".join(smartdns_lines) + ("\n" if smartdns_lines else ""))
-
-    utils.publish_oxidns_compat(output_dir, rules)
-    print("✅ [SmartDNS] OxiDNS 订阅规则构建完成！")
+def build_smartdns_rules(rules: Dict[str, RuleSet], output_dir: str = "output/smartdns") -> None:
+    utils.export_oxidns_rules(
+        rules, output_dir, domain_prefix="", flatten_host_cidr=True, label="SmartDNS"
+    )
 
 
-def run_all(rules: Optional[Dict[str, RuleSet]] = None):
+def run_all(rules: Optional[Dict[str, RuleSet]] = None) -> None:
     if rules is None:
         from core.manager import load_all_rules
         rules = load_all_rules()
     build_smartdns_rules(rules)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run_all()

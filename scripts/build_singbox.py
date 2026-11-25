@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 Sing-box Rule-set Exporter.
-Fully decoupled: receives canonical RuleSet IR and exports .srs and .json files.
-Guarantees 100% Zero-Diff alignment with Tianling Shen for all Tianling rulesets.
+Synthesizes sing-box composite rules on a local copy without mutating shared IR.
 """
 
-import os
 import json
+import os
 from typing import Dict, List, Optional, Set
 
 import utils
@@ -14,6 +13,14 @@ from core.models import RuleSet
 from core.patcher import get_active_patch_count, has_patch_includes
 
 ADGUARD_SOURCE_SETS = {"geosite-ad"}
+_SKIPPED_STANDALONE = {
+    "geoip-custom-direct",
+    "geoip-custom-dns",
+    "geoip-iptv-!cn",
+    "geoip-ai",
+    "geosite-ad-precise",
+    "geosite-ad-allow",
+}
 
 
 def check_singbox() -> bool:
@@ -21,14 +28,12 @@ def check_singbox() -> bool:
 
 
 def synthesize_composites(rules: Dict[str, RuleSet]) -> None:
-    """合成 sing-box 专属复合规则 (域名 + keyword + regex + 进程名 + IP 同集)。"""
+    """Synthesize sing-box composite rules (domain + keyword + regex + process + IP)."""
     composite_specs = [
         ("geosite-custom-direct", "geosite-custom-direct", "geoip-custom-direct"),
         ("geosite-custom-dns", "geosite-custom-dns", "geoip-custom-dns"),
         ("geosite-iptv-!cn", "geosite-iptv-!cn", "geoip-iptv-!cn"),
         ("geosite-ai", "geosite-ai", "geoip-ai"),
-        # stream: 全量复合集 (域名+keyword+wildcard+IP) 落 geosite-stream.srs;
-        # geoip-stream 不在下方跳过列表, 仍独立导出 ip-only 的 geoip-stream.srs
         ("geosite-stream", "geosite-stream", "geoip-stream"),
     ]
 
@@ -81,39 +86,38 @@ def synthesize_composites(rules: Dict[str, RuleSet]) -> None:
         )
 
 
-def _build_adguard_srs(name: str, sub_dir: str, has_sb: bool) -> None:
-    """消费统一 AdGuard 源文件 (utils 单一渲染，与 adg 分支同源)。"""
-    src = utils.render_adguard_geosite_ad()
+def _build_adguard_srs(rules: Dict[str, RuleSet], name: str, sub_dir: str, has_sb: bool) -> None:
+    lines = utils.render_adguard_lines(rules)
     txt_path = os.path.join(sub_dir, f"{name}.txt")
     srs_path = os.path.join(sub_dir, f"{name}.srs")
-    utils.safe_copy(src, txt_path)
-    with open(txt_path, encoding="utf-8") as f:
-        line_count = sum(1 for l in f if l.strip())
-    print(f"  [Sing-box] {name:<26} | AdGuard 语法 {line_count:,} 行 (||拦截 + @@||放行)")
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + ("\n" if lines else ""))
+    print(f"  [Sing-box] {name:<26} | AdGuard 语法 {len(lines):,} 行 (||拦截 + @@||放行)")
 
     if has_sb:
         utils.compile_ruleset(
             ["sing-box", "rule-set", "convert", "--type", "adguard", "-o", srs_path, txt_path],
-            f"{name}.srs"
+            f"{name}.srs",
         )
 
 
-def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/singbox"):
+def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/singbox") -> None:
     """Export all RuleSets to Sing-box format (.srs and .json)."""
     geosite_out = os.path.join(output_dir, "geosite")
     geoip_out = os.path.join(output_dir, "geoip")
     os.makedirs(geosite_out, exist_ok=True)
     os.makedirs(geoip_out, exist_ok=True)
 
+    # Synthesize composites on a local copy so other builders & manifest stay isolated
+    local_rules = {k: v for k, v in rules.items() if k not in _SKIPPED_STANDALONE}
+    synthesize_composites(local_rules)
+
     has_sb = check_singbox()
     print(f"\n📦 [Sing-box] 正在构建所有规则集并输出至 {output_dir}...")
 
-    for name, rs in rules.items():
-        if name in ("geoip-custom-direct", "geoip-custom-dns", "geoip-iptv-!cn", "geoip-ai"):
+    for name, rs in local_rules.items():
+        if name in _SKIPPED_STANDALONE:
             continue
-        # 空集合跳过导出: 无条件 headless rule (rules:[{}]) 等于匹配所有流量,
-        # 且 sing-box compile 空集语义危险; 跳过后订阅端保留上一版 (关键集合
-        # 另有 validate_output_invariants 非空守卫兜底)
         if rs.total_count == 0 and not rs.raw_srs:
             print(f"  ⚠️ [Sing-box] {name:<26} | 空集合, 跳过导出 (避免 rules:[{{}}] 全匹配语义)")
             continue
@@ -123,7 +127,7 @@ def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sin
         json_path = os.path.join(sub_dir, f"{name}.json")
 
         if name in ADGUARD_SOURCE_SETS:
-            _build_adguard_srs(name, sub_dir, has_sb)
+            _build_adguard_srs(rules, name, sub_dir, has_sb)
             continue
 
         if rs.raw_srs and get_active_patch_count(name) == 0 and not has_patch_includes(name):
@@ -142,19 +146,18 @@ def build_singbox_rules(rules: Dict[str, RuleSet], output_dir: str = "output/sin
             if has_sb:
                 utils.compile_ruleset(
                     ["sing-box", "rule-set", "compile", json_path, "-o", srs_path],
-                    f"{name}.srs"
+                    f"{name}.srs",
                 )
 
     print("✅ [Sing-box] 全部规则集构建完成！")
 
 
-def run_all(rules: Optional[Dict[str, RuleSet]] = None):
+def run_all(rules: Optional[Dict[str, RuleSet]] = None) -> None:
     if rules is None:
         from core.manager import load_all_rules
         rules = load_all_rules()
-        synthesize_composites(rules)
     build_singbox_rules(rules)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run_all()

@@ -1,159 +1,32 @@
 # -*- coding: utf-8 -*-
 """
-RuleSet Manager: Orchestrates all rule sources (Tianling, Merged, Custom, SKK),
-runs the normalization and cleaning pipelines, and yields unified RuleSet objects.
+RuleSet Manager: Slim orchestrator over loaders/* and unified patch pipeline.
 """
 
 import os
-import re
-import ipaddress
-from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Tuple, Set
+from typing import Dict, Optional
 
-import utils
-import providers
+from core.cleaner import absorb_covered_domains
+from core.loaders.ads import load_ads_rules, load_reject_drop_rules
+from core.loaders.composite import (
+    assemble_fakeip_fields,  # noqa: F401 - re-exported for tests
+    load_ai_rules,
+    load_fakeip_rules,
+    load_gfwip_rules,
+    load_iptv_rules,
+    load_pcdn_rules,
+    load_stream_rules,
+)
+from core.loaders.external import load_custom_rules, load_skk_rules
+from core.loaders.geo import TIANLING_GEOIPS, TIANLING_GEOSITES, load_geo_rules  # noqa: F401
 from core.models import RuleSet
-from core.cleaner import (
-    collapse_cidrs,
-    clean_ip_line,
-    clean_mihomo_domain_line,
-    clean_domain_entry,
-    parse_ai_rule_line,
-    compact_regexes,
-    normalize_fakeip_line,
-    build_blocklist_b,
-    build_whitelist_b,
-    absorb_covered_domains
-)
-from core.fetcher import (
-    fetch_text_cached,
-    fetch_published_geoip_ai_cidrs,
-    read_local_file,
-    fetch_tianling_ruleset,
-    resolve_asn_to_cidrs
-)
 from core.patcher import apply_patches, load_patch_file
-from core.geosite_source import parse_geosite_dat, build_tianling_style_cn
 
-TIANLING_GEOSITES = {
-    # 注意: geosite-cn 不在此列 —— 它以天灵配方精编 cn (build_tianling_style_cn) 为基座,
-    # 自有列表与手动补丁经 rules/patches/geosite-cn.txt 的 include/规则行声明,
-    # 由 apply_rule_patches 统一应用。
-    "geosite-geolocation-!cn": "geosite-!cn",
-    "geosite-gfw": "geosite-gfw",
-    "geosite-google": "geosite-google",
-    "geosite-youtube": "geosite-youtube",
-    "geosite-github": "geosite-github",
-    "geosite-onedrive": "geosite-onedrive",
-    "geosite-microsoft": "geosite-microsoft",
-    "geosite-tiktok": "geosite-tiktok",
-    "geosite-spotify": "geosite-spotify",
-    "geosite-netflix": "geosite-netflix",
-    "geosite-disney": "geosite-disney",
-    "geosite-category-porn": "geosite-porn",
-    "geosite-category-media": "geosite-media",
-    "geosite-category-communication": "geosite-communication",
-    "geosite-category-social-media-!cn": "geosite-social-media",
-    "geosite-category-games": "geosite-games",
-    "geosite-category-games-cn": "geosite-games-cn",
-    "geosite-private": "geosite-private",
-    "geosite-apple-tvplus": "geosite-apple-tvplus",
-    "geosite-category-httpdns-cn": "geosite-httpdns",
-    # --- New additions ---
-    "geosite-category-entertainment": "geosite-entertainment",
-    "geosite-category-games-!cn": "geosite-games-!cn",
-    "geosite-category-netdisk-!cn": "geosite-netdisk-!cn",
-    # AI & Dev
-    "geosite-openai": "geosite-openai",
-    "geosite-anthropic": "geosite-anthropic",
-    "geosite-google-gemini": "geosite-gemini",
-    "geosite-gitlab": "geosite-gitlab",
-    "geosite-docker": "geosite-docker",
-    "geosite-stackexchange": "geosite-stackoverflow",
-    "geosite-npmjs": "geosite-npm",
-    # Social & IM
-    "geosite-telegram": "geosite-telegram",
-    "geosite-discord": "geosite-discord",
-    "geosite-whatsapp": "geosite-whatsapp",
-    "geosite-signal": "geosite-signal",
-    "geosite-line": "geosite-line",
-    "geosite-x": "geosite-x",
-    "geosite-instagram": "geosite-instagram",
-    "geosite-reddit": "geosite-reddit",
-    "geosite-threads": "geosite-threads",
-    "geosite-bluesky": "geosite-bluesky",
-    # Streaming
-    "geosite-twitch": "geosite-twitch",
-    "geosite-hbo": "geosite-hbo",
-    "geosite-hulu": "geosite-hulu",
-    "geosite-primevideo": "geosite-primevideo",
-    "geosite-bahamut": "geosite-bahamut",
-    "geosite-abema": "geosite-abema",
-    "geosite-niconico": "geosite-niconico",
-    "geosite-dmm": "geosite-dmm",
-    "geosite-pixiv": "geosite-pixiv",
-    "geosite-vimeo": "geosite-vimeo",
-    "geosite-dailymotion": "geosite-dailymotion",
-    "geosite-deezer": "geosite-deezer",
-    "geosite-soundcloud": "geosite-soundcloud",
-    "geosite-tidal": "geosite-tidal",
-    # Gaming platforms
-    "geosite-steam": "geosite-steam",
-    "geosite-epicgames": "geosite-epicgames",
-    "geosite-playstation": "geosite-playstation",
-    "geosite-xbox": "geosite-xbox",
-    "geosite-nintendo": "geosite-nintendo",
-    "geosite-ea": "geosite-ea",
-    "geosite-ubisoft": "geosite-ubisoft",
-    "geosite-rockstar": "geosite-rockstar",
-    "geosite-blizzard": "geosite-blizzard",
-    "geosite-riot": "geosite-riotgames",
-    "geosite-mihoyo": "geosite-mihoyo",
-    "geosite-hoyoverse": "geosite-hoyoverse",
-    # Finance & Payment
-    "geosite-paypal": "geosite-paypal",
-    "geosite-stripe": "geosite-stripe",
-    "geosite-wise": "geosite-wise",
-    "geosite-binance": "geosite-binance",
-    "geosite-okx": "geosite-okx",
-    # Infrastructure & Tools
-    "geosite-cloudflare": "geosite-cloudflare",
-    "geosite-fastly": "geosite-fastly",
-    "geosite-akamai": "geosite-akamai",
-    "geosite-vercel": "geosite-vercel",
-    "geosite-netlify": "geosite-netlify",
-    "geosite-notion": "geosite-notion",
-    "geosite-figma": "geosite-figma",
-    "geosite-canva": "geosite-canva",
-    "geosite-zoom": "geosite-zoom",
-}
-
-TIANLING_GEOIPS = {
-    "geoip-cn": "geoip-cn",
-    "geoip-google": "geoip-google",
-    "geoip-telegram": "geoip-telegram",
-    "geoip-twitter": "geoip-twitter",
-    "geoip-facebook": "geoip-facebook",
-    "geoip-private": "geoip-private"
-}
-
-# dat 解析结果 (含属性视图, 已应用 filterTags) 的模块级缓存,
-# 供统一补丁通道解析 include:dat: 指令使用。
+# Kept for isolated unit tests (tests/test_games_merge.py) when calling apply_rule_patches(rules) directly.
 _DAT_SOURCE_MAP: Dict[str, RuleSet] = {}
 
 
-def _fetch_one_ip(tag, out_name):
-    rs = fetch_tianling_ruleset(tag, category="geoip", out_name=out_name)
-    if rs:
-        rs.source_kind = "geoip-srs"
-        rs.sources = ["1715173329/sing-geoip"]
-        print(f"  ✅ [天灵 GeoIP]   {out_name:<26} | 规则数: {rs.total_count:,}")
-        return out_name, rs
-    return None
-
-
 def _include_label(kind: str, value: str) -> str:
-    """把 include 指令转成 manifest/README 说明列里的简短来源名。"""
     if kind == "dat":
         return f"dat 分类 {value}"
     if kind == "local":
@@ -163,34 +36,25 @@ def _include_label(kind: str, value: str) -> str:
     return f"SKK {base}" if "skk.moe" in value else base
 
 
-def apply_rule_patches(all_rules: Dict[str, RuleSet]) -> None:
-    """
-    统一补丁通道: 对 rules/patches/<规则集名>.txt 存在的规则集应用:
-      - 手动补丁规则行 (上游已收录的行在运行期跳过并日志标注, 补丁文件保持只读);
-      - include 指令 (dat 分类 / 外部 URL / 本地文件 的整表合并);
-      - exclude:dat 指令 (从当前集合差集移除某 dat 分类, 如剔除 @cn 属性子集)。
-    所有集合 (dat 派生 / 自研 / 自定义 / SKK) 共用同一条通道, 逻辑单一稳定。
-    include/exclude 解析失败 (下载失败/分类不存在/来源为空, 计 -1) 时中止构建,
-    防止规则集静默缩水; 来源有效但条目已全部被覆盖时诚实计 +0 放行。
-    含 include 的集合做覆盖吸收 (删除被更短后缀涵盖的条目), 吸收仅作用于
-    include 引入的增量——基座条目 (补丁前快照) 参与涵盖判定但绝不被删,
-    统一保持与上游 0-Diff 同构, 无需按集合特判。
-    """
+def apply_rule_patches(
+    all_rules: Dict[str, RuleSet],
+    dat_map: Optional[Dict[str, RuleSet]] = None,
+) -> None:
+    """Apply rules/patches/*.txt (manual rules, include, exclude) uniformly."""
+    resolved_dat_map = _DAT_SOURCE_MAP if dat_map is None else dat_map
     print("\n🚀 [5/5] 应用本地补丁与列表合并 (rules/patches/)...")
     applied = 0
     failed_includes = []
+
     for name, rs in all_rules.items():
         if not load_patch_file(name):
             continue
-        # 补丁前基座快照: 吸收时作为 protect 传入 (参与涵盖、绝不被删)
         base_snapshot = set(rs.domains) | set(rs.domain_suffixes)
-        rs, plain_n, upstream_included, includes = apply_patches(rs, dat_map=_DAT_SOURCE_MAP)
+        rs, plain_n, upstream_included, includes = apply_patches(rs, dat_map=resolved_dat_map)
         applied += 1
         for kind, target, merged in includes:
             if merged < 0:
                 failed_includes.append((name, kind, target))
-        # include 整表合并也是真实来源, 记入来源画像供 manifest/README 渲染
-        # (exclude 是差集操作, 不属于来源, 不计入)
         inc_labels = [_include_label(k, v) for k, v, _n in includes if k in ("dat", "url", "local")]
         if inc_labels:
             rs.sources = list(rs.sources) + inc_labels
@@ -198,15 +62,21 @@ def apply_rule_patches(all_rules: Dict[str, RuleSet]) -> None:
         has_includes = any(k in ("dat", "url", "local") and n >= 0 for k, _t, n in includes)
         if has_includes and rs.category == "geosite":
             kept_dom, kept_suf, absorbed = absorb_covered_domains(
-                rs.domains, rs.domain_suffixes, protect=base_snapshot)
+                rs.domains, rs.domain_suffixes, protect=base_snapshot
+            )
             rs.domains, rs.domain_suffixes = kept_dom, kept_suf
         applied_str = f" | 覆盖吸收: -{absorbed:,}" if absorbed else ""
-        inc_str = " | ".join(
-            f"{k}:{t} ({'失败' if n < 0 else (f'-{n:,}' if k.startswith('exclude') else f'+{n:,}')})"
-            for k, t, n in includes
-        ) if includes else "-"
+        inc_str = (
+            " | ".join(
+                f"{k}:{t} ({'失败' if n < 0 else (f'-{n:,}' if k.startswith('exclude') else f'+{n:,}')})"
+                for k, t, n in includes
+            )
+            if includes
+            else "-"
+        )
         extra = f" | 上游已收录: {len(upstream_included)}" if upstream_included else ""
         print(f"  📝 [补丁] {name:<26} | 手动补丁: {plain_n} | include: {inc_str}{applied_str}{extra}")
+
     print(f"  ✅ 共应用 {applied} 个规则集的本地补丁")
     if failed_includes:
         detail = "; ".join(f"{n} <- {k}:{t}" for n, k, t in failed_includes)
@@ -216,870 +86,35 @@ def apply_rule_patches(all_rules: Dict[str, RuleSet]) -> None:
         )
 
 
-def load_tianling_rules() -> Dict[str, RuleSet]:
-    """Build GeoSites directly from Loyalsoldier geosite.dat (source protobuf).
-    GeoIPs still come from Tianling sing-geoip (no equivalent public dat source wired yet).
-    """
-    results: Dict[str, RuleSet] = {}
-
-    # Download latest geosite.dat from Loyalsoldier release
-    # (fetch_bytes_cached: 失败自动回退上一次完整拉取的缓存, 无缓存/超龄则抛错中止)
-    import core.fetcher as fetcher
-    dat_url = "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
-    cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "wuiiled_setup")
-    os.makedirs(cache_dir, exist_ok=True)
-    dat_path = os.path.join(cache_dir, "geosite.dat")
-    print(f"\n🌐 [源头] 检查/下载 Loyalsoldier geosite.dat ...")
-    data = fetcher.fetch_bytes_cached(dat_url, timeout=60, retries=3)
-    with open(dat_path, "wb") as f:
-        f.write(data)
-    print(f"🌐 [源头] geosite.dat 就绪: {len(data):,} bytes")
-
-    source_map = parse_geosite_dat(dat_path)
-    print(f"🌐 [源头] 解析出 {len(source_map)} 个上游分类")
-    global _DAT_SOURCE_MAP
-    _DAT_SOURCE_MAP = source_map
-
-    for upstream_tag, out_name in TIANLING_GEOSITES.items():
-        # upstream_tag like 'geosite-openai' or 'geosite-category-porn' -> dat code 'openai'/'category-porn'
-        code = upstream_tag[len("geosite-"):]
-        src_rs = source_map.get(code)
-        if src_rs is None:
-            # 上游分类被改名/移除时整个规则集会静默消失 —— 拒绝发布不完整规则
-            raise RuntimeError(
-                f"geosite.dat 上游分类 '{code}' 不存在, 规则集 {out_name} 将静默缺失, 拒绝继续"
-            )
-        rs = src_rs.copy()
-        rs.name = out_name
-        rs.category = "geosite"
-        rs.description = f"Loyalsoldier 权威提纯 ({code})"
-        rs.source_kind = "dat"
-        rs.sources = ["Loyalsoldier/v2ray-rules-dat"]
-        rs.dat_code = code
-        print(f"  ✅ [源头 GeoSite] {out_name:<26} | 规则数: {rs.total_count:,}")
-        results[out_name] = rs
-
-    # geosite-cn: 以天灵配方精编 cn 为基座 (geolocation-cn + category-*@cn + category-*-cn + .cn)。
-    # 自有上游列表 (cn-additional-list / SKK domestic) 与手动补丁统一声明在
-    # rules/patches/geosite-cn.txt, 由 apply_rule_patches 统一应用。
-    recipe_cn = build_tianling_style_cn(source_map)
-    recipe_cn.source_kind = "recipe"
-    recipe_cn.sources = ["天灵配方精编 cn (geolocation-cn + category-*@cn + category-*-cn + .cn)"]
-    print(f"  🧬 [天灵配方] geosite-cn                    | 配方合成: {recipe_cn.total_count:,} 条 (geolocation-cn + category-*@cn + category-*-cn)")
-    results["geosite-cn"] = recipe_cn
-
-    # GeoIP unchanged: still from Tianling sing-geoip srs
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        f_ips = [executor.submit(_fetch_one_ip, tag, out) for tag, out in TIANLING_GEOIPS.items()]
-        for f in f_ips:
-            res = f.result()
-            if res:
-                results[res[0]] = res[1]
-
-    return results
-
-
-def load_ads_rules() -> RuleSet:
-    """Build geosite-ad with full pipeline (clean, keyword filter, Trie optimize, whitelist filter)."""
-    work_dir = utils.get_work_dir()
-    mod_dir = os.path.join(work_dir, "ads")
-    os.makedirs(mod_dir, exist_ok=True)
-
-    raw_ads_path = os.path.join(mod_dir, "raw_ads.txt")
-    clean_ads_path = os.path.join(mod_dir, "clean_ads.txt")
-    filter_ads_path = os.path.join(mod_dir, "filter_ads.txt")
-    raw_allow_path = os.path.join(mod_dir, "raw_allow.txt")
-    raw_allow_exact_path = os.path.join(mod_dir, "raw_allow_exact.txt")
-    clean_allow_path = os.path.join(mod_dir, "clean_allow.txt")
-    clean_allow_exact_path = os.path.join(mod_dir, "clean_allow_exact.txt")
-    opt_ads_path = os.path.join(mod_dir, "opt_ads.txt")
-    opt_allow_path = os.path.join(mod_dir, "opt_allow.txt")
-    opt_allow_exact_path = os.path.join(mod_dir, "opt_allow_exact.txt")
-    final_ads_path = os.path.join(mod_dir, "final_ads.txt")
-
-    # 1. Download online ad sources
-    utils.download_files_parallel(raw_ads_path, providers.ADS_BLOCK_URLS)
-
-    # 2. Append local addon
-    local_addon = read_local_file("rules/addons/reject-addon.txt")
-    if local_addon:
-        with open(raw_ads_path, "a", encoding="utf-8") as f:
-            f.write("\n" + local_addon + "\n")
-
-    # 3. Clean and keyword filter
-    utils.process_normalize_domain(raw_ads_path, clean_ads_path, skip_allow_rules=True)
-    utils.apply_keyword_filter(clean_ads_path, filter_ads_path)
-
-    # 4. Prepare allowlist (suffix tier from bot main product) + exact tier
-    utils.download_files_parallel(raw_allow_path, providers.ALLOW_URLS)
-    utils.download_files_parallel(raw_allow_exact_path, providers.ALLOW_EXACT_URLS)
-    local_exclude = read_local_file("rules/addons/exclude-keyword.txt")
-    local_custom_direct = read_local_file("rules/Custom_Direct_DOMAIN.txt")
-
-    with open(raw_allow_path, "a", encoding="utf-8") as f:
-        if local_exclude:
-            for line in local_exclude.splitlines():
-                l = line.strip()
-                if l and not l.startswith('#'):
-                    f.write(l + "\n")
-        if local_custom_direct:
-            for line in local_custom_direct.splitlines():
-                l = line.strip()
-                if l and not l.startswith('#'):
-                    f.write(l + "\n")
-
-    # 5. Normalize allowlists, optimize both, and apply whitelist subtraction
-    utils.process_normalize_domain(raw_allow_path, clean_allow_path, skip_allow_rules=False)
-    utils.process_normalize_domain(raw_allow_exact_path, clean_allow_exact_path, skip_allow_rules=False)
-    utils.optimize_smart_self(filter_ads_path, opt_ads_path)
-    utils.optimize_smart_self(clean_allow_path, opt_allow_path)
-    utils.optimize_smart_self(clean_allow_exact_path, opt_allow_exact_path)
-    utils.apply_advanced_whitelist_filter(opt_ads_path, opt_allow_path, final_ads_path,
-                                          exact_in=opt_allow_exact_path)
-
-    # Persist shared optimized allowlists so downstream consumers (reject-drop)
-    # reuse them instead of reading a nonexistent path.
-    shared_allow_path = os.path.join(work_dir, "shared", "opt_allow.txt")
-    os.makedirs(os.path.dirname(shared_allow_path), exist_ok=True)
-    if os.path.exists(opt_allow_path):
-        utils.safe_copy(opt_allow_path, shared_allow_path)
-    shared_allow_exact_path = os.path.join(work_dir, "shared", "opt_allow_exact.txt")
-    if os.path.exists(opt_allow_exact_path):
-        utils.safe_copy(opt_allow_exact_path, shared_allow_exact_path)
-
-    # 黑加白模式: compute precise blocklist B + allow exception list B via pure
-    # functions, persist for platform exporters (smartdns/mihomo/adg).
-    # 黑名单A (Option A, final_ads.txt) remains the backward-compatible default.
-    blocklist_b_path = os.path.join(mod_dir, "blocklist_b.txt")
-    whitelist_b_path = os.path.join(mod_dir, "whitelist_b.txt")
-    try:
-        with open(opt_ads_path, "r", encoding="utf-8") as f:
-            raw_block = {l.strip() for l in f if l.strip() and not l.startswith("#")}
-        with open(opt_allow_path, "r", encoding="utf-8") as f:
-            raw_allow = {l.strip() for l in f if l.strip() and not l.startswith("#")}
-        raw_allow_exact = set()
-        if os.path.exists(opt_allow_exact_path):
-            with open(opt_allow_exact_path, "r", encoding="utf-8") as f:
-                raw_allow_exact = {l.strip() for l in f
-                                   if l.strip() and not l.startswith("#")}
-        bl_b = build_blocklist_b(raw_block, raw_allow, raw_allow_exact)
-        # 白名单B 只吃后缀档: exact 档条目永不该成为后缀例外集合的输入
-        # (今日不可达——exact 全为两段裸域,祖先链=[自身,TLD],自身已被
-        #  allow_exact 从 bl_b 剔除——此行是防未来 exact 档出现深条目的保险)
-        wl_b = build_whitelist_b(raw_allow, raw_block, bl_b)
-        with open(blocklist_b_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(sorted(bl_b)) + "\n")
-        with open(whitelist_b_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(sorted(wl_b)) + "\n")
-        print(f"  [黑加白] 黑名单B={len(bl_b):,} 白名单B={len(wl_b):,}")
-    except OSError as e:
-        # 黑加白产物是 mihomo/adg 下游的输入, 写失败必须显式失败而非静默缺失
-        raise RuntimeError(f"黑加白 blocklist/whitelist B 写盘失败: {e}") from e
-
-    domain_suffixes = set()
-    if os.path.exists(final_ads_path):
-        with open(final_ads_path, "r", encoding="utf-8") as f:
-            for line in f:
-                d = line.strip()
-                if d:
-                    domain_suffixes.add(d)
-
-    print(f"  ✅ [原创广告]   {'geosite-ad':<26} | 规则数: {len(domain_suffixes):,}")
-    # 来源画像从 providers 派生 (单一事实源, 11-17 审计: 旧硬编码清单停留在
-    # 八源时代, manifest/README 渲染出已删除的来源)
-    derived_sources = [
-        providers.ADS_BLOCK_SOURCE_NAMES.get(u, u)
-        for u in providers.ADS_BLOCK_URLS
-    ] + ["本地 reject-addon"]
-    return RuleSet(
-        name="geosite-ad",
-        category="geosite",
-        description="终极去广告与防追踪规则",
-        domain_suffixes=domain_suffixes,
-        source_kind="self",
-        sources=derived_sources,
-    )
-
-
-def load_ai_rules(min_domains: int = 0) -> Tuple[RuleSet, RuleSet]:
-    """
-    Build geosite-ai and geoip-ai from providers.AI_URLS.
-    - geosite-ai: domain, domain_suffix, domain_keyword, process_name
-    - geoip-ai: ip_cidr (including IP-ASN resolved to IP-CIDR)
-    """
-    work_dir = utils.get_work_dir()
-    mod_dir = os.path.join(work_dir, "ai")
-    os.makedirs(mod_dir, exist_ok=True)
-    raw_ai = os.path.join(mod_dir, "raw_ai.txt")
-
-    utils.download_files_parallel(raw_ai, providers.AI_URLS)
-
-    domains: Set[str] = set()
-    domain_suffixes: Set[str] = set()
-    domain_keywords: Set[str] = set()
-    process_names: Set[str] = set()
-    domain_wildcards: Set[str] = set()
-    ip_cidrs: Set[str] = set()
-    ip_asns: Set[str] = set()
-    dropped_counts: Dict[str, int] = {}
-    ignored_asns = {str(a).upper().removeprefix("AS") for a in getattr(providers, "AI_IGNORED_ASNS", set())}
-
-    if os.path.exists(raw_ai):
-        with open(raw_ai, "r", encoding="utf-8") as f:
-            for line in f:
-                parsed = parse_ai_rule_line(line)
-                if not parsed:
-                    continue
-                rtype, val = parsed
-                if rtype == "domain":
-                    domains.add(val)
-                elif rtype == "domain_suffix":
-                    domain_suffixes.add(val)
-                elif rtype == "domain_keyword":
-                    domain_keywords.add(val)
-                elif rtype == "process_name":
-                    process_names.add(val)
-                elif rtype == "domain_wildcard":
-                    domain_wildcards.add(val)
-                elif rtype == "ip_cidr":
-                    ip_cidrs.add(val)
-                elif rtype == "ip_asn":
-                    if val not in ignored_asns:
-                        ip_asns.add(val)
-                elif rtype == "dropped":
-                    # 上游存在但当前转换链明确不支持的类型 (URL-REGEX 等):
-                    # 计数打印, 上游格式漂移可感知而非无声消失
-                    dropped_counts[val] = dropped_counts.get(val, 0) + 1
-
-    if dropped_counts:
-        total_dropped = sum(dropped_counts.values())
-        detail = ", ".join(f"{k} x{v}" for k, v in sorted(dropped_counts.items()))
-        print(f"  ⚠️ [AI] 丢弃 {total_dropped} 条不支持类型规则 ({detail})")
-
-    if ip_asns:
-        asn_cidrs, failed_asns = resolve_asn_to_cidrs(ip_asns)
-        if failed_asns:
-            # 三级回退的最后一环: 双源 (ipverse+RIPEstat) 与该 ASN 的本地缓存均不可用时,
-            # 拉取本仓库已发布的 geoip-ai.txt (上一版网段) 继续合成 geoip-ai,
-            # 而不是中止整个规则构建 —— 仅在从未发布过 (真冷启动) 时才中止。
-            published = fetch_published_geoip_ai_cidrs()
-            if published:
-                print(
-                    f"  ⚠️ [AI ASN]     {len(failed_asns)} 个 ASN 双源且缓存均不可用 "
-                    f"({', '.join('AS' + a for a in failed_asns)}), "
-                    f"回退上一版已发布 geoip-ai 网段 {len(published):,} 条"
-                )
-                asn_cidrs.update(published)
-            else:
-                raise RuntimeError(
-                    f"AI 规则集 IP-ASN 解析失败 (双源均无有效数据且无上一版可用: "
-                    f"{', '.join('AS' + a for a in failed_asns)}), 拒绝静默缩水导致相关网段流量漏出"
-                )
-        if not asn_cidrs:
-            raise RuntimeError(
-                f"AI 规则集 IP-ASN 转换异常 (待解析: {sorted(ip_asns)} -> 0 条 CIDR), 拒绝静默缩水"
-            )
-        print(
-            f"  🔄 [AI ASN]     解析 {len(ip_asns)} 个 IP-ASN "
-            f"({', '.join('AS' + a for a in sorted(ip_asns))}) -> {len(asn_cidrs):,} 条 CIDR"
-        )
-        ip_cidrs.update(asn_cidrs)
-
-    if ip_cidrs:
-        ip_cidrs = collapse_cidrs(ip_cidrs)
-
-    domains, domain_suffixes, _ = absorb_covered_domains(domains, domain_suffixes)
-
-    if min_domains > 0 and (len(domains) + len(domain_suffixes)) < min_domains:
-        raise RuntimeError(
-            f"geosite-ai 域名条数异常偏低 ({len(domains) + len(domain_suffixes)} < {min_domains}), 疑似上游源失效或静默缩水"
-        )
-
-    ai_sources = [
-        "MetaCubeX/meta-rules-dat",
-        "ruleset.skk.moe",
-        "DustinWin/ruleset_geodata",
-        "MagicRule",
-        "dler-io/Rules",
-    ]
-
-    geosite_rs = RuleSet(
-        name="geosite-ai",
-        category="geosite",
-        description="全球主流 AI 域名合集",
-        domains=domains,
-        domain_suffixes=domain_suffixes,
-        domain_keywords=domain_keywords,
-        process_names=process_names,
-        domain_wildcards=domain_wildcards,
-        source_kind="self",
-        sources=ai_sources,
-    )
-
-    geoip_rs = RuleSet(
-        name="geoip-ai",
-        category="geoip",
-        description="全球主流 AI 服务 IP 与 ASN 网段合集",
-        ip_cidrs=ip_cidrs,
-        source_kind="self",
-        sources=["MagicRule", "dler-io/Rules"],
-    )
-
-    print(f"  ✅ [原创 AI]    {'geosite-ai':<26} | 规则数: {geosite_rs.total_count:,}")
-    print(f"  ✅ [原创 AI]    {'geoip-ai':<26} | 规则数: {geoip_rs.total_count:,}")
-    return geosite_rs, geoip_rs
-
-
-def assemble_fakeip_fields(lines) -> Tuple[Set[str], Set[str], Set[str]]:
-    """将 fakeip-filter 清洗行装配为 sing-box 三字段 (domains/suffixes/regexes)。
-
-    通配转正则用 `[^.]+` 而非 `.*` —— mihomo trie 的 `*` 恰匹配单标签,
-    `.*` 跨点会产出 `^(.*\\.)?stun\\..*$` 级别的过宽豁免; 裸 `*` 映射为
-    `^[^.]+$` (compact_regexes 守卫会丢弃 `^.*$`, 曾致 singbox 缺失
-    mihomo 侧有的单标签豁免)。
-    """
-    domains: Set[str] = set()
-    domain_suffixes: Set[str] = set()
-    domain_regexes: Set[str] = set()
-    for line in lines:
-        if line == '*':
-            domain_regexes.add(r'^[^.]+$')
-        elif line.startswith('+.'):
-            suffix = line[2:]
-            if not suffix:
-                continue
-            if '*' in suffix:
-                escaped = re.escape(suffix).replace(r'\*', r'[^.]+')
-                domain_regexes.add(f"^(?:.+\\.)?{escaped}$")
-            else:
-                domain_suffixes.add('.' + suffix if '.' not in suffix else suffix)
-        elif '*' in line:
-            escaped = re.escape(line).replace(r'\*', r'[^.]+')
-            domain_regexes.add(f"^{escaped}$")
-        else:
-            domains.add(line)
-    return domains, domain_suffixes, domain_regexes
-
-
-def load_fakeip_rules() -> RuleSet:
-    """Build geosite-fakeip-filter with normalization and regex compaction."""
-    work_dir = utils.get_work_dir()
-    mod_dir = os.path.join(work_dir, "fakeip")
-    os.makedirs(mod_dir, exist_ok=True)
-    raw_fakeip_dl = os.path.join(mod_dir, "raw_fakeip_dl.txt")
-
-    utils.download_files_parallel(raw_fakeip_dl, providers.FAKE_IP_URLS)
-
-    unique_lines = set()
-    if os.path.exists(raw_fakeip_dl):
-        with open(raw_fakeip_dl, 'r', encoding='utf-8') as f:
-            for raw in f.read().splitlines():
-                norm = normalize_fakeip_line(raw)
-                if norm:
-                    unique_lines.add(norm)
-
-    local_addon = read_local_file("rules/addons/fake-ip-addon.txt")
-    if local_addon:
-        for raw in local_addon.splitlines():
-            norm = normalize_fakeip_line(raw)
-            if norm:
-                unique_lines.add(norm)
-
-    clean_fakeip = os.path.join(mod_dir, "clean_fakeip.txt")
-    final_fakeip = os.path.join(mod_dir, "final_fakeip.txt")
-    with open(clean_fakeip, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(sorted(unique_lines)) + '\n')
-    utils.optimize_smart_self(clean_fakeip, final_fakeip)
-
-    raw_mihomo_lines = []
-    if os.path.exists(final_fakeip):
-        with open(final_fakeip, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                raw_mihomo_lines.append(line)
-
-    domains, domain_suffixes, domain_regexes = assemble_fakeip_fields(raw_mihomo_lines)
-    compacted_regexes = compact_regexes(domain_regexes)
-
-    print(f"  ✅ [Fake-IP]    {'geosite-fakeip-filter':<26} | singbox={len(domains)+len(domain_suffixes)+len(compacted_regexes):,} mihomo={len(raw_mihomo_lines):,}")
-    return RuleSet(
-        name="geosite-fakeip-filter",
-        category="geosite",
-        description="Fake-IP 过滤名单",
-        domains=domains,
-        domain_suffixes=domain_suffixes,
-        domain_regexes=set(compacted_regexes),
-        raw_lines=raw_mihomo_lines,
-        source_kind="self",
-        sources=["OpenClash", "ShellCrash", "ruleset.skk.moe", "本地 fake-ip-addon"],
-    )
-
-
-def load_reject_drop_rules() -> RuleSet:
-    """Build geosite-reject-drop."""
-    work_dir = utils.get_work_dir()
-    mod_dir = os.path.join(work_dir, "drop")
-    os.makedirs(mod_dir, exist_ok=True)
-    raw_rd = os.path.join(mod_dir, "raw_rd.txt")
-
-    utils.download_files_parallel(raw_rd, providers.DROP_URLS)
-
-    rd_lines = set()
-    if os.path.exists(raw_rd):
-        with open(raw_rd, 'r', encoding='utf-8') as f:
-            for line in f.read().splitlines():
-                cleaned = clean_mihomo_domain_line(line)
-                if cleaned and "skk.moe" not in line.lower() and cleaned != "+.":
-                    rd_lines.add(cleaned)
-
-    local_drop = read_local_file("rules/Custom_Reject-drop.txt")
-    if local_drop:
-        for line in local_drop.splitlines():
-            cleaned = clean_mihomo_domain_line(line)
-            if cleaned and cleaned != "+.":
-                rd_lines.add(cleaned)
-
-    clean_rd = os.path.join(mod_dir, "clean_rd.txt")
-    with open(clean_rd, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(sorted(rd_lines)) + '\n')
-
-    # Reuse the shared optimized allowlists produced by load_ads_rules instead
-    # of a nonexistent shared/raw_allow.txt (which silently disabled the whitelist).
-    clean_rd_allow = os.path.join(work_dir, "shared", "opt_allow.txt")
-    clean_rd_allow_exact = os.path.join(work_dir, "shared", "opt_allow_exact.txt")
-    final_rd = os.path.join(mod_dir, "final_rd.txt")
-
-    if os.path.exists(clean_rd_allow) and os.path.getsize(clean_rd_allow) > 0:
-        utils.apply_advanced_whitelist_filter(clean_rd, clean_rd_allow, final_rd,
-                                              exact_in=clean_rd_allow_exact)
-    else:
-        print("  [Reject-Drop] WARNING: shared allowlist missing/empty, whitelist filter skipped")
-        utils.safe_copy(clean_rd, final_rd)
-
-    domains = set()
-    domain_suffixes = set()
-    raw_rd_lines = []
-    if os.path.exists(final_rd):
-        with open(final_rd, "r", encoding="utf-8") as f:
-            for line in f:
-                parsed = clean_domain_entry(line)
-                if parsed:
-                    bucket, value = parsed
-                    raw_rd_lines.append(value if bucket == "domain" else "+." + value)
-                    if bucket == "domain_suffix":
-                        domain_suffixes.add(value)
-                    else:
-                        domains.add(value)
-
-    print(f"  ✅ [Reject-Drop]{'geosite-reject-drop':<26} | 规则数: {len(domains)+len(domain_suffixes):,}")
-    return RuleSet(
-        name="geosite-reject-drop",
-        category="geosite",
-        description="高危/垃圾流量直接丢弃规则",
-        domains=domains,
-        domain_suffixes=domain_suffixes,
-        raw_lines=raw_rd_lines,
-        source_kind="self",
-        sources=["ruleset.skk.moe", "本地 Custom_Reject-drop"],
-    )
-
-
-def load_gfwip_rules() -> RuleSet:
-    """Build geoip-gfw with IPv4 & IPv6 networks."""
-    work_dir = utils.get_work_dir()
-    mod_dir = os.path.join(work_dir, "gfwip")
-    os.makedirs(mod_dir, exist_ok=True)
-    raw_gfwip = os.path.join(mod_dir, "raw_gfwip.txt")
-    utils.download_files_parallel(raw_gfwip, providers.GFW_IP_URLS)
-
-    raw_lines = []
-    if os.path.exists(raw_gfwip):
-        with open(raw_gfwip, 'r', encoding='utf-8') as f:
-            raw_lines = f.read().splitlines()
-    raw_lines.extend(providers.GFW_IPV6_LIST)
-
-    lines = set()
-    for line in raw_lines:
-        cleaned = clean_ip_line(line)
-        if cleaned:
-            try:
-                lines.add(str(ipaddress.ip_network(cleaned, strict=False)))
-            except ValueError:
-                pass
-
-    print(f"  ✅ [GFW IP]     {'geoip-gfw':<26} | 规则数: {len(lines):,}")
-    return RuleSet(
-        name="geoip-gfw",
-        category="geoip",
-        description="GFW 投毒 IP 与网段拦截",
-        ip_cidrs=lines,
-        source_kind="self",
-        sources=["clowwindy/ChinaDNS", "pmkol/easymosdns", "自有 IPv6 靶心表"],
-        flatten_cidr_host=True,
-    )
-
-
-def load_pcdn_rules() -> RuleSet:
-    """Build geosite-pcdn from wuiiled/PCDN-mihomo-list (统一走 IR, 各平台导出+来源画像)."""
-    work_dir = utils.get_work_dir()
-    mod_dir = os.path.join(work_dir, "pcdn")
-    os.makedirs(mod_dir, exist_ok=True)
-    raw_pcdn = os.path.join(mod_dir, "raw_pcdn.txt")
-    utils.download_files_parallel(raw_pcdn, providers.PCDN_URLS)
-
-    domains = set()
-    domain_suffixes = set()
-    if os.path.exists(raw_pcdn):
-        with open(raw_pcdn, 'r', encoding='utf-8') as f:
-            for line in f:
-                parsed = clean_domain_entry(line)
-                if parsed:
-                    bucket, value = parsed
-                    if bucket == "domain_suffix":
-                        domain_suffixes.add(value)
-                    else:
-                        domains.add(value)
-
-    print(f"  ✅ [PCDN]       {'geosite-pcdn':<26} | 规则数: {len(domains)+len(domain_suffixes):,}")
-    return RuleSet(
-        name="geosite-pcdn",
-        category="geosite",
-        description="PCDN 边缘上传业务拦截",
-        domains=domains,
-        domain_suffixes=domain_suffixes,
-        source_kind="self",
-        sources=["wuiiled/PCDN-mihomo-list"],
-    )
-
-
-def load_iptv_rules() -> Tuple[RuleSet, RuleSet]:
-    """
-    Build geosite-iptv-!cn and geoip-iptv-!cn from Gary and Cathy IPTV upstream.
-    - geosite-iptv-!cn: domains & domain_suffixes
-    - geoip-iptv-!cn: ip_cidrs
-    """
-    work_dir = utils.get_work_dir()
-    mod_dir = os.path.join(work_dir, "iptv")
-    os.makedirs(mod_dir, exist_ok=True)
-    raw_iptv = os.path.join(mod_dir, "raw_iptv.txt")
-    utils.download_files_parallel(raw_iptv, providers.IPTV_URLS)
-
-    domains: Set[str] = set()
-    domain_suffixes: Set[str] = set()
-    ip_cidrs: Set[str] = set()
-
-    if os.path.exists(raw_iptv):
-        with open(raw_iptv, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if line.startswith(("IP-CIDR,", "IP-CIDR6,", "IP6-CIDR,")):
-                    cleaned_ip = clean_ip_line(line)
-                    if cleaned_ip:
-                        try:
-                            net = ipaddress.ip_network(cleaned_ip, strict=False)
-                            ip_cidrs.add(str(net))
-                        except ValueError:
-                            pass
-                else:
-                    parsed = clean_domain_entry(line)
-                    if parsed:
-                        bucket, value = parsed
-                        if bucket == "domain_suffix":
-                            domain_suffixes.add(value)
-                        else:
-                            domains.add(value)
-
-    domains, domain_suffixes, _ = absorb_covered_domains(domains, domain_suffixes)
-
-    geosite_rs = RuleSet(
-        name="geosite-iptv-!cn",
-        category="geosite",
-        description="IPTV 境外直播与流媒体服务 (Gary & Cathy 聚合)",
-        domains=domains,
-        domain_suffixes=domain_suffixes,
-        source_kind="self",
-        sources=["marcuccilli/gary", "marcuccilli/Cathy"],
-    )
-
-    geoip_rs = RuleSet(
-        name="geoip-iptv-!cn",
-        category="geoip",
-        description="IPTV 境外直播与流媒体 IP 节点 (Gary & Cathy 聚合)",
-        ip_cidrs=ip_cidrs,
-        source_kind="self",
-        sources=["marcuccilli/gary", "marcuccilli/Cathy"],
-    )
-
-    print(f"  ✅ [IPTV]       {'geosite-iptv-!cn':<26} | 规则数: {geosite_rs.total_count:,}")
-    print(f"  ✅ [IPTV]       {'geoip-iptv-!cn':<26} | 规则数: {geoip_rs.total_count:,}")
-
-    return geosite_rs, geoip_rs
-
-
-def load_stream_rules() -> Tuple[RuleSet, RuleSet]:
-    """
-    Build geosite-stream and geoip-stream:
-    - dat 分类整表合并 (providers.STREAM_DAT_CATEGORIES, 源自 _DAT_SOURCE_MAP)
-      ∪ sve1r ForeignMedia (QuantumultX: host/host-suffix/host-keyword/host-wildcard/ip-cidr/ip6-cidr)
-      ∪ skk stream.conf (Surge: IP-CIDR/IP-CIDR6, 实测主体为 Netflix Open Connect 网段)
-    - geosite-stream: 域名/keyword/wildcard/regex (IR 层不含 IP;
-      sing-box 侧由 build_singbox.synthesize_composites 合成含 IP 的全量集合)
-    - geoip-stream: 上述两源的 IPv4/IPv6 网段聚合, 各平台独立导出
-      (mihomo/singbox 均为裸 CIDR, 不带 no-resolve)
-    user-agent 等 IR 无法表达的规则类型按 AI loader 惯例计数丢弃, 上游格式漂移可感知。
-    """
-    work_dir = utils.get_work_dir()
-    mod_dir = os.path.join(work_dir, "stream")
-    os.makedirs(mod_dir, exist_ok=True)
-    raw_stream = os.path.join(mod_dir, "raw_stream.txt")
-    utils.download_files_parallel(raw_stream, providers.STREAM_URLS)
-
-    domains: Set[str] = set()
-    domain_suffixes: Set[str] = set()
-    domain_keywords: Set[str] = set()
-    domain_wildcards: Set[str] = set()
-    domain_regexes: Set[str] = set()
-    ip_cidrs: Set[str] = set()
-    dropped_counts: Dict[str, int] = {}
-
-    if os.path.exists(raw_stream):
-        with open(raw_stream, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "skk.moe" in line.lower():
-                    continue
-                low = line.lower()
-                if low.startswith(("ip-cidr,", "ip-cidr6,", "ip6-cidr,")):
-                    cleaned_ip = clean_ip_line(line)
-                    if cleaned_ip:
-                        try:
-                            ip_cidrs.add(str(ipaddress.ip_network(cleaned_ip, strict=False)))
-                        except ValueError:
-                            pass
-                    continue
-                if low.startswith("host-suffix,"):
-                    val = line.split(",", 2)[1].strip().lower().lstrip("+.").lstrip(".")
-                    if val:
-                        domain_suffixes.add(val)
-                    continue
-                if low.startswith("host-keyword,"):
-                    val = line.split(",", 2)[1].strip().lower()
-                    if val:
-                        domain_keywords.add(val)
-                    continue
-                if low.startswith("host-wildcard,"):
-                    val = line.split(",", 2)[1].strip().lower()
-                    if val:
-                        domain_wildcards.add(val)
-                    continue
-                if low.startswith("host,"):
-                    val = line.split(",", 2)[1].strip().lower().lstrip("+.")
-                    if val:
-                        domains.add(val)
-                    continue
-                if low.startswith("user-agent,"):
-                    dropped_counts["user-agent"] = dropped_counts.get("user-agent", 0) + 1
-                    continue
-                if "," in line:
-                    dropped_counts["其他带逗号行"] = dropped_counts.get("其他带逗号行", 0) + 1
-                    continue
-                domain_suffixes.add(line.lstrip("+.").lstrip(".").lower())
-
-    if dropped_counts:
-        total_dropped = sum(dropped_counts.values())
-        detail = ", ".join(f"{k} x{v}" for k, v in sorted(dropped_counts.items()))
-        print(f"  ⚠️ [Stream] 丢弃 {total_dropped} 条不支持类型规则 ({detail})")
-
-    # dat 分类整表合并 (load_tianling_rules 先行运行, _DAT_SOURCE_MAP 已就绪)
-    dat_missing = [c for c in providers.STREAM_DAT_CATEGORIES if c not in _DAT_SOURCE_MAP]
-    if dat_missing:
-        raise RuntimeError(
-            f"geosite-stream 的 dat 分类不存在: {', '.join(dat_missing)}, 拒绝静默缩水"
-        )
-    for code in providers.STREAM_DAT_CATEGORIES:
-        src = _DAT_SOURCE_MAP[code]
-        domains |= src.domains
-        domain_suffixes |= src.domain_suffixes
-        domain_keywords |= src.domain_keywords
-        domain_regexes |= src.domain_regexes
-        domain_wildcards |= src.domain_wildcards
-
-    domains, domain_suffixes, _ = absorb_covered_domains(domains, domain_suffixes)
-
-    ip_cidrs = collapse_cidrs(ip_cidrs)
-
-    geosite_rs = RuleSet(
-        name="geosite-stream",
-        category="geosite",
-        description="境外流媒体总集 (dat 分类 × sve1r ForeignMedia, 域名+keyword+wildcard)",
-        domains=domains,
-        domain_suffixes=domain_suffixes,
-        domain_keywords=domain_keywords,
-        domain_regexes=domain_regexes,
-        domain_wildcards=domain_wildcards,
-        source_kind="self",
-        sources=[
-            f"Loyalsoldier dat ({len(providers.STREAM_DAT_CATEGORIES)} 分类)",
-            "sve1r/Rules-For-Quantumult-X",
-        ],
-    )
-
-    geoip_rs = RuleSet(
-        name="geoip-stream",
-        category="geoip",
-        description="流媒体服务 IP 网段 (sve1r + skk, 主体 Netflix Open Connect)",
-        ip_cidrs=ip_cidrs,
-        source_kind="self",
-        sources=["sve1r/Rules-For-Quantumult-X", "ruleset.skk.moe"],
-    )
-
-    print(f"  ✅ [Stream]     {'geosite-stream':<26} | 规则数: {geosite_rs.total_count:,}")
-    print(f"  ✅ [Stream]     {'geoip-stream':<26} | 规则数: {geoip_rs.total_count:,}")
-
-    return geosite_rs, geoip_rs
-
-
-def load_custom_rules() -> Dict[str, RuleSet]:
-    """Load local custom rules from rules/ directory."""
-    results: Dict[str, RuleSet] = {}
-    for name, rel_path in providers.CUSTOM_RULES.items():
-        content = read_local_file(rel_path)
-        is_ip = name.startswith("geoip-")
-
-        domains = set()
-        domain_suffixes = set()
-        ip_cidrs = set()
-
-        for line in content.splitlines():
-            if is_ip:
-                cleaned = clean_ip_line(line)
-                if cleaned:
-                    try:
-                        net = ipaddress.ip_network(cleaned, strict=False)
-                        ip_cidrs.add(str(net))
-                    except ValueError:
-                        pass
-            else:
-                parsed = clean_domain_entry(line)
-                if parsed:
-                    bucket, value = parsed
-                    if bucket == "domain_suffix":
-                        domain_suffixes.add(value)
-                    else:
-                        domains.add(value)
-
-        cat = "geoip" if is_ip else "geosite"
-        rs = RuleSet(
-            name=name,
-            category=cat,
-            description=f"本地自定义规则 ({name})",
-            domains=domains,
-            domain_suffixes=domain_suffixes,
-            ip_cidrs=ip_cidrs,
-            source_kind="custom",
-            sources=[rel_path],
-        )
-        print(f"  ✅ [Custom]     {name:<26} | 规则数: {rs.total_count:,}")
-        results[name] = rs
-
-    return results
-
-
-def load_skk_rules() -> Dict[str, RuleSet]:
-    """Fetch and parse rules from ruleset.skk.moe."""
-    results: Dict[str, RuleSet] = {}
-    unique_urls = list(set(providers.MIHOMO_SKK.values()))
-    with ThreadPoolExecutor(max_workers=min(len(unique_urls), 8)) as executor:
-        url_cache = dict(zip(unique_urls, executor.map(fetch_text_cached, unique_urls)))
-
-    for name, url in providers.MIHOMO_SKK.items():
-        content = url_cache.get(url, "")
-
-        is_ip = name.startswith("geoip-") or name.lower().endswith(('_ip', '_ip.txt'))
-        domains = set()
-        domain_suffixes = set()
-        wildcards = set()
-        ip_cidrs = set()
-
-        for line in content.splitlines():
-            if 'skk.moe' in line:
-                continue
-            # DOMAIN-WILDCARD (classical glob 语义): srs 侧无损转 domain_regex,
-            # mihomo 侧仅 `*.字面域名` 形态可映射 domain 行为行 (models 导出层处理)
-            if line.startswith('DOMAIN-WILDCARD,'):
-                wc = line.split(',', 1)[1].strip().lower()
-                if wc:
-                    wildcards.add(wc)
-                continue
-            if is_ip:
-                cleaned = clean_ip_line(line)
-                if cleaned:
-                    try:
-                        net = ipaddress.ip_network(cleaned, strict=False)
-                        ip_cidrs.add(str(net))
-                    except ValueError:
-                        pass
-            else:
-                parsed = clean_domain_entry(line)
-                if parsed:
-                    bucket, value = parsed
-                    if bucket == "domain_suffix":
-                        domain_suffixes.add(value)
-                    else:
-                        domains.add(value)
-
-        cat = "geoip" if is_ip else "geosite"
-        rs = RuleSet(
-            name=name,
-            category=cat,
-            description=f"SKK 规则 ({name})",
-            domains=domains,
-            domain_suffixes=domain_suffixes,
-            domain_wildcards=wildcards,
-            ip_cidrs=ip_cidrs,
-            source_kind="skk",
-            sources=["ruleset.skk.moe"],
-        )
-        print(f"  ✅ [SKK]        {name:<26} | 规则数: {rs.total_count:,}")
-        results[name] = rs
-
-    return results
-
-
 def load_all_rules() -> Dict[str, RuleSet]:
-    """Master pipeline: Load and normalize all rules across all categories."""
-    print("\n🚀 [1/5] 拉取权威规则 (Loyalsoldier dat 原生解析 GeoSites + 天灵配方 cn + GeoIPs)...")
-    all_rules = load_tianling_rules()
+    """Master pipeline: load, clean, and patch all canonical RuleSet IR objects."""
+    print("\n🚀 [1/5] 拉取权威规则 (Loyalsoldier geosite.dat + Country.mmdb 原生解析 + 天灵配方 cn)...")
+    all_rules, dat_map = load_geo_rules()
 
     print("\n🚀 [2/5] 构建原创复合提纯规则 (Ad / AI / Fake-IP / Drop / GFW-IP / PCDN / IPTV / Stream)...")
-    ads = load_ads_rules()
+    ads, ads_precise, ads_allow, allow_suffix, allow_exact = load_ads_rules()
     ai_site, ai_ip = load_ai_rules(min_domains=300)
     fakeip = load_fakeip_rules()
-    drop = load_reject_drop_rules()
+    drop = load_reject_drop_rules(allow_suffix, allow_exact)
     gfwip = load_gfwip_rules()
     pcdn = load_pcdn_rules()
     iptv_site, iptv_ip = load_iptv_rules()
-    stream_site, stream_ip = load_stream_rules()
+    stream_site, stream_ip = load_stream_rules(dat_map)
 
-    for r in (ads, ai_site, ai_ip, fakeip, drop, gfwip, pcdn, iptv_site, iptv_ip, stream_site, stream_ip):
+    for r in (
+        ads, ads_precise, ads_allow,
+        ai_site, ai_ip, fakeip, drop, gfwip, pcdn,
+        iptv_site, iptv_ip, stream_site, stream_ip,
+    ):
         all_rules[r.name] = r
 
     print("\n🚀 [3/5] 加载本地自定义规则 (Custom_*)...")
-    customs = load_custom_rules()
-    for name, r in customs.items():
-        all_rules[name] = r
+    all_rules.update(load_custom_rules())
 
     print("\n🚀 [4/5] 加载知名上游规则 (SKK 互联网大厂与流媒体)...")
-    skks = load_skk_rules()
-    for name, r in skks.items():
-        all_rules[name] = r
+    all_rules.update(load_skk_rules())
 
-    # 统一补丁通道: 手动域名补丁 + include 列表/分类合并 (rules/patches/*.txt)
-    apply_rule_patches(all_rules)
+    apply_rule_patches(all_rules, dat_map=dat_map)
 
     print(f"\n✨ 全网规则集加载完毕，共就绪 {len(all_rules)} 个标准规则集！")
     return all_rules

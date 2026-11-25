@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""产物语法门禁: 校验 output/<branch> 下每个规则文件的行语法与该分支消费端解析器一致。
-- 域名校验复用 core.cleaner.is_valid_domain (geosite 允许单标签 TLD 如 cn/lan/xn--fiqs8s,
-  adg/singbox 广告过滤要求带点号域名，同时支持 _dmarc 等下划线前缀并拒绝纯数字 IPv4 混入域名);
-- IP 校验复用 core.cleaner.is_valid_ip_or_cidr (支持 IPv4-mapped IPv6，拦截 999.999.999.999/99 与纯十六进制词)。
-"""
+"""产物语法门禁: 校验 output/<branch> 下每个规则文件的行语法与该分支消费端解析器一致。"""
+
 import glob
 import json
 import os
@@ -24,8 +21,8 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from core.cleaner import is_valid_domain, is_valid_ip_or_cidr
 import providers
+from core.cleaner import is_valid_domain, is_valid_ip_or_cidr
 
 
 def lint(output_base="output"):
@@ -89,14 +86,16 @@ def lint(output_base="output"):
                         if l.startswith(("DOMAIN-KEYWORD,", "DOMAIN-REGEX,")):
                             add(rel, i, f"keyword/regex 未剥离: {l[:40]!r}")
                             continue
-                        # domain 行为合法形态: bare(精确) / +.x(含自身) / .x(仅子域) / *.x(label 通配)
+                        if any(ch.isspace() for ch in l):
+                            add(rel, i, f"含空白字符: {l[:50]!r}")
+                            continue
                         if l.startswith("+."):
                             body = l[2:]
                         elif l.startswith("."):
                             body = l[1:]
                         else:
                             body = l
-                        if "*" in l or " " in body:
+                        if "*" in l:
                             continue
                         if ":" in body or "/" in body or not is_valid_domain(body, allow_tld=True):
                             add(rel, i, f"trie 无法承载: {l[:50]!r}")
@@ -109,8 +108,8 @@ def lint(output_base="output"):
                             add(rel, i, f"smartdns 不应出现 domain: 前缀: {l[:40]!r}")
                         if branch == "mosdns-x" and not pfx:
                             add(rel, i, f"mosdns-x 裸行应为 domain: 前缀: {l[:40]!r}")
-                        if body.startswith(("-.", "+.", "*", "-")) or " " in body or "/" in body \
-                                or not is_valid_domain(body, allow_tld=True):
+                        if body.startswith(("-.", "+.", "*", "-")) or any(ch.isspace() for ch in body) \
+                                or "/" in body or not is_valid_domain(body, allow_tld=True):
                             add(rel, i, f"{branch} 非法行: {l[:50]!r}")
 
     if not seen_any:

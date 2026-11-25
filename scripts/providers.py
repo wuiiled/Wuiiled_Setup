@@ -1,21 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 Upstream URL definitions and custom rule mappings.
-All local addons and custom rules are loaded directly from disk in manager.py.
+All local addons and custom rules are loaded directly from disk in core/loaders.
 """
 
 TARGET_BRANCHES = ("singbox", "mihomo", "smartdns", "mosdns-x", "adg")
 
-# 白名单双层产物(wuiiled/ad-whitelist-bot 唯一合成点, 本仓零白名单合成):
-#   main  = 后缀档 — 策展引用层(Cats/AdRules/anudeep/AdGuard exceptions)+ 深条目,
-#           放行语义覆盖其全部子域(cloudfront.net 等基础设施放行在此档)
-#   exact = 精确档 — 裁决型来源的裸域条目(anti-AD php/AWAvenue/AdGuard DNS filter),
-#           消费端按整域精确匹配、不参与祖先连坐, 否则会连坐清除各黑名单源
-#           的同族广告规则(tanx/yximgs/ucweb/co.in 等整族)
-# 历史注: 2026-11-15 前本文件直接拉取 Cats dns-allowlist / AdGuardSDNSFilter
-# exceptions / anudeepND whitelist 三份原始源自行合成; 三者已并入 bot 收割
-# ( Cats 注释 #N 转 issue 链接, 单管道 @@|x^| 容忍解析), 换取溯源/冲突检测/
-# deny 层生效与裸域精确档。anti-AD dead-horse 白名单 2023-08 死, 勿接。
+# 白名单双层产物 (wuiiled/ad-whitelist-bot 唯一合成点):
+#   main  = 后缀档 — 策展引用层 + 深条目, 放行语义覆盖其全部子域
+#   exact = 精确档 — 裁决型来源的裸根域 (eTLD+1), 消费端按整域精确匹配、不连坐子域
 ALLOW_URLS = [
     "https://raw.githubusercontent.com/wuiiled/ad-whitelist-bot/main/output/merged_false_positive_whitelist.txt"
 ]
@@ -25,42 +18,36 @@ ALLOW_EXACT_URLS = [
 ]
 
 ADS_BLOCK_URLS = [
-    # EasyMosdns ad_domain_list
-    #"https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt",
     # AdGuard DNS Filter
     "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt",
     # Peter Lowe's Blocklist
     "https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt",
-    # Dan Pollock's List
-    #"https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt",
-    # Adobe Telemetry
+    # Adobe Telemetry (Pi-hole 精确语义列表: loader 侧剥离已被具体子域覆盖的裸根域 adobe.io)
     "https://a.dove.isdumb.one/pihole.txt",
-    # Cats-Team adrules_domainset
-    #"https://raw.githubusercontent.com/Cats-Team/AdRules/main/adrules_domainset.txt",
     # AWAvenue Ads Rule Geosite No.Unwelcome
     "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Adguard-No.Unwelcome.txt",
-    # OISD Small
-    "https://raw.githubusercontent.com/sjhgvr/oisd/main/oisd_small.txt",
+    # OISD Small (官方直链; fetcher 内置 sjhgvr 镜像回退)
+    "https://small.oisd.nl",
     # anti-AD
     "https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-adguard.txt",
     # Hagezi Blocklists Light
     "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/light.txt",
 ]
 
-# 来源画像: 完整 URL → 展示名 (manager.load_ads_rules 的 sources 从这里
-# 派生, 与 ADS_BLOCK_URLS 单一事实源绑定, 杜绝双维护漂移 — 11-17 审计:
-# 旧硬编码清单停留在八源时代, 渲染出已删除的来源; 键用完整 URL 避免不同
-# 仓库同名文件撞键)
+# 精确匹配型广告源: 仅应剥离存在同族具体子域的裸根域, 防止后缀化连坐正常业务子域
+EXACT_SEMANTIC_AD_URLS = frozenset({
+    "https://a.dove.isdumb.one/pihole.txt",
+})
+
+# 来源画像: 完整 URL -> 展示名 (与 ADS_BLOCK_URLS 单一事实源绑定)
 ADS_BLOCK_SOURCE_NAMES = {
     "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt": "AdGuard DNS filter",
     "https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt": "Peter Lowe",
-    "https://adguardteam.github.io/HostlistsRegistry/assets/filter_4.txt": "Dan Pollock",
     "https://a.dove.isdumb.one/pihole.txt": "isdumb/Pi-hole",
+    "https://small.oisd.nl": "OISD Small",
     "https://raw.githubusercontent.com/sjhgvr/oisd/main/oisd_small.txt": "OISD Small",
     "https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-adguard.txt": "anti-AD",
     "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/light.txt": "HaGeZi",
-    "https://raw.githubusercontent.com/Cats-Team/AdRules/main/adrules_domainset.txt": "Cats-Team/AdRules",
-    "https://raw.githubusercontent.com/pmkol/easymosdns/rules/ad_domain_list.txt": "easymosdns",
     "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Adguard-No.Unwelcome.txt": "AWAvenue (广告+隐私)",
 }
 
@@ -70,29 +57,24 @@ AI_URLS = [
     "https://ruleset.skk.moe/List/non_ip/ai.conf",
     # DustinWin AI 规则
     "https://github.com/DustinWin/ruleset_geodata/raw/mihomo-ruleset/ai.list",
-    # MagicRule GlobalAI (Surge 规则集)
+    # MagicRule GlobalAI (blackmatrix7/ios_rule_script 继承仓, Surge 规则集)
     "https://magicrule.pages.dev/#/c/Surge/r/24dbbb36-e5c5-4800-8fde-4af469213846",
     # dler-io AI Suite (Clash Provider)
     "https://github.com/dler-io/Rules/blob/main/Clash/Provider/AI%20Suite.yaml",
 ]
 
-# 可选排除的泛云厂商 ASN (如泛 VPS 厂商 AS20473 Vultr / AS14061 DigitalOcean;
-# 默认为空以全量转换上游 IP-ASN，如需仅保留 AI 专属 ASN 如 AS399358 Anthropic / AS401518 OpenAI 可在此填入)
 AI_IGNORED_ASNS: set = set()
 
-# 任意源拉取失败时回退"上一次完整拉取"的缓存, 缓存年龄超过该天数则视为失效、
-# 中止构建拒绝合成 (防止长期用陈旧数据静默顶替)。CI 通过 actions/cache 持久化。
+# 任意源拉取失败时回退"上一次完整拉取"缓存的最大有效天数
 SOURCE_CACHE_MAX_AGE_DAYS: int = 14
 
-# ASN 第三级回退: 本仓库 mihomo 分支已发布的 geoip-ai.txt (上一版网段)。
-# 比 actions/cache 更持久 (部署分支永远存在), 双源 + 本地缓存均不可用时,
-# 用它继续合成 geoip-ai 而不是中止整个构建; 仅在从未发布过 (真冷启动) 时才中止。
+# ASN 第三级回退: 本仓库 mihomo 分支已发布的 geoip-ai.txt
 GEOIP_AI_PUBLISHED_URL = "https://raw.githubusercontent.com/wuiiled/Wuiiled_Setup/mihomo/rules/geoip/geoip-ai.txt"
 
 FAKE_IP_URLS = [
     "https://raw.githubusercontent.com/vernesong/OpenClash/master/luci-app-openclash/root/etc/openclash/custom/openclash_custom_fake_filter.list",
     "https://raw.githubusercontent.com/juewuy/ShellCrash/dev/public/fake_ip_filter.list",
-    "https://ruleset.skk.moe/Internal/clash_fake_ip_filter.yaml"
+    "https://ruleset.skk.moe/Internal/clash_fake_ip_filter.yaml",
 ]
 
 DROP_URLS = [
@@ -105,44 +87,21 @@ IPTV_URLS = [
     "https://raw.githubusercontent.com/marcuccilli/Cathy/main/cathy_surge.list",
 ]
 
-# geosite-stream 境外流媒体总集的 dat 分类清单 (2026-10-26 逐项核对 v2fly
-# domain-list-community data/ 目录, 全部存在独立条目)。
-# 范围收紧原则 (2026-10-26 二次修订): 只收"视频/音频流媒体服务本体",
-# 不收超范围的企业条目 (sony/sky/nbcuniversal/cbs/kakao 等整团域) 与
-# 新闻机构 (cnn/nytimes/...由 sve1r ForeignMedia 分组按需覆盖)。
-# 换名/父类调用: Amazon->primevideo, AppleTV->apple-tvplus, DisneyPlus->disney,
-#   AbemaTV->abema, ViuTV->viu, EncoreTVB->tvb, FoxNow->fox, BBCiPlayer->bbc,
-#   HBO/HBO_GO_HKG->hbo (dat 单文件含各区 hbogo), Hulu/HuluJapan->hulu (含 hulu.jp),
-#   YouTube/YouTubeMusic->youtube (后缀语义覆盖 Music)
-# 标签中 dat 无条目的 (由 sve1r 分组覆盖): All4, AppleNews, HWTV, ITV, Iwara,
-#   JOOX, LineTV(dat line 为整个通讯软件), My5, NivodTV, Pandora, Qobuz, TaiWanGood
-# 视频流补充 (用户标签之外, 已核对内容紧凑且不与 category-porn /
-#   category-social-media-!cn 重叠): tver/hamivideo/formula1/hotstar/amc/
-#   catchplay/imdb/nhk/rumble
-# 补充候选中明确排除: dmm (include:dmm-porn 与 geosite-porn 重叠),
-#   bilibili (国内服务, 含游戏/漫画/猫耳FM), bangumi (番组计划为数据库非视频流),
-#   iqiyi/youku (国内服务; iqiyi 另混国际版域名)
+# geosite-stream 境外流媒体总集的 dat 分类清单 (视频/音频流媒体服务本体)
 STREAM_DAT_CATEGORIES = (
-    # 用户标签映射 (43 标签 -> dat 可直调 30 分类)
     "netflix", "disney", "hbo", "hulu", "primevideo", "apple-tvplus", "youtube",
     "fox", "abc", "pbs", "bbc", "discoveryplus", "dazn",
     "spotify", "tidal", "deezer", "soundcloud", "kkbox",
     "bahamut", "abema", "niconico", "kktv", "litv", "mytvsuper", "japonx",
     "tiktok", "twitch", "viu", "tvb", "olevod",
-    # 视频流补充 (标签之外)
     "tver", "hamivideo", "formula1", "hotstar", "amc", "catchplay",
     "imdb", "nhk", "rumble",
 )
 
-# 流媒体合成源: sve1r ForeignMedia (QuantumultX 格式, 含域名/keyword/wildcard/IPv4+IPv6)
-# + skk stream.conf (Surge 格式, RDAP 实测主体为 Netflix Open Connect 网段)
 STREAM_URLS = [
     "https://raw.githubusercontent.com/sve1r/Rules-For-Quantumult-X/develop/Rules/Media/ForeignMedia.list",
     "https://ruleset.skk.moe/List/ip/stream.conf",
 ]
-
-# 注: 原 CN_URLS_1/CN_URLS_2 (cn-additional-list + SKK domestic) 已迁移至
-# rules/patches/geosite-cn.txt 的 include 指令, 与天灵配方 cn 统一经补丁通道合并。
 
 CUSTOM_RULES = {
     "geosite-custom-direct": "rules/Custom_Direct_DOMAIN.txt",
@@ -169,20 +128,14 @@ MIHOMO_SKK = {
     "geosite-apple-services": "https://ruleset.skk.moe/Clash/non_ip/apple_services.txt",
     "geosite-apple-cn": "https://ruleset.skk.moe/Clash/non_ip/apple_cn.txt",
     "geosite-apple-cdn": "https://ruleset.skk.moe/Clash/domainset/apple_cdn.txt",
-    # geoip-stream 已迁移至 manager.load_stream_rules (sve1r + skk 双源合成,
-    # 不再是 skk stream.conf 单源原样同步)
     "geoip-apple": "https://ruleset.skk.moe/List/ip/apple_services.conf",
 }
 
-# PCDN 拦截列表: 统一经 IR 装载 (manager.load_pcdn_rules), 各平台导出并进入来源画像
 PCDN_URLS = [
-    "https://raw.githubusercontent.com/wuiiled/PCDN-mihomo-list/main/pcdn.list"
+    "https://raw.githubusercontent.com/wuiiled/PCDN-mihomo-list/main/pcdn.list",
 ]
 
-# OxiDNS (smartdns / mosdns-x 分支) 的发布白名单: 与线上 config downloads 段
-# 的规则集一一对应 (2026-09-26 核对)。旧文件名根目录兼容副本 (CN_merged.txt/
-# proxy.txt/cnip.txt 等) 已于 2026-10 退役: 线上 v1.5.2 起全部改订标准路径,
-# 根目录副本零引用 (线上配置逐条核对)。
+# OxiDNS (smartdns / mosdns-x 分支) 发布白名单, 与线上 config downloads 段一一对应
 OXIDNS_RULESETS = (
     "geosite-cn",
     "geosite-ad",
@@ -202,39 +155,12 @@ OXIDNS_RULESETS = (
     "geosite-xiaomi",
 )
 
-# 线上 OxiDNS (10.0.0.2, config v1.5.2) 额外订阅、但无需根目录兼容副本的集合
-# (直接下载 rules/geosite|geoip/ 下的标准名文件):
-#   - 黑加白双集合 (线上 sequence: qname $ad_allow → return 前置短路 + $ad_precise drop)
-#   - GFW 投毒 IP 靶心
-# 缺失任一项都会让线上对应下载 URL 404、规则文件停更 (2026-09-25~26 事故)。
 OXIDNS_EXTRA_RULESETS = {"geosite-ad-precise", "geosite-ad-allow", "geoip-gfw"}
 
-# 线上以旧命名订阅、需在 geosite/ 子目录落一份别名副本的集合:
-# 引擎内标准名为 geosite-!cn, 线上 URL 为 rules/geosite/geosite-geolocation-!cn.txt。
-# 别名不参与 README 渲染与计数 (readme_gen 排除), 避免"规则集数"虚增。
 OXIDNS_SUBDIR_ALIASES = {
     "geosite/geosite-geolocation-!cn.txt": "geosite-!cn",
 }
 
 GFW_IP_URLS = [
-    "https://raw.githubusercontent.com/clowwindy/ChinaDNS/master/iplist.txt",
-    "https://cdn.jsdelivr.net/gh/clowwindy/ChinaDNS@master/iplist.txt",
     "https://raw.githubusercontent.com/pmkol/easymosdns/rules/gfw_ip_list.txt",
-    "https://cdn.jsdelivr.net/gh/pmkol/easymosdns@rules/gfw_ip_list.txt",
-]
-
-GFW_IPV6_LIST = [
-    "2001:4860:4860::8888",
-    "2001:4860:4860::8844",
-    "2001:da8::666",
-    "2404:6800:4008:c01::65",
-    "2001:252:0:1::/64",
-    "2001:470:20::2",
-    "2001:7fa::1",
-    "2a03:2880:f100::/40",
-    # NOTE: 3ffe::/16 is the mihomo fake-ip v6 range paired with this engine
-    # (现网 /cus/mihomo fake-ip-range6, 2026-11-19 由旧注释的 /20 对齐)。
-    # Kept so OxiDNS resp_ip fallback can identify fake-ip answers.
-    # 3ffe::/16 为 2006 年退役的 6bone 段, 无合法流量, 全段识别不构成误杀。
-    "3ffe::/16",
 ]

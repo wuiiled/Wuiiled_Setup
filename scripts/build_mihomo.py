@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Mihomo (Clash Meta) Rule-set Exporter.
-Fully decoupled: receives canonical RuleSet IR and exports .txt and .mrs files.
+Exports canonical RuleSet IR (including geosite-ad-precise & geosite-ad-allow) to .txt and .mrs.
 """
 
 import os
@@ -16,10 +16,8 @@ def check_mihomo() -> bool:
     return utils.check_tool("mihomo")
 
 
-def build_mihomo_rules(rules: Dict[str, RuleSet], output_dir: str = "output/mihomo"):
-    """
-    Export all RuleSets to Mihomo format (.txt and .mrs).
-    """
+def build_mihomo_rules(rules: Dict[str, RuleSet], output_dir: str = "output/mihomo") -> None:
+    """Export all RuleSets to Mihomo format (.txt and .mrs)."""
     geosite_out = os.path.join(output_dir, "geosite")
     geoip_out = os.path.join(output_dir, "geoip")
     os.makedirs(geosite_out, exist_ok=True)
@@ -28,81 +26,56 @@ def build_mihomo_rules(rules: Dict[str, RuleSet], output_dir: str = "output/miho
     has_m = check_mihomo()
     print(f"\n📦 [Mihomo] 正在构建所有规则集并输出至 {output_dir}...")
 
-    # 1. Export text payloads
     for name, rs in rules.items():
         sub_dir = geoip_out if rs.is_geoip else geosite_out
         txt_path = os.path.join(sub_dir, f"{name}.txt")
         mrs_path = os.path.join(sub_dir, f"{name}.mrs")
 
-        # 空集合跳过导出: 空文件/mrs 编译失败无意义, 跳过后订阅端保留上一版
-        # (关键集合另有 validate_output_invariants 非空守卫兜底)
         if rs.total_count == 0 and rs.raw_lines is None:
             print(f"  ⚠️ [Mihomo] {name:<26} | 空集合, 跳过导出")
             continue
 
         lines = rs.to_mihomo_lines()
-        # mihomo 的 domain behavior (txt/mrs) 支持 bare/`+.x`/`.x`/`*.x` 域名形态,
-        # 但无法承载 keyword/regex 规则：直接编译会把这类行当字面域名塞进 trie（垃圾条目）。
-        # 参照 sing-geosite 系转换产物对 mihomo 形态的统一处理，剥离之；
-        # keyword/regex 语义仍完整保留在 singbox 分支的 .srs (domain_regex/domain_keyword) 中。
         pattern_lines = [l for l in lines if l.startswith(("DOMAIN-KEYWORD,", "DOMAIN-REGEX,"))]
         if pattern_lines:
             lines = [l for l in lines if not l.startswith(("DOMAIN-KEYWORD,", "DOMAIN-REGEX,"))]
-            print(f"  [Mihomo] {name:<26} | 剥离 {len(pattern_lines)} 条 keyword/regex 规则 (domain 格式不支持, 已保留于 singbox .srs)")
-        # mrs 同样无法承载 process_name; classical glob 通配仅 `*.字面域名` 形态
-        # 在 to_mihomo_lines 内转换为 `.域名` 行, 其余形态在此统计提示
+            print(f"  [Mihomo] {name:<26} | 剥离 {len(pattern_lines)} 条 keyword/regex 规则 (已保留于 singbox .srs)")
         if rs.process_names:
-            print(f"  [Mihomo] {name:<26} | 丢弃 {len(rs.process_names)} 条 process_name 规则 (mrs 不支持, 已保留于 singbox .srs)")
+            print(f"  [Mihomo] {name:<26} | 丢弃 {len(rs.process_names)} 条 process_name 规则 (已保留于 singbox .srs)")
         unconvertible_wc = sum(1 for w in rs.domain_wildcards if not wildcard_prefix_to_mihomo(w))
         if unconvertible_wc:
-            print(f"  [Mihomo] {name:<26} | 丢弃 {unconvertible_wc} 条 glob 通配规则 (含 ?/跨段 *, domain 行为语义不等价, 已保留于 singbox .srs)")
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines) + ("\n" if lines else ""))
+            print(f"  [Mihomo] {name:<26} | 丢弃 {unconvertible_wc} 条 glob 通配规则 (已保留于 singbox .srs)")
 
-        # Compile to .mrs if compiler available
+        if not lines:
+            print(f"  ⚠️ [Mihomo] {name:<26} | 剥离后无剩余条目, 跳过导出")
+            continue
+
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+
         if has_m:
             rule_type = "ipcidr" if rs.is_geoip else "domain"
             utils.compile_ruleset(
                 ["mihomo", "convert-ruleset", rule_type, "text", txt_path, mrs_path],
-                f"{name}.mrs"
+                f"{name}.mrs",
             )
 
-    # ---------------------------------------------------------------
-    # 黑加白模式 (mihomo): emit precise blocklist B + allow exception B as SEPARATE
-    # rule-sets.  geosite-ad stays as Option A (backward-compat).  Users opt in via
-    # config: RULE-SET,geosite-ad-allow,DIRECT placed BEFORE RULE-SET,geosite-ad-precise,REJECT.
-    # 与 smartdns/mosdns-x 相同, 从统一 IR (utils.load_blackwhite_rulesets) 消费,
-    # 不再各自解析中间产物文件。
-    # ---------------------------------------------------------------
-    bw = utils.load_blackwhite_rulesets()
-    for name in ("geosite-ad-precise", "geosite-ad-allow"):
-        bw_rs = bw.get(name)
-        if bw_rs is None:
-            continue
-        txt_path = os.path.join(geosite_out, f"{name}.txt")
-        with open(txt_path, "w", encoding="utf-8") as f:
-            for s in sorted(bw_rs.domain_suffixes):
-                f.write("+." + s + "\n")
-        if has_m:
-            utils.compile_ruleset(
-                ["mihomo", "convert-ruleset", "domain", "text", txt_path, os.path.join(geosite_out, f"{name}.mrs")],
-                f"{name}.mrs"
-            )
-    prec, allow = bw.get("geosite-ad-precise"), bw.get("geosite-ad-allow")
+    prec, allow = rules.get("geosite-ad-precise"), rules.get("geosite-ad-allow")
     if prec or allow:
-        print(f"  [Mihomo] 黑加白 precise={len(prec.domain_suffixes) if prec else 0:,} allow={len(allow.domain_suffixes) if allow else 0:,}")
-
-    # 兼容别名机制已退役: 全部规则集统一使用标准名称 (geosite-custom-emby 等)
+        print(
+            f"  [Mihomo] 黑加白 precise={len(prec.domain_suffixes) if prec else 0:,} "
+            f"allow={len(allow.domain_suffixes) if allow else 0:,}"
+        )
 
     print("✅ [Mihomo] 全部规则集构建完成！")
 
 
-def run_all(rules: Optional[Dict[str, RuleSet]] = None):
+def run_all(rules: Optional[Dict[str, RuleSet]] = None) -> None:
     if rules is None:
         from core.manager import load_all_rules
         rules = load_all_rules()
     build_mihomo_rules(rules)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run_all()

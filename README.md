@@ -37,12 +37,12 @@
 ## 🌐 规则生态全景体系
 
 规则集统一采用 **`geosite/`**（域名集）与 **`geoip/`**（IP/CIDR 集）两级目录隔离，命名保留 `geosite-` / `geoip-` 标准前缀。
-基于 **Loyalsoldier 官方源头 `geosite.dat`（v2ray Protobuf 原生解析）** 与多源深度清洗构建，涵盖 **113+ 个标准规则集**，在 Sing-box 平台达成与 [天灵 sing-geosite](https://github.com/soffchen/sing-geosite) 的 **100% 语义级/差集为 0 的权威对齐（0-Diff 严格自动化测试验证）**。
+基于 **Loyalsoldier 官方源头 `geosite.dat`（v2ray Protobuf 原生解析）与 `Country.mmdb`（MaxMind DB 原生解析）** 与多源深度清洗构建，涵盖 **113+ 个标准规则集**，在 Sing-box 平台达成与 [天灵 sing-geosite](https://github.com/1715173329/sing-geosite) / [sing-geoip](https://github.com/1715173329/sing-geoip) 的 **100% 语义级/差集为 0 的权威对齐（70 集合 0-Diff 严格自动化验证）**。
 
 <details open>
-<summary><b>1️⃣ 官方权威提纯规则集</b>（原生 Protobuf 源头构建，100% 0-Diff 对齐，点击展开）</summary>
+<summary><b>1️⃣ 官方权威提纯规则集</b>（原生 Protobuf / MMDB 源头构建，100% 0-Diff 对齐，点击展开）</summary>
 
-GeoSite 规则直接拉取并解析 Loyalsoldier 官方最新 `geosite.dat` 二进制源文件（融合本地热补丁），杜绝传统反编译过程中的规则丢失；`geosite-cn` 以天灵 sing-geosite 配方本地合成精编 cn（`geolocation-cn` + `category-*@cn` + `category-*-cn` + `.cn`）为基座，再经 `rules/patches/geosite-cn.txt` 合并自有上游列表（`cn-additional-list` + SKK `domestic`）；`geosite-ai` 为自研多源清洗列表 ∪ dat `category-ai-!cn`；`sing-geoip` 系列原样同步：
+GeoSite 规则直接拉取并解析 Loyalsoldier 官方最新 `geosite.dat` 二进制源文件（融合本地热补丁）；`geosite-cn` 以天灵 sing-geosite 配方本地合成精编 cn（`geolocation-cn` + `category-*@cn` + `category-*-cn` + `.cn`）为基座，再经 `rules/patches/geosite-cn.txt` 合并自有上游列表（`cn-additional-list` + SKK `domestic`）；`geosite-ai` 为自研多源清洗列表 ∪ dat `category-ai-!cn`；GeoIP 系列直接原生解析 `Loyalsoldier/geoip` 最新 `Country.mmdb`（与天灵 `SkipAliasedNetworks` 逐条同构）：
 
 | 分类 | 包含规则名称 | 核心服务与特点 |
 | :--- | :--- | :--- |
@@ -66,16 +66,16 @@ GeoSite 规则直接拉取并解析 Loyalsoldier 官方最新 `geosite.dat` 二�
 | :--- | :--- | :--- |
 | **`geosite-stream`** | **境外流媒体总集**<br>*(dat 39 分类 × sve1r 深度合成, 域名+keyword+wildcard)* | `Loyalsoldier dat` · `sve1r/Rules-For-Quantumult-X` |
 | **`geoip-stream`** | **流媒体服务 IP 网段**<br>*(IPv4/IPv6 聚合, 主体 Netflix Open Connect)* | `sve1r/Rules-For-Quantumult-X` · `ruleset.skk.moe` |
-| **`geosite-ad`** | **终极去广告 / 防追踪**<br>*(剔除数十万重复项与误杀项)* | `pmkol/easymosdns` · AdGuard 官方列表 (1/3/4) · Adobe Telemetry (`a.dove.isdumb.one`) · `Cats-Team/AdRules` · `TG-Twilight/AWAvenue-Ads-Rule` · `OISD Small` · 本地补丁 |
+| **`geosite-ad`** | **终极去广告 / 防追踪**<br>*(前缀树吸收去重，剔除误杀项)* | AdGuard 官方列表 (1/3) · Adobe Telemetry (`a.dove.isdumb.one`) · `TG-Twilight/AWAvenue-Ads-Rule` · `OISD Small` · `anti-AD` · `HaGeZi Light` · 本地补丁 |
 | **`geosite-ai`** | **全球主流 AI 服务合集**<br>*(自研列表 ∪ dat category-ai-!cn，Sing-box 复合含域名/进程/IP)* | `MetaCubeX` · `skk.moe` · `DustinWin` · `MagicRule` · `dler-io/Rules` · dat `category-ai-!cn` |
 | **`geoip-ai`** | **全球主流 AI 服务 IP 与 ASN 网段**<br>*(含 IP-ASN 自动转换 CIDR，供 Mihomo 独立订阅)* | `MagicRule` · `dler-io/Rules` · `ipverse/as-ip-blocks` · `RIPEstat` |
 | **`geosite-fakeip-filter`** | **Fake-IP 排除名单**<br>*(正则压缩，消除冗余)* | `OpenClash` · `ShellCrash` · `ruleset.skk.moe` · 本地补丁 (`fake-ip-addon.txt`) |
 | **`geosite-pcdn`** | **PCDN 与边缘计算节点拦截**<br>*(保护上行带宽，防运营商限速)* | `wuiiled/PCDN-mihomo-list` · 本地补丁 |
 | **`geosite-reject-drop`** | **高危垃圾流量直接丢弃** | `skk.moe` · 本地名单 |
-| **`geoip-gfw`** | **GFW 投毒 IP 与靶心网段** | ChinaDNS 投毒 IPv4 · EasyMosdns 投毒 CIDR · GFW 假 IPv6 靶心 |
+| **`geoip-gfw`** | **GFW 投毒 IP 与劫持靶心网段** | `pmkol/easymosdns` (`gfw_ip_list`) |
 
 > [!TIP]
-> **🛡️ 智能白名单防误杀**：`geosite-ad` 与 `geosite-reject-drop` 预先经过 `Cats-Team/AdRules` Allowlist、`AdGuard SDNS Filter` Exceptions 及本地 `exclude-keyword.txt`、`Custom_Direct_DOMAIN.txt` 的多层差集扣除，杜绝正常购物、网银与工作网站断流。
+> **🛡️ 智能白名单防误杀**：`geosite-ad` 与 `geosite-reject-drop` 统一消费 [`wuiiled/ad-whitelist-bot`](https://github.com/wuiiled/ad-whitelist-bot) 合成的双档误报白名单（后缀档 + 精确档 eTLD+1，整合了 `anti-AD` / `AWAvenue` / `AdGuard DNS filter` / `Cats-Team` / `anudeepND`）及本地 `exclude-keyword.txt`、`Custom_Direct_DOMAIN.txt`，在阻止同族广告规则连坐漏放的同时杜绝正常业务断流。
 
 </details>
 
@@ -121,10 +121,10 @@ Wuiiled_Setup/
 │   ├── addons/             # 白名单关键字 / Fake-IP / 广告 补丁
 │   ├── patches/            # 热补丁: 手动域名 + include 列表/分类合并 (geosite-porn / geosite-cn / geosite-ai ...)
 │   └── Custom_*.txt        # 各类自定义分流名单
-├── scripts/                # 构建引擎源码（三层解耦架构）
-│   ├── core/               # 核心：models / cleaner / fetcher / manager / geosite_source / patcher / proto / readme_gen
+├── scripts/                # 构建引擎源码（分层解耦架构）
+│   ├── core/               # 核心：models / cleaner / fetcher / loaders/* / manager / geosite_source / geoip_source / patcher / compiler / validators / catalog / readme_gen / proto
 │   ├── build_*.py          # 五平台独立导出器 (singbox / mihomo / smartdns / mosdns / adg)
-│   ├── diff_tianling.py    # 天灵 0-Diff 独立比对与门禁校验
+│   ├── diff_tianling.py    # 天灵 0-Diff 独立比对与门禁校验 (GeoSite + GeoIP)
 │   ├── lint_artifacts.py   # 产物行级语法门禁校验
 │   ├── main.py             # 统一主入口
 │   └── providers.py        # 上游源 URL 配置清单与目标分支常量

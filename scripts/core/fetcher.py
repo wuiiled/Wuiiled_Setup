@@ -2,9 +2,10 @@
 """
 Robust network fetcher with concurrency, retries, SSL verification,
 local repo file loader, MagicRule two-hop SPA & GitHub blob URL resolver,
-ASN-to-CIDR converter, and Tianling authoritative rule-set synchronizer.
+and ASN-to-CIDR converter.
 """
 
+import ipaddress
 import json
 import os
 import re
@@ -12,18 +13,15 @@ import ssl
 import time
 import hashlib
 import threading
-import ipaddress
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
-import utils
 import providers
 from core.cleaner import collapse_cidrs
-from core.models import RuleSet
 
 _SSL_CONTEXT = ssl.create_default_context()
-UA = "Mozilla/5.0 (compatible; WuiiledSetupRuleEngine/2.0)"
+UA = "Mozilla/5.0 (compatible; WuiiledSetupRuleEngine/2.1)"
 
 _GITHUB_BLOB_RE = re.compile(r"^https?://github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)$")
 _MAGICRULE_SPA_RE = re.compile(r"^(https?://[^/]+)/#/c/([^/]+)/r/([0-9a-fA-F-]+)")
@@ -31,6 +29,10 @@ _MAGICRULE_FALLBACKS = {
     "24dbbb36-e5c5-4800-8fde-4af469213846": (
         "https://magicrule.pages.dev/data/_shared/artifacts/GlobalAI_rules_7591fffa97b1e679.list"
     ),
+}
+
+_URL_FALLBACKS = {
+    "https://small.oisd.nl": "https://raw.githubusercontent.com/sjhgvr/oisd/main/oisd_small.txt",
 }
 
 
@@ -47,7 +49,7 @@ def _join_base_url(base_url: str, path_or_url: str) -> str:
 
 
 def _get_target_urls(url: str) -> List[str]:
-    """Return deduped candidate URLs (rewriting github blob -> raw + ghfast mirror)."""
+    """Return deduped candidate URLs (rewriting github blob -> raw + optional mirror)."""
     m_blob = _GITHUB_BLOB_RE.match(url)
     if m_blob:
         owner, repo, branch, path = m_blob.groups()
@@ -56,22 +58,27 @@ def _get_target_urls(url: str) -> List[str]:
         primary = url
 
     urls = [primary]
-    if ("raw.githubusercontent.com" in primary or "github.com" in primary) and "ghfast.top" not in primary:
-        mirror = f"https://ghfast.top/{primary}"
+    fb = _URL_FALLBACKS.get(primary.rstrip("/"))
+    if fb and fb not in urls:
+        urls.append(fb)
+
+    # Mirror fallback is opt-in via env var (never send CI traffic to third-party proxies by default)
+    mirror_base = os.environ.get("WUIILED_GH_MIRROR", "").strip().rstrip("/")
+    if mirror_base and ("raw.githubusercontent.com" in primary or "github.com" in primary):
+        mirror = f"{mirror_base}/{primary}"
         if mirror not in urls:
             urls.append(mirror)
     return urls
 
 
 def _fetch_raw_text(url: str, timeout: int = 15, retries: int = 3) -> str:
-    """Low-level text fetcher with retries, mirror fallback, and SPA HTML fallback rejection."""
-    candidates = _get_target_urls(url)
-    for target in candidates:
-        req = urllib.request.Request(target, headers={'User-Agent': UA})
+    """Low-level text fetcher with retries, fallback URLs, and SPA HTML fallback rejection."""
+    for target in _get_target_urls(url):
+        req = urllib.request.Request(target, headers={"User-Agent": UA})
         for attempt in range(retries):
             try:
                 with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as resp:
-                    text = resp.read().decode('utf-8', errors='ignore')
+                    text = resp.read().decode("utf-8", errors="ignore")
                 if _is_html_payload(text):
                     break
                 return text
@@ -82,11 +89,6 @@ def _fetch_raw_text(url: str, timeout: int = 15, retries: int = 3) -> str:
 
 
 def _extract_artifact_url_from_obj(obj: dict, base_url: str) -> Optional[str]:
-    """
-    Extract the 'rules' artifact URL from a manifest or index entry dict.
-    Supports both list-of-dicts format (`artifacts: [{"key": "rules", "url": "..."}, ...]`)
-    and dict format (`artifacts: {"rules": "..."}`).
-    """
     artifacts = obj.get("artifacts")
     if isinstance(artifacts, list):
         by_key = {}
@@ -113,7 +115,6 @@ def _extract_artifact_url_from_obj(obj: dict, base_url: str) -> Optional[str]:
 
 
 def _find_magicrule_entry(data, rule_id: str) -> Optional[dict]:
-    """Find the rule entry matching rule_id inside `/data/index/<Client>.json`."""
     items = []
     if isinstance(data, list):
         items = data
@@ -132,12 +133,7 @@ def _find_magicrule_entry(data, rule_id: str) -> Optional[dict]:
 
 
 def _resolve_magicrule_candidates(url: str, timeout: int = 15, retries: int = 3) -> List[str]:
-    """
-    Two-hop dynamic resolver for MagicRule SPA URLs (`#/c/<Client>/r/<UUID>`):
-      Hop 1: Fetch `<base>/data/index/<Client>.json` -> locate entry by `id == <UUID>` -> get `manifest` URL.
-      Hop 2: Fetch `<manifest_url>` -> extract `artifacts` item with `key == "rules"` -> return artifact `.list` URL.
-      Fallback: Known artifact URL if index/manifest endpoints are temporarily unreachable.
-    """
+    """Two-hop dynamic resolver for MagicRule SPA URLs (`#/c/<Client>/r/<UUID>`)."""
     m = _MAGICRULE_SPA_RE.match(url)
     if not m:
         return [url]
@@ -174,7 +170,7 @@ def _resolve_magicrule_candidates(url: str, timeout: int = 15, retries: int = 3)
 
 
 def fetch_text_url(url: str, timeout: int = 15, retries: int = 3) -> str:
-    """Fetch text content from a remote URL with SPA resolution, retries, and mirror fallback."""
+    """Fetch text content from a remote URL with SPA resolution, retries, and fallback."""
     if _MAGICRULE_SPA_RE.match(url):
         for cand in _resolve_magicrule_candidates(url, timeout=timeout, retries=retries):
             content = _fetch_raw_text(cand, timeout=timeout, retries=retries)
@@ -185,19 +181,12 @@ def fetch_text_url(url: str, timeout: int = 15, retries: int = 3) -> str:
 
     content = _fetch_raw_text(url, timeout=timeout, retries=retries)
     if not content:
-        print(f"⚠️ 下载失败 (所有镜像源均失败): {url}")
+        print(f"⚠️ 下载失败 (所有候选源均失败): {url}")
     return content
 
 
 def fetch_single_asn_cidrs(asn: str, timeout: int = 15, retries: int = 3) -> Tuple[Set[str], bool]:
-    """
-    Resolve a single ASN (e.g. '399358' or 'AS399358') into announced IPv4/IPv6 CIDRs.
-    1. Primary: ipverse/as-ip-blocks aggregated.json (GitHub Raw + ghfast mirror)
-    2. Fallback: RIPEstat Announced Prefixes Data API
-    Returns (cidrs, authoritative):
-      - authoritative=True  表示至少一源返回了有效数据 (空前缀 = 该 ASN 合法无宣告)
-      - authoritative=False 表示双源均未返回有效数据 (网络失败/解析失败), 调用方应中止构建
-    """
+    """Resolve a single ASN into announced IPv4/IPv6 CIDRs (ipverse -> RIPEstat -> cache)."""
     clean_asn = re.sub(r"^as", "", str(asn).strip(), flags=re.IGNORECASE).strip()
     if not clean_asn.isdigit():
         return set(), False
@@ -205,7 +194,6 @@ def fetch_single_asn_cidrs(asn: str, timeout: int = 15, retries: int = 3) -> Tup
     cidrs: Set[str] = set()
     authoritative = False
 
-    # 1. Try ipverse/as-ip-blocks (fast, aggregated, supports GitHub mirror)
     ipverse_url = f"https://raw.githubusercontent.com/ipverse/as-ip-blocks/master/as/{clean_asn}/aggregated.json"
     raw_ipverse = _fetch_raw_text(ipverse_url, timeout=timeout, retries=retries)
     if raw_ipverse:
@@ -222,10 +210,9 @@ def fetch_single_asn_cidrs(asn: str, timeout: int = 15, retries: int = 3) -> Tup
         except Exception:
             pass
 
-    # 2. Fallback to RIPEstat global BGP announced-prefixes API if ipverse returned nothing
     if not cidrs:
         ripe_url = f"https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS{clean_asn}"
-        raw_ripe = _fetch_raw_text(ripe_url, timeout=timeout, retries=retries)
+        raw_ripe = _fetch_raw_text(ripe_url, timeout=max(timeout, 30), retries=retries)
         if raw_ripe:
             try:
                 data = json.loads(raw_ripe)
@@ -247,7 +234,6 @@ def fetch_single_asn_cidrs(asn: str, timeout: int = 15, retries: int = 3) -> Tup
         _source_cache_save(f"asn-cidrs:{clean_asn}", json.dumps(sorted(cidrs)).encode("utf-8"))
         return cidrs, True
 
-    # 双源均无有效数据: 回退该 ASN 上一次完整拉取的网段缓存
     cached = _fresh_cache_or_none(f"asn-cidrs:{clean_asn}", label=f"AS{clean_asn} ")
     if cached is not None:
         try:
@@ -260,11 +246,7 @@ def fetch_single_asn_cidrs(asn: str, timeout: int = 15, retries: int = 3) -> Tup
 
 
 def resolve_asn_to_cidrs(asns: Set[str], timeout: int = 15, retries: int = 3) -> Tuple[Set[str], List[str]]:
-    """
-    Concurrently resolve a set of ASNs into deduplicated, collapsed IPv4/IPv6 CIDRs.
-    Returns (collapsed_cidrs, failed_asns); failed_asns 非空表示这些 ASN 双源解析
-    均未获得有效数据, 调用方必须中止构建以防相关网段静默缺失导致流量漏出。
-    """
+    """Concurrently resolve ASNs into deduplicated, collapsed IPv4/IPv6 CIDRs."""
     if not asns:
         return set(), []
     sorted_asns = sorted(asns)
@@ -286,10 +268,9 @@ def resolve_asn_to_cidrs(asns: Set[str], timeout: int = 15, retries: int = 3) ->
 
 
 def fetch_bytes_url(url: str, timeout: int = 15, retries: int = 3) -> bytes:
-    """Fetch binary content from a remote URL with retries and mirror fallback."""
-    candidates = _get_target_urls(url)
-    for target in candidates:
-        req = urllib.request.Request(target, headers={'User-Agent': UA})
+    """Fetch binary content from a remote URL with retries and fallback."""
+    for target in _get_target_urls(url):
+        req = urllib.request.Request(target, headers={"User-Agent": UA})
         for attempt in range(retries):
             try:
                 with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as resp:
@@ -297,15 +278,10 @@ def fetch_bytes_url(url: str, timeout: int = 15, retries: int = 3) -> bytes:
             except Exception:
                 if attempt < retries - 1:
                     time.sleep(0.5 * (attempt + 1))
-    print(f"⚠️ 下载二进制失败 (所有镜像源均失败): {url}")
+    print(f"⚠️ 下载二进制失败 (所有候选源均失败): {url}")
     return b""
 
 
-# ----------------------------------------------------------------------
-# 逐源"上一次完整拉取"缓存: 任意源拉取失败时回退用上一次成功拉取的内容
-# 继续合成, 无缓存或缓存超龄则抛错中止构建 —— 拒绝发布缺失任意源的不完整规则。
-# CI 侧通过 actions/cache 持久化 ~/.cache/wuiiled_setup 实现跨次构建回退。
-# ----------------------------------------------------------------------
 SOURCE_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "wuiiled_setup", "sources")
 
 
@@ -318,7 +294,6 @@ def _source_cache_paths(url: str) -> Tuple[str, str]:
 
 
 def _source_cache_load(url: str) -> Optional[Tuple[bytes, float]]:
-    """读取缓存, 返回 (内容, 缓存年龄天数); 缺失/损坏返回 None。"""
     body_p, meta_p = _source_cache_paths(url)
     try:
         with open(meta_p, encoding="utf-8") as f:
@@ -346,12 +321,10 @@ def _source_cache_save(url: str, data: bytes) -> None:
 
 
 def _source_cache_max_age_days() -> float:
-    import providers
     return float(getattr(providers, "SOURCE_CACHE_MAX_AGE_DAYS", 14))
 
 
 def _fresh_cache_or_none(url: str, label: str = "源") -> Optional[bytes]:
-    """读取未超龄的缓存并打印回退提示; 缺失或超龄返回 None。"""
     cached = _source_cache_load(url)
     if cached is None:
         return None
@@ -363,8 +336,7 @@ def _fresh_cache_or_none(url: str, label: str = "源") -> Optional[bytes]:
 
 
 def fetch_text_cached(url: str, timeout: int = 15, retries: int = 3) -> str:
-    """网络优先文本拉取: 成功即刷新缓存; 失败回退上一次完整拉取的缓存;
-    无缓存或缓存超龄则抛 RuntimeError, 由调用方中止构建。"""
+    """Network-first text fetch with stale-cache fallback and hard failure on total loss."""
     content = fetch_text_url(url, timeout=timeout, retries=retries)
     if content.strip():
         _source_cache_save(url, content.encode("utf-8"))
@@ -376,7 +348,7 @@ def fetch_text_cached(url: str, timeout: int = 15, retries: int = 3) -> str:
 
 
 def fetch_bytes_cached(url: str, timeout: int = 15, retries: int = 3) -> bytes:
-    """fetch_text_cached 的二进制版本 (geosite.dat / .srs 等大文件)。"""
+    """Binary equivalent of fetch_text_cached."""
     data = fetch_bytes_url(url, timeout=timeout, retries=retries)
     if data:
         _source_cache_save(url, data)
@@ -387,13 +359,34 @@ def fetch_bytes_cached(url: str, timeout: int = 15, retries: int = 3) -> bytes:
     raise RuntimeError(f"源拉取失败且无可用缓存 (拒绝合成缺失该源的不完整规则): {url}")
 
 
+def fetch_texts_parallel(urls: List[str], timeout: int = 15, retries: int = 3) -> Dict[str, str]:
+    """Fetch all URLs concurrently into memory with all-or-nothing cache fallback."""
+    if not urls:
+        return {}
+    out: Dict[str, str] = {}
+    failed: List[str] = []
+    with ThreadPoolExecutor(max_workers=min(len(urls) + 1, 10)) as executor:
+        futures_map = {executor.submit(fetch_text_cached, u, timeout, retries): u for u in urls}
+        for fut, url in futures_map.items():
+            try:
+                content = fut.result()
+                if content.strip():
+                    out[url] = content
+                else:
+                    failed.append(url)
+            except Exception as e:
+                print(f"❌ 源拉取失败: {url} -> {e}")
+                failed.append(url)
+    print(f"📥 下载完成: {len(out)} 成功, {len(failed)} 失败 (共 {len(urls)} 源)")
+    if failed:
+        raise RuntimeError(
+            f"以下 {len(failed)} 个源拉取失败且无可用缓存, 拒绝合成不完整规则: {', '.join(failed)}"
+        )
+    return out
+
+
 def fetch_published_geoip_ai_cidrs(timeout: int = 15, retries: int = 3) -> Set[str]:
-    """
-    ASN 第三级回退: 从本仓库已发布的 mihomo 分支 geoip-ai.txt 提取上一版网段。
-    部署分支永远保有上一版产物 (比 actions/cache 更持久, 不受缓存逐出影响);
-    双源解析与本地缓存均不可用时, 用它继续合成 geoip-ai 而不是中止整个构建。
-    返回空集表示"上一版也不可用" (真冷启动), 由调用方决定中止。
-    """
+    """Tertiary ASN fallback: fetch previously published geoip-ai.txt from mihomo branch."""
     url = getattr(providers, "GEOIP_AI_PUBLISHED_URL", "")
     if not url:
         return set()
@@ -422,69 +415,6 @@ def read_local_file(rel_path: str) -> str:
         print(f"⚠️ 拒绝越界路径: {rel_path}")
         return ""
     if os.path.exists(full_path):
-        with open(full_path, 'r', encoding='utf-8') as f:
+        with open(full_path, "r", encoding="utf-8") as f:
             return f.read()
     return ""
-
-
-def fetch_tianling_ruleset(tag: str, category: str = "geosite", out_name: Optional[str] = None) -> Optional[RuleSet]:
-    """
-    Fetch authoritative .srs from Tianling Shen (1715173329) repository:
-      - sing-geosite / rule-set branch
-      - sing-geoip / rule-set branch
-    Decompiles .srs using sing-box to extract exact domain, domain_suffix, regex, keyword, and ip_cidr.
-    Returns a RuleSet containing raw_srs and exact parsed elements.
-    下载失败 (fetch_bytes_cached) 与反编译失败均直接抛错中止构建——
-    残缺的静默跳过会让订阅分支带着缺失集合停更且不可见。
-    """
-    rule_name = out_name or tag
-    repo = "sing-geoip" if category == "geoip" else "sing-geosite"
-    url = f"https://raw.githubusercontent.com/1715173329/{repo}/rule-set/{tag}.srs"
-
-    srs_bytes = fetch_bytes_cached(url)
-    if not srs_bytes:
-        print(f"❌ 无法从天灵官方仓库获取 {tag}.srs: {url}")
-        return None
-
-    temp_dir = utils.get_work_dir()
-    temp_srs = os.path.join(temp_dir, f"{tag}.srs")
-    temp_json = os.path.join(temp_dir, f"{tag}.json")
-
-    with open(temp_srs, "wb") as f:
-        f.write(srs_bytes)
-
-    try:
-        decompiled = utils.decompile_srs(temp_srs, temp_json)
-
-        rules = decompiled.get("rules", [])
-        domains = set()
-        domain_suffixes = set()
-        domain_keywords = set()
-        domain_regexes = set()
-        ip_cidrs = set()
-
-        for r in rules:
-            domains.update(r.get("domain", []))
-            domain_suffixes.update(r.get("domain_suffix", []))
-            domain_keywords.update(r.get("domain_keyword", []))
-            domain_regexes.update(r.get("domain_regex", []))
-            ip_cidrs.update(r.get("ip_cidr", []))
-
-        return RuleSet(
-            name=rule_name,
-            category=category,
-            description=f"天灵官方权威提纯 ({tag})",
-            domains=domains,
-            domain_suffixes=domain_suffixes,
-            domain_keywords=domain_keywords,
-            domain_regexes=domain_regexes,
-            ip_cidrs=ip_cidrs,
-            raw_srs=srs_bytes
-        )
-    finally:
-        for p in (temp_srs, temp_json):
-            if os.path.exists(p):
-                try:
-                    os.remove(p)
-                except OSError:
-                    pass

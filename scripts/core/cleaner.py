@@ -1,20 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-Rule cleaning, normalization, prefix-tree optimization, and regex compaction.
-Extracted and purified from utils.py to ensure testability and high cohesion.
+Rule cleaning, normalization, prefix-tree deduplication, and regex compaction.
+Pure in-memory functions with zero disk/global state dependencies.
 """
 
-import re
 import ipaddress
-from typing import Set, List, Optional, Tuple, Dict
+import re
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 _DOMAIN_LABEL = r'[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?'
-# Multi-label domain (requires at least one dot, used for adblock/hosts cleaning)
 _DOMAIN_MULTI_RE = re.compile(
     rf'^(?=.{{1,253}}$)({_DOMAIN_LABEL}\.)+[a-z0-9]([a-z0-9-]{{0,61}}[a-z0-9])?$',
     re.IGNORECASE,
 )
-# Single-label TLD or multi-label domain (used for artifact linting where bare TLDs like 'cn', 'google', 'lan' exist)
 _DOMAIN_OR_TLD_RE = re.compile(
     rf'^(?=.{{1,253}}$)({_DOMAIN_LABEL}\.)*[a-z0-9]([a-z0-9_-]{{0,61}}[a-z0-9])?$',
     re.IGNORECASE,
@@ -22,17 +20,20 @@ _DOMAIN_OR_TLD_RE = re.compile(
 _IPV4_LITERAL_RE = re.compile(r'^\d+\.\d+\.\d+\.\d+$')
 _PURE_NUMERIC_RE = re.compile(r'^\d+$')
 
-# Only reject modifiers that invert or cancel rule semantics ($badfilter, $denyallow)
-_CANCEL_ADG_MODIFIERS = ("$badfilter", "$denyallow=")
+# Static asset/config extensions that occasionally leak into community lists as fake domains (e.g. init.avif)
+_STATIC_ASSET_EXTS = frozenset({
+    "avif", "png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp",
+    "mp4", "mp3", "m3u8", "apk", "exe", "dll", "json", "yaml", "yml",
+    "txt", "conf", "list", "srs", "mrs",
+})
 
-# fakeip-filter 行归一 (cleaner.normalize_fakeip_line): 拦截异形行 (如 OpenClash/
-# ShellCrash 双双携带的 "Mijia Cloud"), 剥行内注释, 泛化过滤 YAML 键
+_CANCEL_ADG_MODIFIERS = ("$badfilter", "$denyallow=")
 _YAML_KEY_RE = re.compile(r'^[a-z0-9_-]+\s*:')
 _VALID_FAKEIP_RE = re.compile(r'^(?:\+\.)?[a-z0-9._*-]+$')
 
 
 def idna_domain(value: str) -> str:
-    """非 ASCII 域名转 punycode (IDNA)。"""
+    """Convert non-ASCII domain to punycode (IDNA)."""
     if value.isascii():
         return value
     try:
@@ -42,14 +43,22 @@ def idna_domain(value: str) -> str:
 
 
 def is_valid_domain(val: str, allow_tld: bool = False) -> bool:
-    """Validate whether a string is a syntactically valid ASCII domain/hostname.
-    - allow_tld=False: requires at least one dot (for raw adlist/hosts line normalization)
-    - allow_tld=True: allows single-label TLDs like 'cn', 'google', 'lan', 'xn--fiqs8s' (for artifact linting)
-    """
+    """Validate whether a string is a syntactically valid ASCII domain/hostname."""
     if not val or _IPV4_LITERAL_RE.match(val) or _PURE_NUMERIC_RE.match(val):
+        return False
+    if not allow_tld and "." in val and val.rsplit(".", 1)[-1].lower() in _STATIC_ASSET_EXTS:
         return False
     pattern = _DOMAIN_OR_TLD_RE if allow_tld else _DOMAIN_MULTI_RE
     return bool(pattern.match(val))
+
+
+def domain_ancestors(d: str) -> List[str]:
+    """Return all ancestor domains including itself: a.b.com -> [a.b.com, b.com, com]."""
+    parts = d.split(".")
+    return [".".join(parts[i:]) for i in range(len(parts))]
+
+
+_domain_ancestors = domain_ancestors  # backward-compatible alias
 
 
 def normalize_domain_line(line: str) -> Optional[str]:
@@ -58,7 +67,6 @@ def normalize_domain_line(line: str) -> Optional[str]:
     if not line or line.startswith("!"):
         return None
 
-    # Reject AdGuard rules with rule-canceling modifiers ($badfilter / $denyallow=) before stripping $
     lower_raw = line.split("#", 1)[0].lower()
     if "$" in lower_raw and any(mod in lower_raw for mod in _CANCEL_ADG_MODIFIERS):
         return None
@@ -87,7 +95,6 @@ def normalize_domain_line(line: str) -> Optional[str]:
     ):
         return None
 
-    # Convert non-ASCII IDN domains to punycode before validating labels
     if not line.isascii():
         line = idna_domain(line)
         if not line.isascii():
@@ -96,6 +103,21 @@ def normalize_domain_line(line: str) -> Optional[str]:
     if not is_valid_domain(line, allow_tld=False):
         return None
     return line
+
+
+def strip_covered_apex_from_exact_source(domains: Set[str]) -> Set[str]:
+    """For exact-match sources (e.g. Pi-hole lists), drop bare 2-label apex
+    domains that already have proper subdomains in the same source.
+    Prevents `adobe.io` from becoming `+.adobe.io` and blocking all Adobe services
+    while preserving all specific telemetry subdomains.
+    """
+    parent_set = set()
+    for d in domains:
+        parts = d.split(".")
+        if len(parts) >= 3:
+            for i in range(1, len(parts) - 1):
+                parent_set.add(".".join(parts[i:]))
+    return {d for d in domains if not (d.count(".") == 1 and d in parent_set)}
 
 
 def clean_ip_line(line: str) -> Optional[str]:
@@ -142,16 +164,7 @@ def clean_mihomo_domain_line(line: str) -> Optional[str]:
 
 
 def clean_domain_entry(line: str) -> Optional[Tuple[str, str]]:
-    """通用域名行清洗 — 全部 loader 的唯一入口(11-17 审计收口: 此前五个
-    loader 各自手写 `+.`/`.`/lower/校验组合, 口径漂移)。
-
-    约定(与既有各 loader 行为一致, 导出前不改变任何现有产物):
-      `+.`/`.` 前缀 → ('domain_suffix', 裸值); 裸行 → ('domain', 裸值);
-      `domain-suffix,`/`domain,`/`host-suffix,`/`host,` 前缀按原语义映射;
-      行内 `#` 注释剥离; lower + IDNA 归一; IPv4/通配/含空格/路径行拒绝。
-    后缀桶允许单标签 TLD(如 `+.cn` → 'cn'); 非域名桶 (keyword/regex/cidr)
-    返回 None 交由调用方特判。
-    """
+    """Canonical domain-line cleaner used across custom/SKK/IPTV/PCDN/drop loaders."""
     line = line.strip().lower()
     if not line or line.startswith(('#', '!', '@@')):
         return None
@@ -187,10 +200,8 @@ def clean_domain_entry(line: str) -> Optional[Tuple[str, str]]:
     return ("domain_suffix" if is_suffix else "domain", d)
 
 
-
-
-def collapse_cidrs(cidrs) -> set:
-    """IPv4/IPv6 分别聚合相邻与重叠网段, 返回规范化 CIDR 字符串集合。"""
+def collapse_cidrs(cidrs: Iterable[str]) -> Set[str]:
+    """Collapse overlapping/adjacent IPv4 and IPv6 CIDRs independently."""
     v4_nets, v6_nets = [], []
     for c in cidrs:
         try:
@@ -202,14 +213,11 @@ def collapse_cidrs(cidrs) -> set:
         str(n) for n in ipaddress.collapse_addresses(v6_nets)
     }
 
+
 def glob_wildcard_to_regex(pattern: str) -> Optional[str]:
-    """
-    mihomo classical DOMAIN-WILDCARD 的 glob 语义 (component/wildcard):
-    `*` 匹配零或多个任意字符(含点), `?` 恰好一个字符, 全串匹配。
-    无损转换为 sing-box domain_regex (锚定全串)。
-    """
+    """Convert Mihomo DOMAIN-WILDCARD glob to anchored sing-box domain_regex."""
     p = pattern.strip().lower()
-    if not p or set(p) == {"*"}:  # 空模式或全星 (匹配一切) 拒绝转换
+    if not p or set(p) == {"*"}:
         return None
     out = ["^"]
     for ch in p:
@@ -224,12 +232,7 @@ def glob_wildcard_to_regex(pattern: str) -> Optional[str]:
 
 
 def wildcard_prefix_to_mihomo(pattern: str) -> Optional[str]:
-    """
-    glob 通配 -> mihomo domain 行为行的唯一严格等价形态:
-    `*.字面域名` (无 ? 无其他 *) 的 glob 语义 = 任意深度子域且不含自身
-    = domain 行为的 `.字面域名` 行 (component/trie 的 dot-wildcard)。
-    其余形态 (含 ?、中段 *、跨点 *) 语义不等价, 返回 None 交由调用方丢弃并提示。
-    """
+    """Convert strict `*.domain` glob to Mihomo dot-wildcard `.domain`."""
     p = pattern.strip().lower()
     if not p.startswith("*.") or "?" in p or "*" in p[1:]:
         return None
@@ -238,13 +241,9 @@ def wildcard_prefix_to_mihomo(pattern: str) -> Optional[str]:
         return None
     return "." + dom
 
-def parse_ai_rule_line(line: str) -> Optional[Tuple[str, str]]:
-    """
-    Parse a mixed AI rule line (Surge rule-set / Clash YAML provider / Mihomo domain list).
-    Returns (rule_type, normalized_value) where rule_type is one of:
-      'domain', 'domain_suffix', 'domain_keyword', 'ip_cidr', 'ip_asn', 'process_name'
-    Unsupported rule types (such as URL-REGEX, USER-AGENT, PROCESS-PATH, etc.) return None.
-    """
+
+def parse_ai_rule_line(line: str, bare_as_suffix: bool = False) -> Optional[Tuple[str, str]]:
+    """Parse Surge/QuantumultX/Clash YAML/Mihomo rule lines into typed IR tuples."""
     line = line.strip()
     if not line or line.startswith(("#", "!", ";", "//", "<")):
         return None
@@ -298,8 +297,6 @@ def parse_ai_rule_line(line: str) -> Optional[Tuple[str, str]]:
         if rtype in ("DOMAIN-WILDCARD", "HOST-WILDCARD"):
             wc = val.strip().lower()
             return ("domain_wildcard", wc) if wc and ("*" in wc or "?" in wc) else None
-        # 其余带类型但明确不支持的行: 返回 ("dropped", 类型) 供上层统计,
-        # 与空白/注释/垃圾行 (返回 None) 区分, 上游格式漂移可感知
         return ("dropped", rtype)
 
     lower = line.lower()
@@ -307,11 +304,6 @@ def parse_ai_rule_line(line: str) -> Optional[Tuple[str, str]]:
         d = idna_domain(line[5:].strip().lower().lstrip(".").rstrip("."))
         return ("domain", d) if is_valid_domain(d, allow_tld=False) else None
     if lower.startswith("domain:"):
-        # 11-17 复核: 四个 AI 上游(MetaCubeX/DustinWin/skk/MagicRule)实测
-        # 零 `domain:` 冒号前缀行 — 本函数声明的三种格式(Surge/Clash/mihomo)
-        # 也都没有该前缀, 此分支是死路径。语义归属存疑(mosdns 约定=后缀,
-        # sing-box 约定=精确), 维持原实现(suffix)以保持行为面不变; 若未来
-        # 上游真的引入该前缀, 须先按其项目约定裁决再改。
         s = idna_domain(line[7:].strip().lower().lstrip("+.").lstrip(".").rstrip("."))
         return ("domain_suffix", s) if is_valid_domain(s, allow_tld=True) else None
     if lower.startswith("keyword:"):
@@ -334,20 +326,17 @@ def parse_ai_rule_line(line: str) -> Optional[Tuple[str, str]]:
         except ValueError:
             return None
 
-    d = idna_domain(line.lower().rstrip("."))
-    if is_valid_domain(d, allow_tld=False):
-        return ("domain", d)
+    d = idna_domain(line.lower().lstrip("+.").lstrip(".").rstrip("."))
+    if is_valid_domain(d, allow_tld=bare_as_suffix):
+        return ("domain_suffix" if bare_as_suffix else "domain", d)
     return None
 
 
-def normalize_fakeip_line(raw: str) -> Optional[str]:
-    """归一化单行 fakeip-filter 规则; 过滤注释、空行、YAML 键与异形行。
+parse_mixed_rule_line = parse_ai_rule_line
 
-    与旧 ad-hoc 清洗的差异: 字符集白名单拦截 "Mijia Cloud" 类垃圾行, 行内
-    `#` 注释剥离, YAML 键过滤泛化 (skk 的 `dns:`→`fake-ip-filter:` 嵌套键、
-    未来可能的 `payload:` 一并覆盖), `*.x`/`.x` 统一为 `+.x` (跨源去重;
-    mihomo 侧 +. 含裸 TLD 自身, 属有意放宽)。
-    """
+
+def normalize_fakeip_line(raw: str) -> Optional[str]:
+    """Normalize a single fakeip-filter line; reject comments, YAML keys, and malformed lines."""
     line = raw.split('#', 1)[0].strip().lower()
     if not line or _YAML_KEY_RE.match(line):
         return None
@@ -364,14 +353,36 @@ def normalize_fakeip_line(raw: str) -> Optional[str]:
     return line
 
 
+def dedup_fakeip_lines(lines: Iterable[str]) -> List[str]:
+    """Deduplicate Mihomo fakeip-filter lines covered by shorter `+.` / `.` suffixes."""
+    data = []
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        clean = line
+        is_wildcard = False
+        if clean.startswith("+."):
+            clean, is_wildcard = clean[2:], True
+        elif clean.startswith("."):
+            clean, is_wildcard = clean[1:], True
+        parts = clean.split(".")
+        parts.reverse()
+        if parts:
+            data.append((parts, not is_wildcard, line, is_wildcard))
+    data.sort(key=lambda x: (x[0], x[1]))
+    result: List[str] = []
+    last_root = None
+    for parts, _not_wc, orig, is_wc in data:
+        if last_root is not None and len(parts) >= len(last_root) and parts[:len(last_root)] == last_root:
+            continue
+        result.append(orig)
+        last_root = parts if is_wc else None
+    return result
+
+
 def compact_regexes(regex_set: Set[str]) -> List[str]:
-    """
-    Ultimate regex compactor: safe filtering + intelligent grouping.
-    Primarily utilized for Fake-IP lists.
-    注意: step1 的折叠(`\\..*\\..*` → `\\..*` 等)与 step2 的数字分组会**放大**
-    匹配面 — 仅适用于 fake-ip filter 这类"多豁免=更安全"的集合, 勿复用于
-    拦截方向的正则。
-    """
+    """Compact Fake-IP exemption regexes safely (only for allow/exemption sets)."""
     if not regex_set:
         return []
 
@@ -432,21 +443,15 @@ def compact_regexes(regex_set: Set[str]) -> List[str]:
 
 
 def absorb_covered_domains(domains: Set[str], suffixes: Set[str], protect=frozenset()) -> Tuple[Set[str], Set[str], int]:
-    """
-    覆盖吸收: 删除被更短后缀语义涵盖的条目。
-    protect: 不可删除的条目 (归一化后匹配, 仍参与涵盖判定)。
-    补丁通道用它实现基座保护——基座 (上游 dat 转录/自研基础集) 条目可涵盖
-    include 引入的增量, 自身绝不被删 (保持与上游 0-Diff 同构);
-    吸收仅作用于补丁会话引入的增量冗余。
-    """
+    """Remove domain/suffix entries covered by shorter suffixes (respecting protected base entries)."""
     prot = set()
     for x in protect:
         x = x.strip().lower().lstrip(".")
         if x:
             prot.add(x)
             prot.add(x.rstrip("."))
+
     kept_suffixes: Set[str] = set()
-    removed = 0
     label_map: Dict[str, str] = {}
     dup_labels = 0
     for s in suffixes:
@@ -455,8 +460,7 @@ def absorb_covered_domains(domains: Set[str], suffixes: Set[str], protect=frozen
             continue
         if key in label_map:
             dup_labels += 1
-            cur = label_map[key]
-            if cur.startswith(".") and not s.strip().startswith("."):
+            if label_map[key].startswith(".") and not s.strip().startswith("."):
                 label_map[key] = s
             continue
         label_map[key] = s
@@ -484,29 +488,42 @@ def absorb_covered_domains(domains: Set[str], suffixes: Set[str], protect=frozen
     return kept_domains, kept_suffixes, removed
 
 
-def _domain_ancestors(d: str) -> List[str]:
-    """Return all ancestor domains including itself: a.b.com -> [a.b.com, b.com, com]."""
-    parts = d.split(".")
-    return [".".join(parts[i:]) for i in range(len(parts))]
+def subtract_whitelist(
+    block_domains: Set[str],
+    allow_suffix: Set[str],
+    allow_exact: Set[str] = frozenset(),
+) -> Set[str]:
+    """Pure in-memory Mode A whitelist subtraction (suffix bidirectional + exact exact-only)."""
+    allow_set = {a for a in (x.strip().lower().lstrip('+').strip('.') for x in allow_suffix) if a}
+    allow_parents: Set[str] = set()
+    for a in allow_set:
+        parts = a.split('.')
+        for i in range(1, len(parts)):
+            allow_parents.add(".".join(parts[i:]))
+    exact_set = {a for a in (x.strip().lower().lstrip('+').strip('.') for x in allow_exact) if a}
+
+    kept = set()
+    for raw in block_domains:
+        pure = raw.strip().lower().lstrip('+').strip('.')
+        if not pure or pure in exact_set:
+            continue
+        if pure in allow_parents or any(anc in allow_set for anc in domain_ancestors(pure)):
+            continue
+        kept.add(pure)
+    return kept
 
 
 def build_blocklist_b(raw_block: Set[str], raw_allow: Set[str],
                       raw_allow_exact: Set[str] = frozenset()) -> Set[str]:
-    """
-    Precise blocklist (黑加白模式 黑名单B).
-    raw_allow_exact = 精确档白名单 (ad-whitelist-bot exact 产物): 只放行
-    恰好等于该域的块规则, 不参与祖先连坐 — 与 suffix 档的双向语义互补。
-    """
+    """Precise blocklist B: removes descendants/exact matches of allow_suffix and exact matches of allow_exact."""
     allow_set = {a for a in (x.strip().lower().lstrip('+').strip('.') for x in raw_allow) if a}
     allow_exact = {a for a in (x.strip().lower().lstrip('+').strip('.') for x in raw_allow_exact) if a}
     kept = set()
     for b in raw_block:
         b = b.strip().lower().lstrip('+').strip('.')
-        if not b:
+        if not b or b in allow_exact:
             continue
-        if b in allow_exact:
-            continue
-        if any(anc in allow_set for anc in _domain_ancestors(b)):
+        if any(anc in allow_set for anc in domain_ancestors(b)):
             continue
         kept.add(b)
     _, final, _ = absorb_covered_domains(set(), kept)
@@ -514,9 +531,7 @@ def build_blocklist_b(raw_block: Set[str], raw_allow: Set[str],
 
 
 def build_whitelist_b(raw_allow: Set[str], raw_block: Set[str], blocklist_b: Set[str]) -> Set[str]:
-    """
-    Allow exception list (黑加白模式 白名单B).
-    """
+    """Allow exception list B: entries in raw_allow not directly blocked that sit under a blocklist_b rule."""
     block_set = {b for b in (x.strip().lower().lstrip('+').strip('.') for x in raw_block) if b}
     blk_b_set = {b for b in (x.strip().lower().lstrip('+').strip('.') for x in blocklist_b) if b}
     out = set()
@@ -524,6 +539,6 @@ def build_whitelist_b(raw_allow: Set[str], raw_block: Set[str], blocklist_b: Set
         a = a.strip().lower().lstrip('+').strip('.')
         if not a or a in block_set:
             continue
-        if any(anc in blk_b_set for anc in _domain_ancestors(a)):
+        if any(anc in blk_b_set for anc in domain_ancestors(a)):
             out.add(a)
     return out

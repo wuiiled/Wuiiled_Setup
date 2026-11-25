@@ -87,8 +87,6 @@ def test_stream_singbox_keeps_standalone_geoip(tmp_path):
 
 
 def test_stream_mihomo_exports_both(tmp_path):
-    from conftest import seed_blackwhite_files
-    seed_blackwhite_files()
     rules = _mock_stream_rules()
     m_dir = str(tmp_path / "mihomo")
     build_mihomo.build_mihomo_rules(rules, output_dir=m_dir)
